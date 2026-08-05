@@ -1,0 +1,31 @@
+-- CreateEnum
+CREATE TYPE "PaymentFrequency" AS ENUM ('ONE_TIME', 'MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUAL');
+
+-- AlterTable
+ALTER TABLE "members" ADD COLUMN     "annualIncome" DECIMAL(12,2),
+ADD COLUMN     "childrenCount" INTEGER,
+ADD COLUMN     "designation" TEXT,
+ADD COLUMN     "employerOrganization" TEXT,
+ADD COLUMN     "experienceYears" INTEGER,
+ADD COLUMN     "familyMembersCount" INTEGER,
+ADD COLUMN     "feeOverride" DECIMAL(10,2),
+ADD COLUMN     "firstName" TEXT,
+ADD COLUMN     "institution" TEXT,
+ADD COLUMN     "isDifferentlyAbled" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "isExServiceman" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "isSeniorCitizen" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "languagesKnown" TEXT[],
+ADD COLUMN     "lastName" TEXT,
+ADD COLUMN     "membershipRemarks" TEXT,
+ADD COLUMN     "middleName" TEXT,
+ADD COLUMN     "passingYear" INTEGER,
+ADD COLUMN     "paymentFrequency" "PaymentFrequency",
+ADD COLUMN     "preferredWorkArea" TEXT,
+ADD COLUMN     "professionalQualification" TEXT,
+ADD COLUMN     "skills" TEXT[],
+ADD COLUMN     "socialMediaLinks" TEXT,
+ADD COLUMN     "spouseOrGuardianName" TEXT,
+ADD COLUMN     "title" TEXT,
+ADD COLUMN     "unit" TEXT,
+ADD COLUMN     "volunteerAvailability" TEXT,
+ADD COLUMN     "volunteerExperience" TEXT;

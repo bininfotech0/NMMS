@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g fill="#F9AB25">
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(0 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(22.5 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(45 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(67.5 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(90 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(112.5 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(135 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(157.5 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(180 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(202.5 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(225 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(247.5 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(270 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(292.5 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(315 50 50)"/>
+    <polygon points="47,21 53,21 56,4 44,4" transform="rotate(337.5 50 50)"/>
+  </g>
+  <path d="M50 20 C64 28 68 50 64 66 C60 80 50 84 50 84 C50 84 40 80 36 66 C32 50 36 28 50 20 Z" fill="#f5dfa8"/>
+  <path d="M50 66 L50 44" stroke="#1B4D1F" stroke-width="5" stroke-linecap="round"/>
+  <ellipse cx="50" cy="32" rx="13" ry="12" fill="#2E7D32"/>
+  <ellipse cx="38" cy="45" rx="10" ry="9" fill="#2E7D32"/>
+  <ellipse cx="62" cy="45" rx="10" ry="9" fill="#2E7D32"/>
+  <circle cx="41" cy="63.5" r="3.4" fill="#5D4037"/>
+  <path d="M41 67 L41 74 M41 68 L46 61 M41 70 L37 74" stroke="#5D4037" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  <path d="M41 74 L35 85 L47 85 Z" fill="#5D4037"/>
+  <circle cx="60" cy="61" r="3.6" fill="#5D4037"/>
+  <path d="M60 64.5 L60 76 M60 66 L54 59 M60 68 L65 72 M60 76 L55 86 M60 76 L65 86" stroke="#5D4037" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+</svg>

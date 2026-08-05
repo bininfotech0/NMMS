@@ -1,0 +1,10 @@
+{
+  "extends": "@nmms/config/typescript/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "types": ["node"]
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}

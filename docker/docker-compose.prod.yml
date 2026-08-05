@@ -1,0 +1,27 @@
+services:
+  postgres:
+    ports: []
+
+  api:
+    build:
+      target: prod
+    ports: []
+    volumes: []
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: 3000
+
+  web:
+    build:
+      target: prod
+    ports: []
+    volumes: []
+    environment: []
+
+  nginx:
+    environment:
+      WEB_UPSTREAM: web:80
+    ports:
+      - "80:80"
+      - "443:443"

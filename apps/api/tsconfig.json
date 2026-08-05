@@ -1,0 +1,8 @@
+{
+  "extends": "@nmms/config/typescript/nest.json",
+  "compilerOptions": {
+    "baseUrl": "./",
+    "outDir": "./dist"
+  },
+  "include": ["src"]
+}

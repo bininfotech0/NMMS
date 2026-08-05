@@ -1,0 +1,749 @@
+// Minimal v1 stub for scaffold verification.
+// Full data model (geo hierarchy, MembershipPlan, Member, Payment, etc. — see
+// nmms-development-plan.md §2) is added when Sprint 0/1 masters & members work begins.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  FIELD_EXECUTIVE
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        User[]
+  settings     OrgSettings?
+  plans        MembershipPlan[]
+  lookups      Lookup[]
+  featureFlags FeatureFlag[]
+  members      Member[]
+  payments     Payment[]
+  auditLogs    AuditLog[]
+  documents    MemberDocument[]
+  events       Event[]
+  notices      Notice[]
+  referralPointsLedger ReferralPointsLedger[]
+  referralRewards      ReferralReward[]
+
+  @@map("organizations")
+}
+
+model OrgSettings {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  logoUrl           String?
+  address           String?
+  contactEmail      String?
+  contactPhone      String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfscCode      String?
+  bankName          String?
+
+  // Locked after first membership approval in a future sprint — see plan §2A.
+  membershipNumberFormat String @default("{PREFIX}-{YYYY}-{SEQ}")
+  membershipNumberPrefix String @default("MEM")
+  // Atomically incremented by NumberingService on each approval — never read
+  // for display, only as the counter feeding {SEQ}.
+  lastMembershipSeq      Int    @default(0)
+  receiptNumberFormat    String @default("{PREFIX}-{YYYY}-{SEQ}")
+  receiptNumberPrefix    String @default("RCPT")
+  // Atomically incremented by NumberingService on each payment — same pattern
+  // as lastMembershipSeq.
+  lastReceiptSeq         Int    @default(0)
+
+  registrationNumberFormat String @default("{PREFIX}-{YYYY}-{SEQ}")
+  registrationNumberPrefix String @default("REG")
+  // Atomically incremented by NumberingService on each draft creation — same
+  // pattern as lastMembershipSeq/lastReceiptSeq.
+  lastRegistrationSeq      Int    @default(0)
+
+  // Referral program config — see ReferralsService. Rank is computed from
+  // Member.referralPointsBalance against these thresholds at read time, never
+  // stored, so editing a threshold retroactively re-ranks everyone.
+  referralProgramEnabled    Boolean @default(false)
+  pointsPerApprovedReferral Int     @default(10)
+  referralSilverMinPoints   Int     @default(0)
+  referralGoldMinPoints     Int     @default(500)
+  referralPlatinumMinPoints Int     @default(2000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("org_settings")
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  role           Role
+  isActive       Boolean      @default(true)
+  // Sentinel account used as Member.createdById for self-registered members
+  // (there is no staff user to attribute them to). Never returned in user
+  // lists/UI, cannot log in (isActive is always false on these rows). Lazily
+  // created per-org on first self-registration — see MemberAuthService.
+  isSystem       Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  createdMembers    Member[]         @relation("MemberCreatedBy")
+  approvedMembers   Member[]         @relation("MemberApprovedBy")
+  statusHistories   StatusHistory[]
+  receivedPayments  Payment[]        @relation("PaymentReceivedBy")
+  auditLogs         AuditLog[]
+  uploadedDocuments MemberDocument[] @relation("DocumentUploadedBy")
+  createdEvents     Event[]          @relation("EventCreatedBy")
+  createdNotices    Notice[]         @relation("NoticeCreatedBy")
+  fulfilledReferralRewards ReferralReward[]       @relation("RewardFulfilledBy")
+  referralLedgerAdjustments ReferralPointsLedger[] @relation("ReferralLedgerCreatedBy")
+  promotedFromMember       Member?                @relation("MemberPromotedToUser")
+  reviewedEventRegistrations EventRegistration[]   @relation("EventRegistrationReviewedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+enum PlanValidityType {
+  MONTHS
+  LIFETIME
+}
+
+model MembershipPlan {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  name           String
+  fee            Decimal          @db.Decimal(10, 2)
+  validityType   PlanValidityType
+  validityMonths Int?
+  isActive       Boolean          @default(true)
+
+  members Member[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("membership_plans")
+}
+
+
+enum LookupCategory {
+  OCCUPATION
+  EDUCATION
+  BLOOD_GROUP
+  RELIGION
+  CASTE_CATEGORY
+  BUSINESS_TYPE
+  MEMBERSHIP_CATEGORY
+  BRANCH
+  FAMILY_TYPE
+}
+
+model Lookup {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  category       LookupCategory
+  value          String
+  isActive       Boolean        @default(true)
+
+  membersByEducation          Member[] @relation("MemberEducation")
+  membersByOccupation         Member[] @relation("MemberOccupation")
+  membersByReligion           Member[] @relation("MemberReligion")
+  membersByCasteCategory      Member[] @relation("MemberCasteCategory")
+  membersByBusinessType       Member[] @relation("MemberBusinessType")
+  membersByMembershipCategory Member[] @relation("MemberMembershipCategory")
+  membersByBranch             Member[] @relation("MemberBranch")
+  membersByFamilyType         Member[] @relation("MemberFamilyType")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, category, value])
+  @@map("lookups")
+}
+
+enum FeatureFlagKey {
+  PAYMENT_GATEWAY
+  WHATSAPP_NOTIFY
+  AI_DEDUPE
+  AI_OCR
+  SMS
+  EMAIL
+}
+
+model FeatureFlag {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  key            FeatureFlagKey
+  enabled        Boolean        @default(false)
+
+  // AES-256-GCM encrypted JSON blob of provider credentials — see CryptoService.
+  // Never returned in plaintext by the API; only whether it's set (`hasConfig`).
+  configEncrypted String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("feature_flags")
+}
+
+enum MemberStatus {
+  DRAFT
+  PAYMENT_COLLECTED
+  SUBMITTED
+  // Legacy: was the intermediate step of the old two-level approval workflow.
+  // Retired from the active flow (single-level approval goes SUBMITTED →
+  // APPROVED → ACTIVE directly) but kept in the enum to avoid an unsafe
+  // migration against existing rows/StatusHistory.
+  VERIFIED
+  APPROVED
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  EXPIRED
+  RENEWED
+  DECEASED
+}
+
+enum RegistrationMode {
+  ONLINE
+  OFFLINE
+}
+
+enum IdentityEntryMethod {
+  AUTO_FILL
+  MANUAL
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  WIDOWED
+  DIVORCED
+}
+
+// Full workflow (VERIFIED/APPROVED transitions, membershipNumber generation,
+// StatusHistory, documents, payments, cards) lands with the Sprint 3 approval
+// workflow — see plan §4. This is the core entity plus the draft/submit slice.
+model Member {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // Assigned transactionally at APPROVED time (not yet implemented) to avoid
+  // gaps/collisions — see plan §2.
+  membershipNumber String? @unique
+
+  // System-generated at draft creation via NumberingService — the "Registration
+  // No." shown to the field executive immediately, distinct from membershipNumber
+  // (assigned only on approval).
+  registrationNumber    String?              @unique
+  registrationLatitude  Float?
+  registrationLongitude Float?
+  deviceId              String?
+  registrationMode      RegistrationMode?    @default(ONLINE)
+  // Device-captured moment of registration — distinct from createdAt (server
+  // receipt time), relevant for offline-first field capture.
+  registeredAt           DateTime?
+  identityEntryMethod    IdentityEntryMethod?
+
+  fullName      String
+  title         String?
+  firstName     String?
+  middleName    String?
+  lastName      String?
+  dob           DateTime?
+  gender        Gender?
+  maritalStatus MaritalStatus?
+  bloodGroup    String?
+  nationality   String?
+  fatherName    String?
+  motherName    String?
+
+  spouseOrGuardianName String?
+  monthlyIncome        Decimal? @db.Decimal(10, 2)
+  familyMembersCount   Int?
+  childrenCount        Int?
+  isDifferentlyAbled   Boolean  @default(false)
+  isExServiceman       Boolean  @default(false)
+  isSeniorCitizen      Boolean  @default(false)
+
+  familyTypeId String?
+  familyType   Lookup? @relation("MemberFamilyType", fields: [familyTypeId], references: [id])
+
+  mobile                       String
+  whatsappNumber               String?
+  email                        String?
+  emergencyContactName         String?
+  emergencyContactMobile       String?
+  emergencyContactRelationship String?
+
+  // Current address — free-text only (no structured geo hierarchy).
+  pincode     String?
+  addressLine String?
+  landmark    String?
+  latitude    Float?
+  longitude   Float?
+
+  // Permanent address — parallel columns mirroring current address; when
+  // sameAsCurrentAddress is true the frontend copies current → perm* on save
+  // rather than the backend aliasing them, keeping both always explicit.
+  sameAsCurrentAddress Boolean @default(false)
+  permPincode          String?
+  permAddressLine      String?
+  permLandmark         String?
+
+  // Raw Aadhaar is never persisted — only a salted hash (dedupe) + last 4
+  // digits (display). See plan §2 (DPDP Act consideration).
+  aadhaarLast4         String?
+  aadhaarHash          String?
+  pan                  String?
+  voterId              String?
+  passportNumber       String?
+  drivingLicenceNumber String?
+
+  educationId         String?
+  education           Lookup? @relation("MemberEducation", fields: [educationId], references: [id])
+  occupationId        String?
+  occupation          Lookup? @relation("MemberOccupation", fields: [occupationId], references: [id])
+  qualificationDetail String?
+
+  languagesKnown String[]
+  skills         String[]
+
+  religionId           String?
+  religion             Lookup? @relation("MemberReligion", fields: [religionId], references: [id])
+  casteCategoryId      String?
+  casteCategory        Lookup? @relation("MemberCasteCategory", fields: [casteCategoryId], references: [id])
+  businessTypeId       String?
+  businessType         Lookup? @relation("MemberBusinessType", fields: [businessTypeId], references: [id])
+  membershipCategoryId String?
+  membershipCategory   Lookup? @relation("MemberMembershipCategory", fields: [membershipCategoryId], references: [id])
+  branchId             String?
+  branch               Lookup? @relation("MemberBranch", fields: [branchId], references: [id])
+
+  referralMemberId String?
+  referralMember   Member?  @relation("MemberReferral", fields: [referralMemberId], references: [id])
+  referrals        Member[] @relation("MemberReferral")
+
+  // True only when this member was created via the public self-registration
+  // path (MemberAuthService.register), as opposed to a staff wizard. Drives
+  // the "unclaimed referrals" queue and field-executive approval eligibility
+  // — see MembersService.claim / ApplicationsService.assertCanApprove.
+  selfRegistered Boolean @default(false)
+
+  // Set when an ADMIN/SUPER_ADMIN promotes this member to a Field Executive
+  // staff account (MembersService.promoteToExecutive). The member's own
+  // login/portal access is unaffected — this just links to their separate
+  // staff identity and prevents double-promotion.
+  promotedToUserId String? @unique
+  promotedToUser   User?   @relation("MemberPromotedToUser", fields: [promotedToUserId], references: [id])
+
+  // Referral-program login (self-service member portal). Null until the
+  // member self-registers or sets a password; staff-created members have no
+  // login unless they later go through the same flow.
+  passwordHash String?
+  // Assigned once the member becomes eligible to refer others (ACTIVE) — see
+  // ReferralsService.awardPointsForApproval. Short, unique, shareable code
+  // used in referral links (?ref=<code>), distinct from membershipNumber.
+  referralCode String? @unique
+  // Cached counter kept in sync with ReferralPointsLedger inside the same
+  // $transaction that inserts a ledger row — same pattern as
+  // OrgSettings.lastMembershipSeq.
+  referralPointsBalance Int @default(0)
+
+  referralLedgerEntries ReferralPointsLedger[] @relation("ReferralLedgerMember")
+  referredInLedgerEntries ReferralPointsLedger[] @relation("ReferralLedgerRelatedMember")
+  referralRewards       ReferralReward[]
+
+  socialMediaLinks String?
+
+  declarationInfoCorrect         Boolean   @default(false)
+  declarationAcceptConstitution  Boolean   @default(false)
+  declarationAcceptPrivacyPolicy Boolean   @default(false)
+  declarationAcceptTerms         Boolean   @default(false)
+  declarationPlace               String?
+  declarationDate                DateTime?
+
+  planId String?
+  plan   MembershipPlan? @relation(fields: [planId], references: [id])
+
+  feeOverride       Decimal?          @db.Decimal(10, 2)
+  paymentFrequency  PaymentFrequency?
+  unit              String?
+  membershipRemarks String?
+
+  joiningDate DateTime?
+  validUntil  DateTime?
+  status      MemberStatus @default(DRAFT)
+
+  createdById String
+  createdBy   User   @relation("MemberCreatedBy", fields: [createdById], references: [id])
+
+  approvedById String?
+  approvedBy   User?     @relation("MemberApprovedBy", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+
+  statusHistory      StatusHistory[]
+  payments           Payment[]
+  documents          MemberDocument[]
+  eventRegistrations EventRegistration[]
+  nominee            Nominee?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, aadhaarHash])
+  @@index([organizationId, mobile])
+  @@map("members")
+}
+
+enum DocumentType {
+  PHOTO
+  AADHAAR
+  PAN
+  VOTER_ID
+  ADDRESS_PROOF
+  OTHER
+  SIGNATURE
+  AADHAAR_FRONT
+  AADHAAR_BACK
+  QUALIFICATION_CERTIFICATE
+  PASSPORT
+  DRIVING_LICENCE
+  GOVERNMENT_ID
+}
+
+enum PaymentFrequency {
+  ONE_TIME
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  ANNUAL
+}
+
+model Nominee {
+  id           String    @id @default(cuid())
+  memberId     String    @unique
+  member       Member    @relation(fields: [memberId], references: [id])
+  name         String
+  relationship String?
+  dob          DateTime?
+  address      String?
+  mobile       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("nominees")
+}
+
+model MemberDocument {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  memberId       String
+  member         Member       @relation(fields: [memberId], references: [id])
+
+  type      DocumentType
+  fileName  String
+  mimeType  String
+  sizeBytes Int
+  // Relative path under the storage root — never derived from user input,
+  // always a server-generated UUID + extension (see DocumentStorageService).
+  filePath  String
+
+  uploadedById String
+  uploadedBy   User   @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, memberId])
+  @@map("member_documents")
+}
+
+model StatusHistory {
+  id       String @id @default(cuid())
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id])
+
+  fromStatus MemberStatus
+  toStatus   MemberStatus
+  remarks    String?
+
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("status_history")
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK
+  CHEQUE
+  // Gateway-originated only — created exclusively by the Razorpay verify/webhook
+  // path, never hand-picked from the manual recording form.
+  ONLINE
+}
+
+model Payment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  memberId       String
+  member         Member       @relation(fields: [memberId], references: [id])
+
+  amount            Decimal     @db.Decimal(10, 2)
+  mode              PaymentMode
+  receiptNumber     String      @unique
+  // Bank/UPI reference number — optional, mainly for non-cash modes.
+  transactionNumber String?
+  remarks           String?
+
+  // Razorpay order/payment ids — set only for mode = ONLINE. gatewayPaymentId
+  // is the idempotency key: the verify callback and the webhook both race to
+  // record the same successful payment, and whichever writes first wins.
+  gatewayOrderId   String?
+  gatewayPaymentId String? @unique
+
+  receivedById String
+  receivedBy   User   @relation("PaymentReceivedBy", fields: [receivedById], references: [id])
+
+  paidAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
+}
+
+// organizationId/actorId are nullable to cover failed logins where the
+// attempted email doesn't resolve to a known user/org.
+model AuditLog {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  actorId        String?
+  actor          User?         @relation(fields: [actorId], references: [id])
+  actorEmail     String?
+
+  action    String
+  entity    String
+  entityId  String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+enum EventStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+model Event {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  title       String
+  description String?
+  location    String?
+  startAt     DateTime
+  endAt       DateTime?
+  capacity    Int?
+  status      EventStatus @default(PLANNED)
+
+  // Optional completion target (e.g. "Plant 100 saplings") members can submit
+  // evidence against — see EventRegistration below. Informational only;
+  // pointsReward is what's actually awarded per approved submission.
+  targetDescription String?
+  targetQuantity    Int?
+  pointsReward      Int     @default(0)
+
+  createdById String
+  createdBy   User   @relation("EventCreatedBy", fields: [createdById], references: [id])
+
+  registrations EventRegistration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, startAt])
+  @@map("events")
+}
+
+enum EventCompletionStatus {
+  NOT_SUBMITTED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model EventRegistration {
+  id       String @id @default(cuid())
+  eventId  String
+  event    Event  @relation(fields: [eventId], references: [id])
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id])
+
+  attended Boolean @default(false)
+
+  // Evidence a member submits toward the event's target (see Event.
+  // targetDescription/targetQuantity) — file fields mirror MemberDocument's
+  // shape but live here directly since evidence is event-scoped, not a
+  // member identity document.
+  evidenceNote      String?
+  evidenceFileName  String?
+  evidenceMimeType  String?
+  evidenceSizeBytes Int?
+  evidenceFilePath  String?
+  quantityAchieved  Int?
+  completionStatus  EventCompletionStatus @default(NOT_SUBMITTED)
+
+  reviewedById String?
+  reviewedBy   User?     @relation("EventRegistrationReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  registeredAt DateTime @default(now())
+
+  pointsLedgerEntries ReferralPointsLedger[]
+
+  @@unique([eventId, memberId])
+  @@map("event_registrations")
+}
+
+model Notice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  title   String
+  body    String
+  audienceRole String?
+
+  createdById String
+  createdBy   User   @relation("NoticeCreatedBy", fields: [createdById], references: [id])
+
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([organizationId, publishedAt])
+  @@map("notices")
+}
+
+enum ReferralLedgerReason {
+  REFERRAL_APPROVED
+  EVENT_TARGET_COMPLETED
+  MANUAL_ADJUSTMENT
+}
+
+// Append-only points history. Member.referralPointsBalance is a cached sum
+// of this table, updated in the same $transaction as each insert — see
+// ReferralsService.awardPointsForApproval.
+model ReferralPointsLedger {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  memberId String
+  member   Member @relation("ReferralLedgerMember", fields: [memberId], references: [id])
+
+  points Int
+  reason ReferralLedgerReason
+
+  // The referred member whose approval triggered this entry — null for
+  // MANUAL_ADJUSTMENT and EVENT_TARGET_COMPLETED entries.
+  relatedMemberId String?
+  relatedMember   Member? @relation("ReferralLedgerRelatedMember", fields: [relatedMemberId], references: [id])
+
+  // The approved event registration that triggered this entry — set only
+  // for EVENT_TARGET_COMPLETED entries.
+  relatedEventRegistrationId String?
+  relatedEventRegistration   EventRegistration? @relation(fields: [relatedEventRegistrationId], references: [id])
+
+  note String?
+
+  // Staff who made a MANUAL_ADJUSTMENT — null for system-generated entries.
+  createdById String?
+  createdBy   User?   @relation("ReferralLedgerCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, memberId])
+  @@map("referral_points_ledger")
+}
+
+enum ReferralRank {
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum RewardStatus {
+  PENDING
+  FULFILLED
+}
+
+// One row per member per rank ever reached, guarded by the unique constraint
+// so crossing a threshold twice never duplicates. Created by
+// ReferralsService.awardPointsForApproval when a new threshold is crossed;
+// staff mark it FULFILLED once the bonus/gift is actually handed over.
+model ReferralReward {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id])
+
+  rank         ReferralRank
+  pointsAtEarn Int
+  status       RewardStatus @default(PENDING)
+
+  fulfilledById String?
+  fulfilledBy   User?     @relation("RewardFulfilledBy", fields: [fulfilledById], references: [id])
+  fulfilledAt   DateTime?
+  note          String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([memberId, rank])
+  @@index([organizationId, status])
+  @@map("referral_rewards")
+}

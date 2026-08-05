@@ -1,0 +1,10 @@
+{
+  "extends": "@nmms/config/typescript/react.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

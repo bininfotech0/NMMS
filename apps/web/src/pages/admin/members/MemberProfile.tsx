@@ -1,0 +1,621 @@
+import { useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import {
+  ChevronLeft, IdCard, Pencil, Printer, Phone, Mail,
+  MapPin, Calendar, User, Users, Award, Shield, Activity,
+  FileText, CreditCard, Clock, MapPinned, Share2,
+  Ban, RotateCcw, HeartCrack, UserCog,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { RankBadge } from "@/components/shared/RankBadge";
+import { ApiError } from "@/lib/api-client";
+import { computeRank } from "@/lib/referral-rank";
+import {
+  useMember,
+  useMemberDocuments,
+  useMemberPayments,
+  useMemberStatusHistory,
+  usePromoteToExecutive,
+} from "@/hooks/useMembers";
+import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
+import { useReferralNetwork } from "@/hooks/useReferrals";
+import { useOrgProfile } from "@/hooks/useOrg";
+import { useAuthStore } from "@/stores/auth";
+import { Role, type MemberResponse } from "@nmms/shared";
+import { memberToWizardForm } from "./wizard-types";
+
+const CAN_MANAGE_LIFECYCLE = [Role.ADMIN, Role.SUPER_ADMIN];
+
+type LifecycleAction = "suspend" | "reactivate" | "mark-deceased";
+
+const LIFECYCLE_COPY: Record<LifecycleAction, { title: string; description: string; confirmLabel: string }> = {
+  suspend: {
+    title: "Suspend member",
+    description: "The member will no longer be counted as active until reactivated.",
+    confirmLabel: "Suspend",
+  },
+  reactivate: {
+    title: "Reactivate member",
+    description: "Restores the member to Active status.",
+    confirmLabel: "Reactivate",
+  },
+  "mark-deceased": {
+    title: "Mark member as deceased",
+    description: "This is a terminal status and cannot be reversed.",
+    confirmLabel: "Mark Deceased",
+  },
+};
+
+function LifecycleActionSheet({
+  member,
+  action,
+  onOpenChange,
+}: {
+  member: MemberResponse | null;
+  action: LifecycleAction | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [remarks, setRemarks] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const suspend = useSuspendMember();
+  const reactivate = useReactivateMember();
+  const markDeceased = useMarkMemberDeceased();
+  const mutation = action === "suspend" ? suspend : action === "reactivate" ? reactivate : markDeceased;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!member) return;
+    setError(null);
+    try {
+      await mutation.mutateAsync({ memberId: member.id, remarks });
+      setRemarks("");
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  const copy = action ? LIFECYCLE_COPY[action] : null;
+
+  return (
+    <Sheet open={action !== null} onOpenChange={onOpenChange}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>{copy?.title}</SheetTitle>
+          <SheetDescription>{copy?.description}</SheetDescription>
+        </SheetHeader>
+        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="lifecycle-remarks">Remarks</Label>
+            <Input id="lifecycle-remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} required />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <SheetFooter className="px-0">
+            <Button
+              type="submit"
+              variant={action === "mark-deceased" ? "destructive" : "default"}
+              className={action !== "mark-deceased" ? "bg-brand-green hover:bg-brand-green/90" : undefined}
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending ? "Working…" : copy?.confirmLabel}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function PromoteToExecutiveSheet({
+  member,
+  open,
+  onOpenChange,
+}: {
+  member: MemberResponse;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const promote = usePromoteToExecutive();
+
+  function reset() {
+    setEmail("");
+    setPassword("");
+    setError(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await promote.mutateAsync({ id: member.id, dto: { email, password } });
+      reset();
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset();
+        onOpenChange(next);
+      }}
+    >
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Promote to Field Executive</SheetTitle>
+          <SheetDescription>
+            {member.fullName} keeps their existing member login — this adds a separate staff account so
+            they can log into the admin panel and register other members door-to-door.
+          </SheetDescription>
+        </SheetHeader>
+        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="promote-email">Staff login email</Label>
+            <Input
+              id="promote-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="promote-password">Temporary password</Label>
+            <Input
+              id="promote-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={8}
+              required
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <SheetFooter className="px-0">
+            <Button type="submit" disabled={promote.isPending} className="bg-brand-green hover:bg-brand-green/90">
+              {promote.isPending ? "Promoting…" : "Promote"}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function formatDate(d: Date | string | null, fmt?: string): string {
+  if (!d) return "";
+  const date = typeof d === "string" ? new Date(d) : d;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  if (fmt === "dd/MM/yyyy") return `${day}/${month}/${year}`;
+  return date.toLocaleDateString("en-IN");
+}
+
+function initials(name: string) {
+  return name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function Detail({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <Icon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="text-muted-foreground min-w-[80px]">{label}:</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">{children}</CardContent>
+    </Card>
+  );
+}
+
+function StatusTimeline({ history }: { history: Array<{ fromStatus: string; toStatus: string; createdAt: string; actor?: { id?: string; fullName?: string } | null }> }) {
+  return (
+    <div className="space-y-3">
+      {history.map((h, i) => (
+        <div key={i} className="flex items-start gap-3">
+          <div className="flex flex-col items-center">
+            <div className="size-2 rounded-full bg-brand-green" />
+            {i < history.length - 1 && <div className="w-px flex-1 bg-border" />}
+          </div>
+          <div className="flex-1 pb-3">
+            <div className="flex items-center gap-2">
+              <StatusBadge status={h.fromStatus} />
+              <span className="text-xs text-muted-foreground">→</span>
+              <StatusBadge status={h.toStatus} />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {h.actor?.fullName ?? "System"} · {new Date(h.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type Tab = "overview" | "address" | "documents" | "payments" | "referrals" | "history";
+
+const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: "overview", label: "Overview", icon: User },
+  { key: "address", label: "Address", icon: MapPin },
+  { key: "documents", label: "Documents", icon: FileText },
+  { key: "payments", label: "Payments", icon: CreditCard },
+  { key: "referrals", label: "Referrals", icon: Share2 },
+  { key: "history", label: "Timeline", icon: Activity },
+];
+
+function ReferralsTab({ member }: { member: MemberResponse }) {
+  const { data: network, isLoading } = useReferralNetwork(member.status === "ACTIVE" ? member.id : null);
+  const { data: referrer } = useMember(member.referralMemberId);
+  const { data: org } = useOrgProfile();
+  const rank = org ? computeRank(member.referralPointsBalance, org) : null;
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <SectionCard title="Referral Summary">
+        <Detail
+          icon={IdCard}
+          label="Referral Code"
+          value={member.referralCode ?? (member.status === "ACTIVE" ? "Not generated yet" : "Available once ACTIVE")}
+        />
+        <Detail icon={Award} label="Points Balance" value={String(member.referralPointsBalance)} />
+        <div className="flex items-center gap-2 text-sm">
+          <Award className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-[80px] text-muted-foreground">Volunteer Batch:</span>
+          <RankBadge rank={rank} />
+        </div>
+        {member.referralMemberId && <Detail icon={User} label="Referred By" value={referrer?.fullName ?? member.referralMemberId} />}
+      </SectionCard>
+
+      <SectionCard title="People Referred">
+        {member.status !== "ACTIVE" ? (
+          <p className="text-sm text-muted-foreground">Referral tracking starts once this member is ACTIVE.</p>
+        ) : isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : !network || network.children.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No one has joined through this member's referral link yet.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {network.children.map((child) => (
+              <li key={child.memberId} className="flex items-center justify-between py-2 text-sm">
+                <Link to={`/admin/members/${child.memberId}/profile`} className="font-medium hover:underline">
+                  {child.fullName}
+                </Link>
+                <StatusBadge status={child.status} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+export function MemberProfile() {
+  const { id } = useParams<{ id: string }>();
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
+  const [promoteOpen, setPromoteOpen] = useState(false);
+
+  const { data: member, isLoading } = useMember(id ?? null);
+  const { data: documents = [] } = useMemberDocuments(id ?? null);
+  const { data: payments = [] } = useMemberPayments(id ?? null);
+  const { data: statusHistory = [] } = useMemberStatusHistory(id ?? null);
+  const user = useAuthStore((state) => state.user);
+
+  const form = useMemo(() => (member ? memberToWizardForm(member) : null), [member]);
+
+  if (!id) return null;
+
+  if (isLoading || !member || !form) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">Loading member...</p>;
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="no-print flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link
+            to="/admin/members"
+            className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ChevronLeft className="size-4" />
+            Back to Members
+          </Link>
+          <div className="flex items-center gap-3">
+            <Avatar className="size-10">
+              <AvatarFallback className="bg-brand-green text-white text-sm">
+                {initials(member.fullName)}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-heading text-2xl font-bold">{member.fullName}</h1>
+                <StatusBadge status={member.status} />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {member.membershipNumber ?? "No membership number yet"}
+                {member.planId && " · Member"}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {(member.status === "DRAFT" || member.status === "PAYMENT_COLLECTED") && (
+            <Button variant="outline" asChild>
+              <Link to={`/admin/members/${id}/wizard`}>
+                <Pencil className="size-4" />
+                Edit
+              </Link>
+            </Button>
+          )}
+          {member.membershipNumber && (
+            <Button variant="outline" asChild>
+              <Link to={`/admin/members/${id}/card`}>
+                <IdCard className="size-4" />
+                View Card
+              </Link>
+            </Button>
+          )}
+          {user &&
+            CAN_MANAGE_LIFECYCLE.includes(user.role) &&
+            member.status === "ACTIVE" &&
+            !member.promotedToUserId && (
+              <Button variant="outline" onClick={() => setPromoteOpen(true)}>
+                <UserCog className="size-4" />
+                Promote to Field Executive
+              </Button>
+            )}
+          {user && CAN_MANAGE_LIFECYCLE.includes(user.role) && member.status === "ACTIVE" && (
+            <Button variant="outline" onClick={() => setLifecycleAction("suspend")}>
+              <Ban className="size-4" />
+              Suspend
+            </Button>
+          )}
+          {user && CAN_MANAGE_LIFECYCLE.includes(user.role) && member.status === "SUSPENDED" && (
+            <Button variant="outline" onClick={() => setLifecycleAction("reactivate")}>
+              <RotateCcw className="size-4" />
+              Reactivate
+            </Button>
+          )}
+          {user &&
+            CAN_MANAGE_LIFECYCLE.includes(user.role) &&
+            (member.status === "ACTIVE" || member.status === "SUSPENDED") && (
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setLifecycleAction("mark-deceased")}
+              >
+                <HeartCrack className="size-4" />
+                Mark Deceased
+              </Button>
+            )}
+          <Button className="bg-brand-green hover:bg-brand-green/90" onClick={() => window.print()}>
+            <Printer className="size-4" />
+            Print
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1">
+        {TABS.map(({ key, label, icon: TabIcon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+              activeTab === key
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <TabIcon className="size-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "overview" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <SectionCard title="Personal Information">
+            <Detail icon={User} label="Full Name" value={member.fullName} />
+            <Detail icon={User} label="Gender" value={member.gender ? member.gender.charAt(0) + member.gender.slice(1).toLowerCase() : null} />
+            <Detail icon={Calendar} label="Date of Birth" value={member.dob ? formatDate(member.dob, "dd/MM/yyyy") : null} />
+            <Detail icon={Users} label="Marital Status" value={member.maritalStatus ? member.maritalStatus.charAt(0) + member.maritalStatus.slice(1).toLowerCase() : null} />
+            <Detail icon={Award} label="Blood Group" value={member.bloodGroup} />
+            {member.fatherName && <Detail icon={User} label="Father's Name" value={member.fatherName} />}
+            {member.motherName && <Detail icon={User} label="Mother's Name" value={member.motherName} />}
+          </SectionCard>
+
+          <SectionCard title="Contact Information">
+            <Detail icon={Phone} label="Mobile" value={member.mobile} />
+            {member.whatsappNumber && <Detail icon={Phone} label="WhatsApp" value={member.whatsappNumber} />}
+            {member.email && <Detail icon={Mail} label="Email" value={member.email} />}
+            {member.emergencyContactName && (
+              <div className="pt-2 border-t border-border">
+                <p className="text-xs text-muted-foreground mb-2">Emergency Contact</p>
+                <Detail icon={User} label="Name" value={member.emergencyContactName} />
+                <Detail icon={Phone} label="Mobile" value={member.emergencyContactMobile} />
+                {member.emergencyContactRelationship && <Detail icon={Users} label="Relationship" value={member.emergencyContactRelationship} />}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Membership">
+            <Detail icon={IdCard} label="Member ID" value={member.membershipNumber} />
+            {member.joiningDate && <Detail icon={Calendar} label="Joined" value={formatDate(member.joiningDate, "dd/MM/yyyy")} />}
+            {member.validUntil && <Detail icon={Clock} label="Valid Until" value={formatDate(member.validUntil, "dd/MM/yyyy")} />}
+            <Detail icon={Shield} label="Status" value={member.status} />
+          </SectionCard>
+
+          <SectionCard title="Identity Documents">
+            {member.aadhaarLast4 && <Detail icon={Shield} label="Aadhaar" value={`XXXX-XXXX-${member.aadhaarLast4}`} />}
+            {member.pan && <Detail icon={FileText} label="PAN" value={member.pan} />}
+            {member.voterId && <Detail icon={FileText} label="Voter ID" value={member.voterId} />}
+            {!member.aadhaarLast4 && !member.pan && !member.voterId && (
+              <p className="text-sm text-muted-foreground">No identity documents provided</p>
+            )}
+          </SectionCard>
+
+          {member.educationId && (
+            <SectionCard title="Education & Occupation">
+              <Detail icon={Award} label="Education" value={member.educationId ?? ""} />
+              {member.occupationId && <Detail icon={Award} label="Occupation" value={member.occupationId ?? ""} />}
+              {member.qualificationDetail && <Detail icon={Award} label="Qualification" value={member.qualificationDetail} />}
+            </SectionCard>
+          )}
+
+          <SectionCard title="Additional Information">
+            {member.isDifferentlyAbled && <Badge variant="secondary">Differently Abled</Badge>}
+            {member.isExServiceman && <Badge variant="secondary">Ex-Serviceman</Badge>}
+            {member.isSeniorCitizen && <Badge variant="secondary">Senior Citizen</Badge>}
+            {!member.isDifferentlyAbled && !member.isExServiceman && !member.isSeniorCitizen && (
+              <p className="text-sm text-muted-foreground">None</p>
+            )}
+            {member.skills.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">Skills</p>
+                <div className="flex flex-wrap gap-1">
+                  {member.skills.map((skill) => (
+                    <Badge key={skill} variant="outline">{skill}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
+
+      {activeTab === "address" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <SectionCard title="Current Address">
+            <Detail icon={MapPinned} label="Address" value={member.addressLine} />
+            {member.pincode && <Detail icon={MapPin} label="Pincode" value={member.pincode} />}
+          </SectionCard>
+          <SectionCard title="Permanent Address">
+            {member.sameAsCurrentAddress ? (
+              <p className="text-sm text-muted-foreground">Same as current address</p>
+            ) : (
+              <>
+                <Detail icon={MapPinned} label="Address" value={member.permAddressLine} />
+                {member.permPincode && <Detail icon={MapPin} label="Pincode" value={member.permPincode} />}
+              </>
+            )}
+          </SectionCard>
+        </div>
+      )}
+
+      {activeTab === "documents" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">Documents ({documents.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {documents.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No documents uploaded</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {documents.map((doc: { id: string; type: string; fileName: string; mimeType: string; createdAt: string }) => (
+                  <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                    <FileText className="size-8 text-muted-foreground" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{doc.fileName}</p>
+                      <p className="text-xs text-muted-foreground">{doc.type.replace(/_/g, " ")} · {new Date(doc.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "payments" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">Payment History ({payments.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {payments.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No payments recorded</p>
+            ) : (
+              <div className="space-y-3">
+                {payments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                    <div>
+                      <p className="text-sm font-medium">₹{payment.amount.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">{payment.mode} · {payment.receiptNumber}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(payment.paidAt).toLocaleDateString("en-IN")}
+                      </p>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link to={`/admin/members/${id}/payments/${payment.id}/receipt`}>
+                          <Printer className="size-4" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "referrals" && <ReferralsTab member={member} />}
+
+      {activeTab === "history" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">Status Timeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {statusHistory.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No status changes recorded</p>
+            ) : (
+              <StatusTimeline history={statusHistory} />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <LifecycleActionSheet
+        member={member}
+        action={lifecycleAction}
+        onOpenChange={(open) => !open && setLifecycleAction(null)}
+      />
+      <PromoteToExecutiveSheet member={member} open={promoteOpen} onOpenChange={setPromoteOpen} />
+    </div>
+  );
+}
