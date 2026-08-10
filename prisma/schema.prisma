@@ -23,19 +23,22 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users        User[]
-  settings     OrgSettings?
-  plans        MembershipPlan[]
-  lookups      Lookup[]
-  featureFlags FeatureFlag[]
-  members      Member[]
-  payments     Payment[]
-  auditLogs    AuditLog[]
-  documents    MemberDocument[]
-  events       Event[]
-  notices      Notice[]
+  users                User[]
+  settings             OrgSettings?
+  plans                MembershipPlan[]
+  lookups              Lookup[]
+  featureFlags         FeatureFlag[]
+  members              Member[]
+  payments             Payment[]
+  auditLogs            AuditLog[]
+  documents            MemberDocument[]
+  events               Event[]
+  notices              Notice[]
   referralPointsLedger ReferralPointsLedger[]
   referralRewards      ReferralReward[]
+  eventRewardRules     EventRewardRule[]
+  referralPointRules   ReferralPointRule[]
+  withdrawalRequests   WithdrawalRequest[]
 
   @@map("organizations")
 }
@@ -72,14 +75,48 @@ model OrgSettings {
   // pattern as lastMembershipSeq/lastReceiptSeq.
   lastRegistrationSeq      Int    @default(0)
 
-  // Referral program config — see ReferralsService. Rank is computed from
-  // Member.referralPointsBalance against these thresholds at read time, never
-  // stored, so editing a threshold retroactively re-ranks everyone.
-  referralProgramEnabled    Boolean @default(false)
-  pointsPerApprovedReferral Int     @default(10)
-  referralSilverMinPoints   Int     @default(0)
-  referralGoldMinPoints     Int     @default(500)
-  referralPlatinumMinPoints Int     @default(2000)
+  // Referral program config — see ReferralsService. VolunteerBatch is computed
+  // from Member.referralPointsBalance against these thresholds at read time,
+  // never stored, so editing a threshold retroactively re-batches everyone.
+  // Unrelated to MembershipPlan.tier — this is a points-earned badge, not the
+  // plan a member paid for.
+  referralProgramEnabled          Boolean @default(false)
+  // Fallback points for an approved referral when ReferralPointRule has no
+  // matching cell (either party's plan has no tier, or the cell is unset).
+  pointsPerApprovedReferral       Int     @default(10)
+  volunteerBatchSilverMinPoints   Int     @default(0)
+  volunteerBatchGoldMinPoints     Int     @default(500)
+  volunteerBatchPlatinumMinPoints Int     @default(2000)
+
+  // Lifetime cap on REFERRAL_APPROVED points a single referrer can earn —
+  // null = uncapped.
+  referralPointsCapPerMember        Int?
+  // If true, a referrer whose own MembershipPlan is inactive earns no
+  // referral points for new approvals, even if their membership is ACTIVE.
+  referralRequireActiveReferrerPlan Boolean @default(true)
+
+  // Points-to-money conversion ratio, e.g. 100 points = ₹10.
+  pointsToMoneyRatioPoints Int     @default(100)
+  pointsToMoneyRatioAmount Decimal @default(10) @db.Decimal(10, 2)
+
+  // Full Name + Mobile are always required (existing unconditional Member
+  // fields). These three gate whether the given piece must ALSO be present
+  // for KycService.isKycComplete to pass. Aadhaar/bank-or-UPI default true
+  // (spec's stated mandatory items); PAN defaults false ("other
+  // admin-configurable requirement", not mandatory by default).
+  kycRequireAadhaar   Boolean @default(true)
+  kycRequirePan       Boolean @default(false)
+  kycRequireBankOrUpi Boolean @default(true)
+
+  // Withdrawal guardrails — see WithdrawalsService.
+  withdrawalMinAmount     Decimal              @default(100) @db.Decimal(10, 2)
+  // Null = no maximum.
+  withdrawalMaxAmount     Decimal?             @db.Decimal(10, 2)
+  // Minimum days since a member's last non-REJECTED withdrawal request
+  // before they may submit a new one. Null = no limit.
+  withdrawalFrequencyDays Int?
+  withdrawalChargeType    WithdrawalChargeType @default(NONE)
+  withdrawalChargeValue   Decimal              @default(0) @db.Decimal(10, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -101,18 +138,21 @@ model User {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
-  createdMembers    Member[]         @relation("MemberCreatedBy")
-  approvedMembers   Member[]         @relation("MemberApprovedBy")
-  statusHistories   StatusHistory[]
-  receivedPayments  Payment[]        @relation("PaymentReceivedBy")
-  auditLogs         AuditLog[]
-  uploadedDocuments MemberDocument[] @relation("DocumentUploadedBy")
-  createdEvents     Event[]          @relation("EventCreatedBy")
-  createdNotices    Notice[]         @relation("NoticeCreatedBy")
-  fulfilledReferralRewards ReferralReward[]       @relation("RewardFulfilledBy")
-  referralLedgerAdjustments ReferralPointsLedger[] @relation("ReferralLedgerCreatedBy")
-  promotedFromMember       Member?                @relation("MemberPromotedToUser")
-  reviewedEventRegistrations EventRegistration[]   @relation("EventRegistrationReviewedBy")
+  createdMembers             Member[]               @relation("MemberCreatedBy")
+  approvedMembers            Member[]               @relation("MemberApprovedBy")
+  statusHistories            StatusHistory[]
+  receivedPayments           Payment[]              @relation("PaymentReceivedBy")
+  auditLogs                  AuditLog[]
+  uploadedDocuments          MemberDocument[]       @relation("DocumentUploadedBy")
+  createdEvents              Event[]                @relation("EventCreatedBy")
+  createdNotices             Notice[]               @relation("NoticeCreatedBy")
+  fulfilledReferralRewards   ReferralReward[]       @relation("RewardFulfilledBy")
+  referralLedgerAdjustments  ReferralPointsLedger[] @relation("ReferralLedgerCreatedBy")
+  promotedFromMember         Member?                @relation("MemberPromotedToUser")
+  reviewedEventRegistrations EventRegistration[]    @relation("EventRegistrationReviewedBy")
+  kycReviewedMembers         Member[]               @relation("MemberKycReviewedBy")
+  reviewedWithdrawalRequests WithdrawalRequest[]    @relation("WithdrawalReviewedBy")
+  paidWithdrawalRequests     WithdrawalRequest[]    @relation("WithdrawalPaidBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -125,12 +165,24 @@ enum PlanValidityType {
   LIFETIME
 }
 
+enum PlanTier {
+  SILVER
+  GOLD
+  PLATINUM
+}
+
 model MembershipPlan {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
   name           String
+  // Fixed 3-value tier used to key EventRewardRule / ReferralPointRule lookups.
+  // Nullable so a custom/non-tiered plan can exist without participating in
+  // tier-based reward rules — falls back to the event's base pointsReward /
+  // OrgSettings.pointsPerApprovedReferral. Decoupled from `name` so display
+  // names stay free-text while multiple plans could share a tier.
+  tier           PlanTier?
   fee            Decimal          @db.Decimal(10, 2)
   validityType   PlanValidityType
   validityMonths Int?
@@ -143,7 +195,6 @@ model MembershipPlan {
 
   @@map("membership_plans")
 }
-
 
 enum LookupCategory {
   OCCUPATION
@@ -271,8 +322,8 @@ model Member {
   registrationMode      RegistrationMode?    @default(ONLINE)
   // Device-captured moment of registration — distinct from createdAt (server
   // receipt time), relevant for offline-first field capture.
-  registeredAt           DateTime?
-  identityEntryMethod    IdentityEntryMethod?
+  registeredAt          DateTime?
+  identityEntryMethod   IdentityEntryMethod?
 
   fullName      String
   title         String?
@@ -369,19 +420,55 @@ model Member {
   // Referral-program login (self-service member portal). Null until the
   // member self-registers or sets a password; staff-created members have no
   // login unless they later go through the same flow.
-  passwordHash String?
+  passwordHash          String?
   // Assigned once the member becomes eligible to refer others (ACTIVE) — see
   // ReferralsService.awardPointsForApproval. Short, unique, shareable code
   // used in referral links (?ref=<code>), distinct from membershipNumber.
-  referralCode String? @unique
+  referralCode          String? @unique
   // Cached counter kept in sync with ReferralPointsLedger inside the same
   // $transaction that inserts a ledger row — same pattern as
   // OrgSettings.lastMembershipSeq.
-  referralPointsBalance Int @default(0)
+  referralPointsBalance Int     @default(0)
 
-  referralLedgerEntries ReferralPointsLedger[] @relation("ReferralLedgerMember")
+  referralLedgerEntries   ReferralPointsLedger[] @relation("ReferralLedgerMember")
   referredInLedgerEntries ReferralPointsLedger[] @relation("ReferralLedgerRelatedMember")
-  referralRewards       ReferralReward[]
+  referralRewards         ReferralReward[]
+
+  // --- KYC / Payout — Phase 2 ---------------------------------------------
+  // Completeness (fullName + mobile always required, Aadhaar/PAN/bank-or-UPI
+  // gated by OrgSettings.kycRequire*) is a separate, weaker check than this
+  // status — VERIFIED requires explicit admin sign-off (see
+  // KycService.isKycComplete vs WithdrawalsService's withdrawal gate).
+  kycStatus       KycStatus @default(NOT_SUBMITTED)
+  kycReviewedById String?
+  kycReviewedBy   User?     @relation("MemberKycReviewedBy", fields: [kycReviewedById], references: [id])
+  kycReviewedAt   DateTime?
+  kycReviewNote   String?
+
+  payoutMethod               PayoutMethod?
+  bankAccountName            String?
+  // AES-256-GCM ciphertext via CryptoService — same pattern as
+  // FeatureFlag.configEncrypted. Never returned in plaintext by general
+  // responses; only bankAccountNumberLast4 is exposed there. The full number
+  // is available solely via the reveal-bank-account admin action. Editing
+  // this after kycStatus = VERIFIED reverts status to PENDING.
+  bankAccountNumberEncrypted String?
+  bankAccountNumberLast4     String?
+  bankIfscCode               String?
+  bankName                   String?
+  upiId                      String?
+
+  // Lifetime points debited via completed (PAID) withdrawal requests —
+  // cached, incremented transactionally alongside the PAID transition, same
+  // pattern as referralPointsBalance itself. referralPointsBalance stays a
+  // lifetime EARNED total (never decremented); available balance is computed
+  // at read time as referralPointsBalance - pointsConverted - (live sum of
+  // PENDING/APPROVED WithdrawalRequest.pointsRequested).
+  pointsConverted      Int     @default(0)
+  // Lifetime ₹ actually paid out (net of charges) — cached the same way.
+  totalWithdrawnAmount Decimal @default(0) @db.Decimal(10, 2)
+
+  withdrawalRequests WithdrawalRequest[]
 
   socialMediaLinks String?
 
@@ -598,12 +685,34 @@ model Event {
   createdBy   User   @relation("EventCreatedBy", fields: [createdById], references: [id])
 
   registrations EventRegistration[]
+  pointRules    EventRewardRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId, startAt])
   @@map("events")
+}
+
+// Optional per-plan-tier override of Event.pointsReward — e.g. the same event
+// pays Silver=1pt, Gold=2pt, Platinum=3pt. A tier with no row here falls back
+// to Event.pointsReward — see PlanRewardsService.computeEventPoints.
+model EventRewardRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  eventId String
+  event   Event    @relation(fields: [eventId], references: [id])
+  tier    PlanTier
+  points  Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, tier])
+  @@index([organizationId])
+  @@map("event_reward_rules")
 }
 
 enum EventCompletionStatus {
@@ -652,16 +761,16 @@ model Notice {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
-  title   String
-  body    String
+  title        String
+  body         String
   audienceRole String?
 
   createdById String
   createdBy   User   @relation("NoticeCreatedBy", fields: [createdById], references: [id])
 
   publishedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([organizationId, publishedAt])
   @@map("notices")
@@ -671,6 +780,9 @@ enum ReferralLedgerReason {
   REFERRAL_APPROVED
   EVENT_TARGET_COMPLETED
   MANUAL_ADJUSTMENT
+  // Inserted only when a WithdrawalRequest transitions to PAID; points is
+  // negative — see WithdrawalsService.markPaid.
+  WITHDRAWAL_CONVERTED
 }
 
 // Append-only points history. Member.referralPointsBalance is a cached sum
@@ -686,6 +798,10 @@ model ReferralPointsLedger {
 
   points Int
   reason ReferralLedgerReason
+  // Phase 1 always inserts APPROVED (both earning paths only credit after the
+  // underlying action is already approved). PENDING/CONVERTED are reserved
+  // for a future points-to-money conversion/withdrawal lifecycle.
+  status PointsLedgerStatus   @default(APPROVED)
 
   // The referred member whose approval triggered this entry — null for
   // MANUAL_ADJUSTMENT and EVENT_TARGET_COMPLETED entries.
@@ -696,6 +812,15 @@ model ReferralPointsLedger {
   // for EVENT_TARGET_COMPLETED entries.
   relatedEventRegistrationId String?
   relatedEventRegistration   EventRegistration? @relation(fields: [relatedEventRegistrationId], references: [id])
+
+  // Set only for WITHDRAWAL_CONVERTED entries — the WithdrawalRequest whose
+  // PAID transition produced this row. @unique enforces "exactly one ledger
+  // row per paid withdrawal, existing rows never mutated/split": completion
+  // of a withdrawal is always recorded as one new debit row, never by
+  // rewriting history (a deliberate simplification of the PENDING/CONVERTED
+  // comment on `status` above).
+  relatedWithdrawalRequestId String?            @unique
+  relatedWithdrawalRequest   WithdrawalRequest? @relation(fields: [relatedWithdrawalRequestId], references: [id])
 
   note String?
 
@@ -709,7 +834,18 @@ model ReferralPointsLedger {
   @@map("referral_points_ledger")
 }
 
-enum ReferralRank {
+enum PointsLedgerStatus {
+  PENDING
+  APPROVED
+  CONVERTED
+}
+
+// Points-threshold badge tier, computed at read time from
+// Member.referralPointsBalance against OrgSettings.volunteerBatch*MinPoints —
+// never stored, never plan-based. Unrelated to MembershipPlan.tier (the
+// actual paid plan a member chose), despite sharing the same three names —
+// see VolunteerBatchBadge / computeVolunteerBatch on the frontend.
+enum VolunteerBatch {
   SILVER
   GOLD
   PLATINUM
@@ -720,8 +856,28 @@ enum RewardStatus {
   FULFILLED
 }
 
-// One row per member per rank ever reached, guarded by the unique constraint
-// so crossing a threshold twice never duplicates. Created by
+// Referrer-tier x referred-tier referral point matrix (up to 9 rows). A
+// missing cell (or either side's plan tier being null) falls back to
+// OrgSettings.pointsPerApprovedReferral — see
+// PlanRewardsService.computeReferralPoints.
+model ReferralPointRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  referrerTier PlanTier
+  referredTier PlanTier
+  points       Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, referrerTier, referredTier])
+  @@map("referral_point_rules")
+}
+
+// One row per member per volunteer batch ever reached, guarded by the unique
+// constraint so crossing a threshold twice never duplicates. Created by
 // ReferralsService.awardPointsForApproval when a new threshold is crossed;
 // staff mark it FULFILLED once the bonus/gift is actually handed over.
 model ReferralReward {
@@ -732,9 +888,9 @@ model ReferralReward {
   memberId String
   member   Member @relation(fields: [memberId], references: [id])
 
-  rank         ReferralRank
+  batch        VolunteerBatch
   pointsAtEarn Int
-  status       RewardStatus @default(PENDING)
+  status       RewardStatus   @default(PENDING)
 
   fulfilledById String?
   fulfilledBy   User?     @relation("RewardFulfilledBy", fields: [fulfilledById], references: [id])
@@ -743,7 +899,84 @@ model ReferralReward {
 
   createdAt DateTime @default(now())
 
-  @@unique([memberId, rank])
+  @@unique([memberId, batch])
   @@index([organizationId, status])
   @@map("referral_rewards")
+}
+
+enum KycStatus {
+  NOT_SUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PayoutMethod {
+  BANK
+  UPI
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum WithdrawalChargeType {
+  NONE
+  FLAT
+  PERCENTAGE
+}
+
+// Member-initiated cash-out of earned points. Every request passes
+// PENDING -> (APPROVED|REJECTED) -> PAID; there is no approval-bypass.
+// gross/charge/net and the payout destination are snapshotted at creation
+// time so later OrgSettings/profile edits never retroactively alter an
+// in-flight request's terms.
+model WithdrawalRequest {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id])
+
+  pointsRequested Int
+  grossAmount     Decimal              @db.Decimal(10, 2)
+  chargeType      WithdrawalChargeType @default(NONE)
+  chargeAmount    Decimal              @default(0) @db.Decimal(10, 2)
+  netAmount       Decimal              @db.Decimal(10, 2)
+
+  // Masked snapshot of the payout destination at request time — the full
+  // bank account number is never duplicated here; staff use
+  // KycService.revealBankAccountNumber against the member's *current* KYC
+  // record to get the number needed to execute the transfer.
+  payoutMethod                 PayoutMethod
+  payoutBankAccountName        String?
+  payoutBankAccountNumberLast4 String?
+  payoutBankIfscCode           String?
+  payoutBankName               String?
+  payoutUpiId                  String?
+
+  status WithdrawalStatus @default(PENDING)
+
+  reviewedById String?
+  reviewedBy   User?     @relation("WithdrawalReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  paidById         String?
+  paidBy           User?     @relation("WithdrawalPaidBy", fields: [paidById], references: [id])
+  paidAt           DateTime?
+  paymentReference String?
+
+  ledgerEntry ReferralPointsLedger?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([memberId, status])
+  @@map("withdrawal_requests")
 }

@@ -7,6 +7,7 @@ import type {
   EventRegistrationResponse,
   EventResponse,
   MyEventSummary,
+  PlanTier,
   SubmitEventEvidenceInput,
   UpdateEventInput,
 } from "@nmms/shared";
@@ -14,6 +15,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { MembersService } from "../members/members.service";
 import { DocumentStorageService } from "../common/document-storage.service";
 import { ReferralsService } from "../referrals/referrals.service";
+import { PlanRewardsService } from "../plans/plan-rewards.service";
 
 type EventWithCounts = {
   id: string;
@@ -30,6 +32,12 @@ type EventWithCounts = {
   createdById: string;
   createdAt: Date;
   registrations: { attended: boolean }[];
+  pointRules: { tier: string; points: number }[];
+};
+
+const EVENT_INCLUDE = {
+  registrations: { select: { attended: true as const } },
+  pointRules: { select: { tier: true as const, points: true as const } },
 };
 
 type RegistrationWithMember = {
@@ -55,12 +63,13 @@ export class EventsService {
     private readonly membersService: MembersService,
     private readonly documentStorage: DocumentStorageService,
     private readonly referrals: ReferralsService,
+    private readonly planRewards: PlanRewardsService,
   ) {}
 
   async findAll(user: AuthUser): Promise<EventResponse[]> {
     const events = await this.prisma.event.findMany({
       where: { organizationId: user.organizationId },
-      include: { registrations: { select: { attended: true } } },
+      include: EVENT_INCLUDE,
       orderBy: { startAt: "desc" },
     });
     return events.map((e) => this.toResponse(e));
@@ -86,19 +95,42 @@ export class EventsService {
         pointsReward: dto.pointsReward ?? 0,
         createdById: user.id,
       },
-      include: { registrations: { select: { attended: true } } },
+      include: EVENT_INCLUDE,
     });
+    if (dto.tierRewardOverrides) {
+      await this.syncTierRewardOverrides(user.organizationId, event.id, dto.tierRewardOverrides);
+      return this.toResponse(await this.findScoped(event.id, user.organizationId));
+    }
     return this.toResponse(event);
   }
 
   async update(id: string, dto: UpdateEventInput, user: AuthUser): Promise<EventResponse> {
     await this.findScoped(id, user.organizationId);
+    const { tierRewardOverrides, ...rest } = dto;
     const event = await this.prisma.event.update({
       where: { id },
-      data: dto,
-      include: { registrations: { select: { attended: true } } },
+      data: rest,
+      include: EVENT_INCLUDE,
     });
+    if (tierRewardOverrides) {
+      await this.syncTierRewardOverrides(user.organizationId, id, tierRewardOverrides);
+      return this.toResponse(await this.findScoped(id, user.organizationId));
+    }
     return this.toResponse(event);
+  }
+
+  // Upserts the tiers present in `overrides`; a tier omitted from the record
+  // (e.g. cleared in the edit form) deletes its existing rule row so the
+  // event falls back to its base pointsReward for that tier.
+  private async syncTierRewardOverrides(
+    organizationId: string,
+    eventId: string,
+    overrides: Partial<Record<PlanTier, number>>,
+  ): Promise<void> {
+    const rules = (Object.entries(overrides) as [PlanTier, number | undefined][])
+      .filter((entry): entry is [PlanTier, number] => entry[1] !== undefined)
+      .map(([tier, points]) => ({ tier, points }));
+    await this.planRewards.upsertEventRewardRules(organizationId, eventId, rules);
   }
 
   async listRegistrations(eventId: string, user: AuthUser): Promise<EventRegistrationResponse[]> {
@@ -256,11 +288,13 @@ export class EventsService {
     });
 
     if (approved) {
+      const tier = await this.planRewards.getMemberTier(registration.memberId);
+      const points = await this.planRewards.computeEventPoints(user.organizationId, event.id, tier);
       await this.referrals.awardPointsForEventCompletion(
         user.organizationId,
         registration.memberId,
         registration.id,
-        event.pointsReward,
+        points,
       );
     }
 
@@ -339,7 +373,7 @@ export class EventsService {
   private async findScoped(id: string, organizationId: string) {
     const event = await this.prisma.event.findFirst({
       where: { id, organizationId },
-      include: { registrations: { select: { attended: true } } },
+      include: EVENT_INCLUDE,
     });
     if (!event) {
       throw new NotFoundException("Event not found");
@@ -348,6 +382,9 @@ export class EventsService {
   }
 
   private toResponse(event: EventWithCounts): EventResponse {
+    const tierRewardOverrides = Object.fromEntries(
+      event.pointRules.map((rule) => [rule.tier, rule.points]),
+    ) as EventResponse["tierRewardOverrides"];
     return {
       id: event.id,
       title: event.title,
@@ -360,6 +397,7 @@ export class EventsService {
       targetDescription: event.targetDescription,
       targetQuantity: event.targetQuantity,
       pointsReward: event.pointsReward,
+      tierRewardOverrides,
       createdById: event.createdById,
       registrationCount: event.registrations.length,
       attendedCount: event.registrations.filter((r) => r.attended).length,

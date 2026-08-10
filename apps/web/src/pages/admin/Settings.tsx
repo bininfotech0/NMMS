@@ -10,10 +10,13 @@ import { ApiError } from "@/lib/api-client";
 import { useOrgProfile, useUpdateOrg } from "@/hooks/useOrg";
 import { useIntegrations, useUpdateIntegration } from "@/hooks/useIntegrations";
 import { useCreateLookup, useLookups, useUpdateLookup } from "@/hooks/useLookups";
+import { useReferralPointRules, useUpsertReferralPointRuleMatrix } from "@/hooks/useReferrals";
 import { useAuthStore } from "@/stores/auth";
-import type { FeatureFlagKey, LookupCategory } from "@nmms/shared";
+import type { FeatureFlagKey, LookupCategory, PlanTier, WithdrawalChargeType } from "@nmms/shared";
 
-const TABS = ["Organization", "Referral Program", "Integrations", "Lookups"] as const;
+const PLAN_TIERS: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
+
+const TABS = ["Organization", "Referral Program", "Withdrawals & KYC", "Integrations", "Lookups"] as const;
 
 const LOOKUP_CATEGORIES: LookupCategory[] = [
   "RELIGION",
@@ -89,6 +92,7 @@ export function Settings() {
 
       {tab === "Organization" && <OrganizationSettings />}
       {tab === "Referral Program" && <ReferralProgramSettings />}
+      {tab === "Withdrawals & KYC" && <WithdrawalKycSettings />}
       {tab === "Integrations" && <IntegrationsSettings />}
       {tab === "Lookups" && <LookupsSettings />}
     </div>
@@ -259,9 +263,13 @@ function ReferralProgramSettings() {
   const [form, setForm] = useState({
     referralProgramEnabled: false,
     pointsPerApprovedReferral: "10",
-    referralSilverMinPoints: "0",
-    referralGoldMinPoints: "500",
-    referralPlatinumMinPoints: "2000",
+    volunteerBatchSilverMinPoints: "0",
+    volunteerBatchGoldMinPoints: "500",
+    volunteerBatchPlatinumMinPoints: "2000",
+    referralPointsCapPerMember: "",
+    referralRequireActiveReferrerPlan: true,
+    pointsToMoneyRatioPoints: "100",
+    pointsToMoneyRatioAmount: "10",
   });
   const [saved, setSaved] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -271,9 +279,14 @@ function ReferralProgramSettings() {
     setForm({
       referralProgramEnabled: org.referralProgramEnabled,
       pointsPerApprovedReferral: String(org.pointsPerApprovedReferral),
-      referralSilverMinPoints: String(org.referralSilverMinPoints),
-      referralGoldMinPoints: String(org.referralGoldMinPoints),
-      referralPlatinumMinPoints: String(org.referralPlatinumMinPoints),
+      volunteerBatchSilverMinPoints: String(org.volunteerBatchSilverMinPoints),
+      volunteerBatchGoldMinPoints: String(org.volunteerBatchGoldMinPoints),
+      volunteerBatchPlatinumMinPoints: String(org.volunteerBatchPlatinumMinPoints),
+      referralPointsCapPerMember:
+        org.referralPointsCapPerMember != null ? String(org.referralPointsCapPerMember) : "",
+      referralRequireActiveReferrerPlan: org.referralRequireActiveReferrerPlan,
+      pointsToMoneyRatioPoints: String(org.pointsToMoneyRatioPoints),
+      pointsToMoneyRatioAmount: String(org.pointsToMoneyRatioAmount),
     });
   }, [org]);
 
@@ -285,9 +298,14 @@ function ReferralProgramSettings() {
       await updateOrg.mutateAsync({
         referralProgramEnabled: form.referralProgramEnabled,
         pointsPerApprovedReferral: Number(form.pointsPerApprovedReferral),
-        referralSilverMinPoints: Number(form.referralSilverMinPoints),
-        referralGoldMinPoints: Number(form.referralGoldMinPoints),
-        referralPlatinumMinPoints: Number(form.referralPlatinumMinPoints),
+        volunteerBatchSilverMinPoints: Number(form.volunteerBatchSilverMinPoints),
+        volunteerBatchGoldMinPoints: Number(form.volunteerBatchGoldMinPoints),
+        volunteerBatchPlatinumMinPoints: Number(form.volunteerBatchPlatinumMinPoints),
+        referralPointsCapPerMember:
+          form.referralPointsCapPerMember === "" ? null : Number(form.referralPointsCapPerMember),
+        referralRequireActiveReferrerPlan: form.referralRequireActiveReferrerPlan,
+        pointsToMoneyRatioPoints: Number(form.pointsToMoneyRatioPoints),
+        pointsToMoneyRatioAmount: Number(form.pointsToMoneyRatioAmount),
       });
       setSaved(true);
     } catch (err) {
@@ -311,84 +329,454 @@ function ReferralProgramSettings() {
     );
   }
 
+  const conversionPreview = (() => {
+    const points = Number(form.pointsToMoneyRatioPoints);
+    const amount = Number(form.pointsToMoneyRatioAmount);
+    if (!points || !Number.isFinite(amount)) return null;
+    return `${points} points = ₹${amount.toFixed(2)} → 1 point = ₹${(amount / points).toFixed(4)}`;
+  })();
+
+  return (
+    <div className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <section className="rounded-xl border border-border bg-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-heading text-base font-semibold">Membership Referral Program</h2>
+              <p className="text-sm text-muted-foreground">
+                Let approved members refer others via a personal link and earn points.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(form.referralProgramEnabled && "border-brand-green text-brand-green")}
+              onClick={() => setForm((f) => ({ ...f, referralProgramEnabled: !f.referralProgramEnabled }))}
+            >
+              {form.referralProgramEnabled ? "Enabled" : "Disabled"}
+            </Button>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-6">
+          <h2 className="mb-4 font-heading text-base font-semibold">Points & Volunteer Batches</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="pointsPerApprovedReferral">Fallback points per approved referral</Label>
+              <Input
+                id="pointsPerApprovedReferral"
+                type="number"
+                min="0"
+                value={form.pointsPerApprovedReferral}
+                onChange={(e) => setForm((f) => ({ ...f, pointsPerApprovedReferral: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Used when the referral point matrix below has no cell for the two members' plan tiers.
+              </p>
+            </div>
+            <div />
+            <div className="space-y-1.5">
+              <Label htmlFor="volunteerBatchSilverMinPoints">Silver batch — minimum points</Label>
+              <Input
+                id="volunteerBatchSilverMinPoints"
+                type="number"
+                min="0"
+                value={form.volunteerBatchSilverMinPoints}
+                onChange={(e) => setForm((f) => ({ ...f, volunteerBatchSilverMinPoints: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="volunteerBatchGoldMinPoints">Gold batch — minimum points</Label>
+              <Input
+                id="volunteerBatchGoldMinPoints"
+                type="number"
+                min="0"
+                value={form.volunteerBatchGoldMinPoints}
+                onChange={(e) => setForm((f) => ({ ...f, volunteerBatchGoldMinPoints: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="volunteerBatchPlatinumMinPoints">Platinum batch — minimum points</Label>
+              <Input
+                id="volunteerBatchPlatinumMinPoints"
+                type="number"
+                min="0"
+                value={form.volunteerBatchPlatinumMinPoints}
+                onChange={(e) => setForm((f) => ({ ...f, volunteerBatchPlatinumMinPoints: e.target.value }))}
+              />
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            A member's volunteer batch is recalculated from these thresholds every time they're viewed —
+            changing a threshold re-batches everyone immediately. This is separate from a member's paid
+            Membership Plan tier.
+          </p>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-6">
+          <h2 className="mb-1 font-heading text-base font-semibold">Referral Eligibility & Cap</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Optional guardrails on who can earn referral points and how much.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="referralPointsCapPerMember">Lifetime cap per referrer (points)</Label>
+              <Input
+                id="referralPointsCapPerMember"
+                type="number"
+                min="0"
+                placeholder="No limit"
+                value={form.referralPointsCapPerMember}
+                onChange={(e) => setForm((f) => ({ ...f, referralPointsCapPerMember: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Leave blank for no cap.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Referrer must have an active plan</Label>
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn(form.referralRequireActiveReferrerPlan && "border-brand-green text-brand-green")}
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      referralRequireActiveReferrerPlan: !f.referralRequireActiveReferrerPlan,
+                    }))
+                  }
+                >
+                  {form.referralRequireActiveReferrerPlan ? "Required" : "Not required"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When required, a referrer whose membership plan is deactivated earns no further referral points.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-6">
+          <h2 className="mb-1 font-heading text-base font-semibold">Points → Money Conversion</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            The ratio used to convert earned points into rupees (used by wallet/withdrawal features).
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="pointsToMoneyRatioPoints">Points</Label>
+              <Input
+                id="pointsToMoneyRatioPoints"
+                type="number"
+                min="1"
+                value={form.pointsToMoneyRatioPoints}
+                onChange={(e) => setForm((f) => ({ ...f, pointsToMoneyRatioPoints: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pointsToMoneyRatioAmount">= ₹ Amount</Label>
+              <Input
+                id="pointsToMoneyRatioAmount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.pointsToMoneyRatioAmount}
+                onChange={(e) => setForm((f) => ({ ...f, pointsToMoneyRatioAmount: e.target.value }))}
+              />
+            </div>
+          </div>
+          {conversionPreview && <p className="mt-3 text-xs text-muted-foreground">{conversionPreview}</p>}
+        </section>
+
+        <div className="flex items-center gap-3">
+          <Button
+            type="submit"
+            disabled={updateOrg.isPending}
+            className="bg-brand-green hover:bg-brand-green/90"
+          >
+            {updateOrg.isPending ? "Saving…" : "Save Changes"}
+          </Button>
+          {saved && <span className="text-sm text-brand-green">Saved.</span>}
+          {formError && <span className="text-sm text-destructive">{formError}</span>}
+        </div>
+      </form>
+
+      <ReferralPointMatrixSection />
+    </div>
+  );
+}
+
+function ReferralPointMatrixSection() {
+  const { data: rules = [], isLoading } = useReferralPointRules();
+  const upsertMatrix = useUpsertReferralPointRuleMatrix();
+
+  const [grid, setGrid] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const referrerTier of PLAN_TIERS) {
+      for (const referredTier of PLAN_TIERS) {
+        const rule = rules.find((r) => r.referrerTier === referrerTier && r.referredTier === referredTier);
+        next[`${referrerTier}-${referredTier}`] = rule ? String(rule.points) : "";
+      }
+    }
+    setGrid(next);
+  }, [rules]);
+
+  async function handleSave() {
+    const payload = PLAN_TIERS.flatMap((referrerTier) =>
+      PLAN_TIERS.filter((referredTier) => grid[`${referrerTier}-${referredTier}`] !== "").map(
+        (referredTier) => ({
+          referrerTier,
+          referredTier,
+          points: Number(grid[`${referrerTier}-${referredTier}`]),
+        }),
+      ),
+    );
+    await upsertMatrix.mutateAsync(payload);
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6">
+      <h2 className="mb-1 font-heading text-base font-semibold">Referral Points Matrix</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Points a referrer earns based on their own plan tier (rows) and the referred member's plan tier
+        (columns). Blank cells fall back to the flat rate above.
+      </p>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading matrix...</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className="p-2 text-left text-xs font-medium text-muted-foreground">
+                  Referrer \ Referred
+                </th>
+                {PLAN_TIERS.map((tier) => (
+                  <th key={tier} className="p-2 text-left text-xs font-medium text-muted-foreground">
+                    {tier.charAt(0) + tier.slice(1).toLowerCase()}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PLAN_TIERS.map((referrerTier) => (
+                <tr key={referrerTier}>
+                  <td className="p-2 text-xs font-medium text-muted-foreground">
+                    {referrerTier.charAt(0) + referrerTier.slice(1).toLowerCase()}
+                  </td>
+                  {PLAN_TIERS.map((referredTier) => {
+                    const key = `${referrerTier}-${referredTier}`;
+                    return (
+                      <td key={key} className="p-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          className="w-24"
+                          value={grid[key] ?? ""}
+                          onChange={(e) => setGrid((g) => ({ ...g, [key]: e.target.value }))}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-4">
+        <Button
+          type="button"
+          disabled={upsertMatrix.isPending || isLoading}
+          onClick={handleSave}
+          className="bg-brand-green hover:bg-brand-green/90"
+        >
+          {upsertMatrix.isPending ? "Saving…" : "Save Matrix"}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function WithdrawalKycSettings() {
+  const { data: org, isLoading, isError, error } = useOrgProfile();
+  const updateOrg = useUpdateOrg();
+
+  const [form, setForm] = useState({
+    kycRequireAadhaar: true,
+    kycRequirePan: false,
+    kycRequireBankOrUpi: true,
+    withdrawalMinAmount: "100",
+    withdrawalMaxAmount: "",
+    withdrawalFrequencyDays: "",
+    withdrawalChargeType: "NONE" as WithdrawalChargeType,
+    withdrawalChargeValue: "0",
+  });
+  const [saved, setSaved] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!org) return;
+    setForm({
+      kycRequireAadhaar: org.kycRequireAadhaar,
+      kycRequirePan: org.kycRequirePan,
+      kycRequireBankOrUpi: org.kycRequireBankOrUpi,
+      withdrawalMinAmount: String(org.withdrawalMinAmount),
+      withdrawalMaxAmount: org.withdrawalMaxAmount != null ? String(org.withdrawalMaxAmount) : "",
+      withdrawalFrequencyDays: org.withdrawalFrequencyDays != null ? String(org.withdrawalFrequencyDays) : "",
+      withdrawalChargeType: org.withdrawalChargeType,
+      withdrawalChargeValue: String(org.withdrawalChargeValue),
+    });
+  }, [org]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    setSaved(false);
+    try {
+      await updateOrg.mutateAsync({
+        kycRequireAadhaar: form.kycRequireAadhaar,
+        kycRequirePan: form.kycRequirePan,
+        kycRequireBankOrUpi: form.kycRequireBankOrUpi,
+        withdrawalMinAmount: Number(form.withdrawalMinAmount),
+        withdrawalMaxAmount: form.withdrawalMaxAmount === "" ? null : Number(form.withdrawalMaxAmount),
+        withdrawalFrequencyDays: form.withdrawalFrequencyDays === "" ? null : Number(form.withdrawalFrequencyDays),
+        withdrawalChargeType: form.withdrawalChargeType,
+        withdrawalChargeValue: Number(form.withdrawalChargeValue),
+      });
+      setSaved(true);
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+        Loading withdrawal & KYC settings...
+      </div>
+    );
+  }
+  if (isError) {
+    const forbidden = error instanceof ApiError && error.status === 403;
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-sm text-destructive">
+        {forbidden ? "You don't have permission to view these settings." : "Failed to load settings."}
+      </div>
+    );
+  }
+
+  const chargePreview = (() => {
+    const value = Number(form.withdrawalChargeValue);
+    if (form.withdrawalChargeType === "NONE") return "No charge on withdrawals.";
+    if (form.withdrawalChargeType === "FLAT") return `Flat ₹${value} deducted from every withdrawal.`;
+    return `${value}% deducted from every withdrawal.`;
+  })();
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <section className="rounded-xl border border-border bg-card p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-heading text-base font-semibold">Membership Referral Program</h2>
-            <p className="text-sm text-muted-foreground">
-              Let approved members refer others via a personal link and earn points.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className={cn(form.referralProgramEnabled && "border-brand-green text-brand-green")}
-            onClick={() => setForm((f) => ({ ...f, referralProgramEnabled: !f.referralProgramEnabled }))}
-          >
-            {form.referralProgramEnabled ? "Enabled" : "Disabled"}
-          </Button>
+        <h2 className="mb-1 font-heading text-base font-semibold">KYC Requirements</h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Full Name and Mobile are always required. Toggle which additional pieces must be on file before a
+          member's KYC can be verified.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {(
+            [
+              ["kycRequireAadhaar", "Aadhaar"],
+              ["kycRequirePan", "PAN"],
+              ["kycRequireBankOrUpi", "Bank account or UPI"],
+            ] as const
+          ).map(([key, label]) => (
+            <Button
+              key={key}
+              type="button"
+              variant="outline"
+              className={cn(form[key] && "border-brand-green text-brand-green")}
+              onClick={() => setForm((f) => ({ ...f, [key]: !f[key] }))}
+            >
+              {label}: {form[key] ? "Required" : "Optional"}
+            </Button>
+          ))}
         </div>
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="mb-4 font-heading text-base font-semibold">Points & Ranks</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <h2 className="mb-4 font-heading text-base font-semibold">Withdrawal Limits</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
-            <Label htmlFor="pointsPerApprovedReferral">Points per approved referral</Label>
+            <Label htmlFor="withdrawalMinAmount">Minimum amount (₹)</Label>
             <Input
-              id="pointsPerApprovedReferral"
+              id="withdrawalMinAmount"
               type="number"
               min="0"
-              value={form.pointsPerApprovedReferral}
-              onChange={(e) => setForm((f) => ({ ...f, pointsPerApprovedReferral: e.target.value }))}
-            />
-          </div>
-          <div />
-          <div className="space-y-1.5">
-            <Label htmlFor="referralSilverMinPoints">Silver rank — minimum points</Label>
-            <Input
-              id="referralSilverMinPoints"
-              type="number"
-              min="0"
-              value={form.referralSilverMinPoints}
-              onChange={(e) => setForm((f) => ({ ...f, referralSilverMinPoints: e.target.value }))}
+              value={form.withdrawalMinAmount}
+              onChange={(e) => setForm((f) => ({ ...f, withdrawalMinAmount: e.target.value }))}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="referralGoldMinPoints">Gold rank — minimum points</Label>
+            <Label htmlFor="withdrawalMaxAmount">Maximum amount (₹)</Label>
             <Input
-              id="referralGoldMinPoints"
+              id="withdrawalMaxAmount"
               type="number"
               min="0"
-              value={form.referralGoldMinPoints}
-              onChange={(e) => setForm((f) => ({ ...f, referralGoldMinPoints: e.target.value }))}
+              placeholder="No limit"
+              value={form.withdrawalMaxAmount}
+              onChange={(e) => setForm((f) => ({ ...f, withdrawalMaxAmount: e.target.value }))}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="referralPlatinumMinPoints">Platinum rank — minimum points</Label>
+            <Label htmlFor="withdrawalFrequencyDays">Minimum days between requests</Label>
             <Input
-              id="referralPlatinumMinPoints"
+              id="withdrawalFrequencyDays"
               type="number"
               min="0"
-              value={form.referralPlatinumMinPoints}
-              onChange={(e) => setForm((f) => ({ ...f, referralPlatinumMinPoints: e.target.value }))}
+              placeholder="No limit"
+              value={form.withdrawalFrequencyDays}
+              onChange={(e) => setForm((f) => ({ ...f, withdrawalFrequencyDays: e.target.value }))}
             />
           </div>
         </div>
-        <p className="mt-4 text-xs text-muted-foreground">
-          A member's rank is recalculated from these thresholds every time they're viewed — changing a
-          threshold re-ranks everyone immediately.
-        </p>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-6">
+        <h2 className="mb-4 font-heading text-base font-semibold">Withdrawal Charges</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <NativeSelect
+            id="withdrawalChargeType"
+            label="Charge type"
+            value={form.withdrawalChargeType}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, withdrawalChargeType: e.target.value as WithdrawalChargeType }))
+            }
+            options={[
+              { value: "NONE", label: "No charge" },
+              { value: "FLAT", label: "Flat amount (₹)" },
+              { value: "PERCENTAGE", label: "Percentage (%)" },
+            ]}
+          />
+          {form.withdrawalChargeType !== "NONE" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="withdrawalChargeValue">
+                {form.withdrawalChargeType === "FLAT" ? "Charge amount (₹)" : "Charge percentage (%)"}
+              </Label>
+              <Input
+                id="withdrawalChargeValue"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.withdrawalChargeValue}
+                onChange={(e) => setForm((f) => ({ ...f, withdrawalChargeValue: e.target.value }))}
+              />
+            </div>
+          )}
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">{chargePreview}</p>
       </section>
 
       <div className="flex items-center gap-3">
-        <Button
-          type="submit"
-          disabled={updateOrg.isPending}
-          className="bg-brand-green hover:bg-brand-green/90"
-        >
+        <Button type="submit" disabled={updateOrg.isPending} className="bg-brand-green hover:bg-brand-green/90">
           {updateOrg.isPending ? "Saving…" : "Save Changes"}
         </Button>
         {saved && <span className="text-sm text-brand-green">Saved.</span>}

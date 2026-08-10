@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RankBadge } from "@/components/shared/RankBadge";
+import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import {
   Table,
   TableBody,
@@ -56,7 +56,7 @@ export function ReferralRewards() {
           <TableHeader>
             <TableRow>
               <TableHead>Member</TableHead>
-              <TableHead>Rank reached</TableHead>
+              <TableHead>Batch reached</TableHead>
               <TableHead>Points at earn</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Earned</TableHead>
@@ -78,7 +78,7 @@ export function ReferralRewards() {
                 <TableRow key={reward.id}>
                   <TableCell className="font-medium">{reward.memberName}</TableCell>
                   <TableCell>
-                    <RankBadge rank={reward.rank} />
+                    <VolunteerBatchBadge batch={reward.batch} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{reward.pointsAtEarn}</TableCell>
                   <TableCell>

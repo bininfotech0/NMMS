@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
-import type { AuthMember } from "@nmms/shared";
+import type { AuthMember, PlanTier } from "@nmms/shared";
 
 interface MemberAccessTokenPayload {
   sub: string;
@@ -11,6 +11,8 @@ interface MemberAccessTokenPayload {
   organizationId: string;
   status: string;
   referralCode: string | null;
+  planName: string | null;
+  planTier: PlanTier | null;
 }
 
 // Separate passport strategy ("member-jwt") from the staff "jwt" strategy —
@@ -34,6 +36,8 @@ export class MemberJwtStrategy extends PassportStrategy(Strategy, "member-jwt") 
       organizationId: payload.organizationId,
       status: payload.status,
       referralCode: payload.referralCode,
+      planName: payload.planName,
+      planTier: payload.planTier,
     };
   }
 }

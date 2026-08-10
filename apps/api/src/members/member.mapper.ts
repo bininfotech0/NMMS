@@ -1,7 +1,10 @@
-import type { Member, Nominee } from "@prisma/client";
+import type { Member, MembershipPlan, Nominee } from "@prisma/client";
 import type { MemberResponse } from "@nmms/shared";
 
-type MemberWithNominee = Member & { nominee?: Nominee | null };
+type MemberWithNominee = Member & {
+  nominee?: Nominee | null;
+  plan?: Pick<MembershipPlan, "name" | "tier"> | null;
+};
 
 export function toMemberResponse(member: MemberWithNominee): MemberResponse {
   return {
@@ -97,6 +100,11 @@ export function toMemberResponse(member: MemberWithNominee): MemberResponse {
       : null,
 
     planId: member.planId,
+    planName: member.plan?.name ?? null,
+    planTier: (member.plan?.tier as MemberResponse["planTier"]) ?? null,
+    kycStatus: member.kycStatus as MemberResponse["kycStatus"],
+    pointsConverted: member.pointsConverted,
+    totalWithdrawnAmount: member.totalWithdrawnAmount.toNumber(),
     feeOverride: member.feeOverride?.toNumber() ?? null,
     paymentFrequency: member.paymentFrequency as MemberResponse["paymentFrequency"],
     unit: member.unit,

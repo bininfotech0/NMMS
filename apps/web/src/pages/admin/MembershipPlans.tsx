@@ -25,7 +25,7 @@ import { ApiError } from "@/lib/api-client";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { useCreatePlan, usePlans, useUpdatePlan } from "@/hooks/usePlans";
 import { useAuthStore } from "@/stores/auth";
-import { Role, type PlanResponse, type PlanValidityType } from "@nmms/shared";
+import { Role, type PlanResponse, type PlanTier, type PlanValidityType } from "@nmms/shared";
 
 const CAN_MANAGE = [Role.SUPER_ADMIN, Role.ADMIN];
 
@@ -78,6 +78,7 @@ export function MembershipPlans() {
           <TableHeader>
             <TableRow>
               <TableHead>Plan</TableHead>
+              <TableHead>Tier</TableHead>
               <TableHead>Fee</TableHead>
               <TableHead>Validity</TableHead>
               <TableHead>Status</TableHead>
@@ -85,10 +86,10 @@ export function MembershipPlans() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading && <TableSkeleton columns={5} />}
+            {isLoading && <TableSkeleton columns={6} />}
             {isError && (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-destructive">
+                <TableCell colSpan={6} className="py-10 text-center text-destructive">
                   Failed to load plans.
                 </TableCell>
               </TableRow>
@@ -98,6 +99,15 @@ export function MembershipPlans() {
               plans.map((plan) => (
                 <TableRow key={plan.id}>
                   <TableCell className="font-medium">{plan.name}</TableCell>
+                  <TableCell>
+                    {plan.tier ? (
+                      <Badge variant="outline">
+                        {plan.tier.charAt(0) + plan.tier.slice(1).toLowerCase()}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{formatFee(plan.fee)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatValidity(plan)}</TableCell>
                   <TableCell>
@@ -137,7 +147,7 @@ export function MembershipPlans() {
               ))}
             {!isLoading && !isError && plans.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   No membership plans yet.
                 </TableCell>
               </TableRow>
@@ -167,6 +177,7 @@ function PlanSheet({
 }) {
   const isEdit = plan !== null;
   const [name, setName] = useState(plan?.name ?? "");
+  const [tier, setTier] = useState<PlanTier | "">(plan?.tier ?? "");
   const [fee, setFee] = useState(plan ? String(plan.fee) : "");
   const [validityType, setValidityType] = useState<PlanValidityType>(plan?.validityType ?? "MONTHS");
   const [validityMonths, setValidityMonths] = useState(
@@ -180,6 +191,7 @@ function PlanSheet({
 
   function reset() {
     setName("");
+    setTier("");
     setFee("");
     setValidityType("MONTHS");
     setValidityMonths("12");
@@ -195,6 +207,7 @@ function PlanSheet({
           id: plan.id,
           dto: {
             name,
+            tier: tier || null,
             fee: Number(fee),
             validityType,
             validityMonths: validityType === "MONTHS" ? Number(validityMonths) : null,
@@ -203,6 +216,7 @@ function PlanSheet({
       } else {
         await createPlan.mutateAsync({
           name,
+          tier: tier || null,
           fee: Number(fee),
           validityType,
           validityMonths: validityType === "MONTHS" ? Number(validityMonths) : undefined,
@@ -234,6 +248,23 @@ function PlanSheet({
           <div className="space-y-1.5">
             <Label htmlFor="name">Plan name</Label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="tier">Tier</Label>
+            <select
+              id="tier"
+              value={tier}
+              onChange={(e) => setTier(e.target.value as PlanTier | "")}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <option value="">None</option>
+              <option value="SILVER">Silver</option>
+              <option value="GOLD">Gold</option>
+              <option value="PLATINUM">Platinum</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Drives per-tier reward points and referral point rules. Leave as None for a custom plan.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="fee">Fee (₹)</Label>

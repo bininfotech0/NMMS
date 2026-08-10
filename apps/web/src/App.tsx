@@ -23,6 +23,8 @@ import { Settings } from "@/pages/admin/Settings";
 import { Users } from "@/pages/admin/Users";
 import { AuditLogs } from "@/pages/admin/AuditLogs";
 import { ReferralRewards } from "@/pages/admin/ReferralRewards";
+import { WithdrawalRequests } from "@/pages/admin/WithdrawalRequests";
+import { KycReview } from "@/pages/admin/KycReview";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { MemberProtectedRoute } from "@/components/auth/MemberProtectedRoute";
 import { MemberLogin } from "@/pages/member/MemberLogin";
@@ -32,6 +34,7 @@ import { MemberReferrals } from "@/pages/member/MemberReferrals";
 import { MemberWallet } from "@/pages/member/MemberWallet";
 import { MemberRewards } from "@/pages/member/MemberRewards";
 import { MemberEvents } from "@/pages/member/MemberEvents";
+import { MemberKyc } from "@/pages/member/MemberKyc";
 import { initializeAuth } from "@/lib/auth";
 import { initializeMemberAuth } from "@/lib/member-auth";
 
@@ -105,6 +108,7 @@ function App() {
           <Route path="wallet" element={<MemberWallet />} />
           <Route path="rewards" element={<MemberRewards />} />
           <Route path="events" element={<MemberEvents />} />
+          <Route path="kyc" element={<MemberKyc />} />
         </Route>
 
         <Route path="/admin" element={<AdminLayout />}>
@@ -125,6 +129,8 @@ function App() {
           <Route path="users" element={<Users />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="referral-rewards" element={<ReferralRewards />} />
+          <Route path="withdrawals" element={<WithdrawalRequests />} />
+          <Route path="kyc" element={<KycReview />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />

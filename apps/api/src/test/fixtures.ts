@@ -94,7 +94,25 @@ export function makeMember(overrides: Record<string, unknown> = {}) {
     declarationDate: null,
     nominee: null,
     planId: null,
+    // Consumers that select { plan: { select: { tier, isActive } } } (e.g.
+    // ReferralsService.awardPointsForApproval, PlanRewardsService) expect
+    // this to be a plan-shaped object or null, not the full MembershipPlan —
+    // pass an explicit `plan` override matching what your mock's `select`
+    // needs.
     plan: null,
+    kycStatus: "NOT_SUBMITTED",
+    kycReviewedById: null,
+    kycReviewedAt: null,
+    kycReviewNote: null,
+    payoutMethod: null,
+    bankAccountName: null,
+    bankAccountNumberEncrypted: null,
+    bankAccountNumberLast4: null,
+    bankIfscCode: null,
+    bankName: null,
+    upiId: null,
+    pointsConverted: 0,
+    totalWithdrawnAmount: decimal(0),
     feeOverride: null,
     paymentFrequency: null,
     unit: null,
@@ -113,9 +131,59 @@ export function makeMember(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// Every field PlansService/PlanRewardsService touch, defaulted to an active
+// untiered plan. Pass overrides for whatever the test cares about.
+export function makeMembershipPlan(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "plan-1",
+    organizationId: "org-1",
+    name: "Test Plan",
+    tier: null,
+    fee: decimal(500),
+    validityType: "MONTHS",
+    validityMonths: 12,
+    isActive: true,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+// Every field WithdrawalsService/withdrawal.mapper touch, defaulted to a
+// PENDING bank-payout request. Pass overrides for whatever the test cares about.
+export function makeWithdrawalRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "withdrawal-1",
+    organizationId: "org-1",
+    memberId: "member-1",
+    member: { fullName: "Test Member" },
+    pointsRequested: 100,
+    grossAmount: decimal(10),
+    chargeType: "NONE",
+    chargeAmount: decimal(0),
+    netAmount: decimal(10),
+    payoutMethod: "BANK",
+    payoutBankAccountName: "Test Member",
+    payoutBankAccountNumberLast4: "3456",
+    payoutBankIfscCode: "SBIN0001234",
+    payoutBankName: "State Bank of India",
+    payoutUpiId: null,
+    status: "PENDING",
+    reviewedById: null,
+    reviewedAt: null,
+    reviewNote: null,
+    paidById: null,
+    paidAt: null,
+    paymentReference: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 // Minimal shape shared by both PrismaService and an interactive $transaction
-// callback's `tx` argument — the services under test only ever touch
-// `member`, `payment`, and `statusHistory`.
+// callback's `tx` argument — the services under test only ever touch the
+// tables listed here.
 export function makeMockPrisma() {
   const prisma = {
     member: {
@@ -126,19 +194,32 @@ export function makeMockPrisma() {
       update: jest.fn(),
       updateMany: jest.fn(),
       create: jest.fn(),
+      delete: jest.fn(),
     },
     payment: {
       create: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      deleteMany: jest.fn(),
     },
     statusHistory: {
       create: jest.fn(),
       findMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
     nominee: {
       deleteMany: jest.fn(),
       upsert: jest.fn(),
+    },
+    memberDocument: {
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    eventRegistration: {
+      deleteMany: jest.fn(),
+    },
+    event: {
+      findUnique: jest.fn(),
     },
     orgSettings: {
       upsert: jest.fn(),
@@ -154,12 +235,42 @@ export function makeMockPrisma() {
     referralPointsLedger: {
       create: jest.fn(),
       findMany: jest.fn(),
+      deleteMany: jest.fn(),
+      updateMany: jest.fn(),
+      aggregate: jest.fn(),
     },
     referralReward: {
       upsert: jest.fn(),
       findMany: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    membershipPlan: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    eventRewardRule: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    referralPointRule: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+    },
+    withdrawalRequest: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      updateMany: jest.fn(),
+      groupBy: jest.fn(),
     },
     $transaction: jest.fn(),
   };

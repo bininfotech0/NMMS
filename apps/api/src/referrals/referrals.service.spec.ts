@@ -2,8 +2,24 @@ import { ConflictException } from "@nestjs/common";
 import { ReferralsService } from "./referrals.service";
 import { makeMember, makeMockPrisma } from "../test/fixtures";
 
-function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
-  return new ReferralsService(prisma as never);
+function makePlanRewards(overrides: Record<string, jest.Mock> = {}) {
+  return {
+    getMemberTier: jest.fn(),
+    computeEventPoints: jest.fn(),
+    computeReferralPoints: jest.fn().mockResolvedValue(10),
+    listEventRewardRules: jest.fn(),
+    upsertEventRewardRules: jest.fn(),
+    listReferralPointRules: jest.fn(),
+    upsertReferralPointRuleMatrix: jest.fn(),
+    ...overrides,
+  };
+}
+
+function makeService(
+  prisma: ReturnType<typeof makeMockPrisma>,
+  planRewards: ReturnType<typeof makePlanRewards> = makePlanRewards(),
+) {
+  return new ReferralsService(prisma as never, planRewards as never);
 }
 
 function makeSettings(overrides: Record<string, unknown> = {}) {
@@ -11,9 +27,13 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     organizationId: "org-1",
     referralProgramEnabled: true,
     pointsPerApprovedReferral: 10,
-    referralSilverMinPoints: 0,
-    referralGoldMinPoints: 20,
-    referralPlatinumMinPoints: 50,
+    volunteerBatchSilverMinPoints: 0,
+    volunteerBatchGoldMinPoints: 20,
+    volunteerBatchPlatinumMinPoints: 50,
+    referralPointsCapPerMember: null,
+    // Off by default in these tests so the base crediting flow doesn't need a
+    // referrer plan set up — see the dedicated eligibility tests below.
+    referralRequireActiveReferrerPlan: false,
     ...overrides,
   };
 }
@@ -43,10 +63,13 @@ describe("ReferralsService", () => {
 
     it("credits the referrer's points balance and writes a ledger entry", async () => {
       const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.member.findUnique.mockResolvedValue(
-        makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
-      );
+      const planRewards = makePlanRewards();
+      const service = makeService(prisma, planRewards);
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1" }));
       prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
       prisma.member.update.mockResolvedValue(
         makeMember({ id: "referrer-1", referralPointsBalance: 10 }),
@@ -69,12 +92,14 @@ describe("ReferralsService", () => {
       });
     });
 
-    it("creates a PENDING reward the first time a rank threshold is crossed", async () => {
+    it("creates a PENDING reward the first time a volunteer batch threshold is crossed", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
-      prisma.member.findUnique.mockResolvedValue(
-        makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
-      );
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1" }));
       prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
       // Referrer crosses from 10 -> 20 points, which is exactly the GOLD threshold.
       prisma.member.update.mockResolvedValue(
@@ -86,19 +111,113 @@ describe("ReferralsService", () => {
       // SILVER (min 0) and GOLD (min 20) both qualify at 20 points; PLATINUM (min 50) does not.
       expect(prisma.referralReward.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { memberId_rank: { memberId: "referrer-1", rank: "SILVER" } },
+          where: { memberId_batch: { memberId: "referrer-1", batch: "SILVER" } },
         }),
       );
       expect(prisma.referralReward.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { memberId_rank: { memberId: "referrer-1", rank: "GOLD" } },
+          where: { memberId_batch: { memberId: "referrer-1", batch: "GOLD" } },
         }),
       );
       expect(prisma.referralReward.upsert).not.toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { memberId_rank: { memberId: "referrer-1", rank: "PLATINUM" } },
+          where: { memberId_batch: { memberId: "referrer-1", batch: "PLATINUM" } },
         }),
       );
+    });
+
+    it("resolves matrix points from PlanRewardsService using both members' plan tiers", async () => {
+      const prisma = makeMockPrisma();
+      const planRewards = makePlanRewards({ computeReferralPoints: jest.fn().mockResolvedValue(45) });
+      const service = makeService(prisma, planRewards);
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({
+            id: "member-1",
+            organizationId: "org-1",
+            referralMemberId: "referrer-1",
+            plan: { tier: "PLATINUM" },
+          }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1", plan: { tier: "GOLD", isActive: true } }));
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
+      prisma.member.update.mockResolvedValue(makeMember({ id: "referrer-1", referralPointsBalance: 45 }));
+
+      await service.awardPointsForApproval("member-1");
+
+      expect(planRewards.computeReferralPoints).toHaveBeenCalledWith("org-1", "GOLD", "PLATINUM", 10);
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: "referrer-1" },
+        data: { referralPointsBalance: { increment: 45 } },
+      });
+    });
+
+    it("skips crediting when referralRequireActiveReferrerPlan is true and the referrer's plan is inactive", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1", plan: { tier: "GOLD", isActive: false } }));
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings({ referralRequireActiveReferrerPlan: true }));
+
+      await service.awardPointsForApproval("member-1");
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("skips crediting when referralRequireActiveReferrerPlan is true and the referrer has no plan", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1", plan: null }));
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings({ referralRequireActiveReferrerPlan: true }));
+
+      await service.awardPointsForApproval("member-1");
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("caps credited points at referralPointsCapPerMember, accounting for previously earned referral points", async () => {
+      const prisma = makeMockPrisma();
+      const planRewards = makePlanRewards({ computeReferralPoints: jest.fn().mockResolvedValue(10) });
+      const service = makeService(prisma, planRewards);
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1" }));
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings({ referralPointsCapPerMember: 15 }));
+      prisma.referralPointsLedger.aggregate.mockResolvedValue({ _sum: { points: 8 } });
+      prisma.member.update.mockResolvedValue(makeMember({ id: "referrer-1", referralPointsBalance: 15 }));
+
+      await service.awardPointsForApproval("member-1");
+
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: "referrer-1" },
+        data: { referralPointsBalance: { increment: 7 } },
+      });
+    });
+
+    it("does not credit any points once the referrer has already reached the cap", async () => {
+      const prisma = makeMockPrisma();
+      const planRewards = makePlanRewards({ computeReferralPoints: jest.fn().mockResolvedValue(10) });
+      const service = makeService(prisma, planRewards);
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1" }));
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings({ referralPointsCapPerMember: 15 }));
+      prisma.referralPointsLedger.aggregate.mockResolvedValue({ _sum: { points: 15 } });
+
+      await service.awardPointsForApproval("member-1");
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 
@@ -205,7 +324,7 @@ describe("ReferralsService", () => {
       expect(prisma.member.update).not.toHaveBeenCalled();
     });
 
-    it("computes rank and progress to the next rank from the points balance", async () => {
+    it("computes the volunteer batch and progress to the next batch from the points balance", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.member.findUniqueOrThrow.mockResolvedValue(
@@ -216,9 +335,9 @@ describe("ReferralsService", () => {
 
       const summary = await service.getMySummary("member-1");
 
-      expect(summary.rank).toBe("GOLD");
-      expect(summary.nextRank).toBe("PLATINUM");
-      expect(summary.pointsToNextRank).toBe(25);
+      expect(summary.batch).toBe("GOLD");
+      expect(summary.nextBatch).toBe("PLATINUM");
+      expect(summary.pointsToNextBatch).toBe(25);
     });
   });
 
@@ -231,7 +350,7 @@ describe("ReferralsService", () => {
         id: "reward-1",
         memberId: "member-1",
         member: { fullName: "Test Member" },
-        rank: "GOLD",
+        batch: "GOLD",
         pointsAtEarn: 20,
         status: "FULFILLED",
         fulfilledById: "staff-1",

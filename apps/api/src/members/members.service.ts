@@ -13,6 +13,7 @@ import type {
 import { Role } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { AadhaarHashService } from "../common/aadhaar-hash.service";
+import { DocumentStorageService } from "../common/document-storage.service";
 import { NumberingService } from "../common/numbering.service";
 import { buildJurisdictionWhere } from "../common/scope.util";
 import { UsersService } from "../users/users.service";
@@ -22,6 +23,11 @@ import { toMemberResponse } from "./member.mapper";
 // after the registration fee is recorded but before the wizard's later steps
 // (documents/declaration/review) are saved. Locked once SUBMITTED.
 const EDITABLE_STATUSES = ["DRAFT", "PAYMENT_COLLECTED"] as const;
+
+const MEMBER_INCLUDE = {
+  nominee: true,
+  plan: { select: { name: true as const, tier: true as const } },
+};
 
 const REQUIRED_FOR_SUBMIT = [
   "fullName",
@@ -42,13 +48,14 @@ export class MembersService {
     private readonly aadhaar: AadhaarHashService,
     private readonly numbering: NumberingService,
     private readonly usersService: UsersService,
+    private readonly storage: DocumentStorageService,
   ) {}
 
   async findAll(user: AuthUser): Promise<MemberResponse[]> {
     const members = await this.prisma.member.findMany({
       where: { organizationId: user.organizationId, ...this.scopeFilter(user) },
       orderBy: { createdAt: "desc" },
-      include: { nominee: true },
+      include: MEMBER_INCLUDE,
     });
     return members.map(toMemberResponse);
   }
@@ -56,7 +63,7 @@ export class MembersService {
   async findOne(id: string, user: AuthUser): Promise<MemberResponse> {
     const member = await this.prisma.member.findFirst({
       where: { id, organizationId: user.organizationId, ...this.scopeFilter(user) },
-      include: { nominee: true },
+      include: MEMBER_INCLUDE,
     });
     if (!member) {
       throw new NotFoundException("Member not found");
@@ -129,7 +136,7 @@ export class MembersService {
 
     const member = await this.prisma.member.findUniqueOrThrow({
       where: { id: existing.id },
-      include: { nominee: true },
+      include: MEMBER_INCLUDE,
     });
     return toMemberResponse(member);
   }
@@ -159,7 +166,10 @@ export class MembersService {
     await this.prisma.statusHistory.create({
       data: { memberId: existing.id, fromStatus: "PAYMENT_COLLECTED", toStatus: "SUBMITTED", actorId: user.id },
     });
-    const member = await this.prisma.member.findUniqueOrThrow({ where: { id: existing.id } });
+    const member = await this.prisma.member.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: MEMBER_INCLUDE,
+    });
     return toMemberResponse(member);
   }
 
@@ -235,7 +245,7 @@ export class MembersService {
     const updated = await this.prisma.member.update({
       where: { id },
       data: { createdById: user.id },
-      include: { nominee: true },
+      include: MEMBER_INCLUDE,
     });
     return toMemberResponse(updated);
   }
@@ -251,7 +261,7 @@ export class MembersService {
         createdBy: { isSystem: true },
       },
       orderBy: { createdAt: "asc" },
-      include: { nominee: true },
+      include: MEMBER_INCLUDE,
     });
     return members.map(toMemberResponse);
   }
@@ -285,9 +295,51 @@ export class MembersService {
     return newUser;
   }
 
-  // Editable by its creator or by an org admin, only pre-submission (DRAFT or
-  // PAYMENT_COLLECTED — see EDITABLE_STATUSES).
-  private async findEditable(id: string, user: AuthUser): Promise<Member> {
+  // Deletable only pre-payment (DRAFT) — once a fee has been collected the
+  // record is financial history, not a discardable draft; use the (not yet
+  // built) suspend/reject workflow instead. Same owner-or-admin rule as edit.
+  async remove(id: string, user: AuthUser): Promise<void> {
+    const member = await this.findOwned(id, user);
+    if (member.status !== "DRAFT") {
+      throw new ConflictException("Only members in DRAFT status can be deleted");
+    }
+
+    const documents = await this.prisma.memberDocument.findMany({
+      where: { memberId: member.id },
+      select: { filePath: true },
+    });
+
+    // Child rows with a required (non-nullable) memberId are deleted outright;
+    // rows that merely *reference* this member optionally (another member's
+    // referralMemberId, a ledger entry's relatedMemberId) are unlinked instead
+    // so deleting a draft never cascades into deleting someone else's history.
+    await this.prisma.$transaction([
+      this.prisma.member.updateMany({
+        where: { referralMemberId: member.id },
+        data: { referralMemberId: null },
+      }),
+      this.prisma.referralPointsLedger.updateMany({
+        where: { relatedMemberId: member.id },
+        data: { relatedMemberId: null },
+      }),
+      this.prisma.referralPointsLedger.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.referralReward.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.eventRegistration.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.statusHistory.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.payment.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.memberDocument.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.nominee.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.member.delete({ where: { id: member.id } }),
+    ]);
+
+    await Promise.all(documents.map((doc) => this.storage.remove(doc.filePath)));
+  }
+
+  // Visible to and actionable by its creator or by an org admin — the shared
+  // ownership check behind both findEditable (edit) and remove (delete).
+  // Returns "not found" rather than "forbidden" for non-owners so a field
+  // executive can't probe for the existence of another's member records.
+  private async findOwned(id: string, user: AuthUser): Promise<Member> {
     const member = await this.prisma.member.findFirst({
       where: { id, organizationId: user.organizationId },
     });
@@ -299,6 +351,13 @@ export class MembersService {
     if (!isOwner && !isAdmin) {
       throw new NotFoundException("Member not found");
     }
+    return member;
+  }
+
+  // Editable by its creator or by an org admin, only pre-submission (DRAFT or
+  // PAYMENT_COLLECTED — see EDITABLE_STATUSES).
+  private async findEditable(id: string, user: AuthUser): Promise<Member> {
+    const member = await this.findOwned(id, user);
     if (!EDITABLE_STATUSES.includes(member.status as (typeof EDITABLE_STATUSES)[number])) {
       throw new ConflictException("Only members in DRAFT or PAYMENT_COLLECTED status can be edited");
     }

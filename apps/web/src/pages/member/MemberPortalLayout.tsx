@@ -1,9 +1,9 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Award, CalendarDays, LayoutDashboard, LogOut, Share2, Wallet } from "lucide-react";
+import { Award, CalendarDays, LayoutDashboard, LogOut, Share2, ShieldCheck, Wallet } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { RankBadge } from "@/components/shared/RankBadge";
+import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { useMemberAuthStore } from "@/stores/member-auth";
 import { logoutMember } from "@/lib/member-auth";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { to: "/member/events", label: "Events", icon: CalendarDays, end: false },
   { to: "/member/wallet", label: "Wallet", icon: Wallet, end: false },
   { to: "/member/rewards", label: "Rewards", icon: Award, end: false },
+  { to: "/member/kyc", label: "KYC", icon: ShieldCheck, end: false },
 ];
 
 function initials(name: string | undefined) {
@@ -24,8 +25,8 @@ function initials(name: string | undefined) {
 export function MemberPortalLayout() {
   const navigate = useNavigate();
   const member = useMemberAuthStore((state) => state.member);
-  // Fetched once here (not per-page) so the header's rank badge and the
-  // wallet pill stay in sync everywhere in the portal, not just on Dashboard.
+  // Fetched once here (not per-page) so the header's volunteer batch badge
+  // and the wallet pill stay in sync everywhere in the portal, not just on Dashboard.
   const { data: summary } = useMyReferralSummary();
   const isActive = member?.status === "ACTIVE";
 
@@ -48,8 +49,8 @@ export function MemberPortalLayout() {
             </Avatar>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-foreground">{member?.fullName}</p>
-              {isActive && summary?.rank ? (
-                <RankBadge rank={summary.rank} className="mt-0.5" />
+              {isActive && summary?.batch ? (
+                <VolunteerBatchBadge batch={summary.batch} className="mt-0.5" />
               ) : (
                 <p className="text-xs text-muted-foreground">{member?.status}</p>
               )}

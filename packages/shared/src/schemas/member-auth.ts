@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { planTierSchema } from "./plan";
 
 export const memberRegisterSchema = z.object({
   fullName: z.string().min(1),
@@ -21,6 +22,8 @@ export const authMemberSchema = z.object({
   organizationId: z.string(),
   status: z.string(),
   referralCode: z.string().nullable(),
+  planName: z.string().nullable(),
+  planTier: planTierSchema.nullable(),
 });
 export type AuthMember = z.infer<typeof authMemberSchema>;
 

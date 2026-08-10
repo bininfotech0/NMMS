@@ -7,8 +7,15 @@ function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
   const aadhaar = { hash: jest.fn((v: string) => `hashed:${v}`), last4: jest.fn((v: string) => v.slice(-4)) };
   const numbering = { nextRegistrationNumber: jest.fn().mockResolvedValue("REG-2026-00001") };
   const usersService = { create: jest.fn() };
-  const service = new MembersService(prisma as never, aadhaar as never, numbering as never, usersService as never);
-  return { service, aadhaar, numbering, usersService };
+  const storage = { remove: jest.fn().mockResolvedValue(undefined) };
+  const service = new MembersService(
+    prisma as never,
+    aadhaar as never,
+    numbering as never,
+    usersService as never,
+    storage as never,
+  );
+  return { service, aadhaar, numbering, usersService, storage };
 }
 
 describe("MembersService.create", () => {

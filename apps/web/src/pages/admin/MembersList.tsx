@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { UserPlus, Edit, IdCard, Search } from "lucide-react";
+import { UserPlus, Edit, IdCard, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +15,11 @@ import {
 } from "@/components/ui/sheet";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { captureGeolocation, getOrCreateDeviceId, isOnline } from "@/lib/device";
-import { useCreateMember, useDedupeCheck, useMembers } from "@/hooks/useMembers";
+import { useCreateMember, useDedupeCheck, useDeleteMember, useMembers } from "@/hooks/useMembers";
 import type { MemberResponse, MemberStatus } from "@nmms/shared";
 
 const STATUS_FILTERS: ("All" | MemberStatus)[] = [
@@ -49,8 +50,10 @@ export function MembersList() {
   const [query, setQuery] = useState(initialSearch);
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("All");
   const [addOpen, setAddOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MemberResponse | null>(null);
 
   const { data: members = [], isLoading, isError } = useMembers();
+  const deleteMember = useDeleteMember();
 
   const filtered = useMemo(() => {
     return members.filter((member) => {
@@ -101,7 +104,8 @@ export function MembersList() {
         key: "planId",
         header: "Plan",
         sortable: true,
-        render: (member) => member.planId ? <span>Plan</span> : <span className="text-muted-foreground">—</span>,
+        render: (member) =>
+          member.planName ? <span>{member.planName}</span> : <span className="text-muted-foreground">—</span>,
       },
       {
         key: "status",
@@ -211,11 +215,39 @@ export function MembersList() {
                 <IdCard className="size-4" />
               </Button>
             )}
+            {member.status === "DRAFT" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteTarget(member);
+                }}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
           </div>
         )}
       />
 
       <AddMemberSheet open={addOpen} onOpenChange={setAddOpen} />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete draft?"
+        description={`This permanently deletes ${deleteTarget?.fullName ?? "this draft"} and any documents/nominee details saved so far. This cannot be undone.`}
+        confirmLabel="Delete"
+        isPending={deleteMember.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteMember.mutate(deleteTarget.id, {
+            onSuccess: () => setDeleteTarget(null),
+          });
+        }}
+      />
     </div>
   );
 }

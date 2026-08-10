@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft, IdCard, Pencil, Printer, Phone, Mail,
   MapPin, Calendar, User, Users, Award, Shield, Activity,
-  FileText, CreditCard, Clock, MapPinned, Share2,
-  Ban, RotateCcw, HeartCrack, UserCog,
+  FileText, CreditCard, Clock, MapPinned, Share2, Copy,
+  Ban, RotateCcw, HeartCrack, UserCog, Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -21,10 +22,13 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { RankBadge } from "@/components/shared/RankBadge";
+import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ApiError } from "@/lib/api-client";
-import { computeRank } from "@/lib/referral-rank";
+import { cn } from "@/lib/utils";
+import { computeVolunteerBatch } from "@/lib/volunteer-batch";
 import {
+  useDeleteMember,
   useMember,
   useMemberDocuments,
   useMemberPayments,
@@ -32,7 +36,7 @@ import {
   usePromoteToExecutive,
 } from "@/hooks/useMembers";
 import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
-import { useReferralNetwork } from "@/hooks/useReferrals";
+import { useGenerateReferralCode, useReferralNetwork } from "@/hooks/useReferrals";
 import { useOrgProfile } from "@/hooks/useOrg";
 import { useAuthStore } from "@/stores/auth";
 import { Role, type MemberResponse } from "@nmms/shared";
@@ -274,25 +278,94 @@ const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: s
   { key: "history", label: "Timeline", icon: Activity },
 ];
 
+const REFERRAL_SHARE_MESSAGE = "Join our membership program using this referral link:";
+
 function ReferralsTab({ member }: { member: MemberResponse }) {
   const { data: network, isLoading } = useReferralNetwork(member.status === "ACTIVE" ? member.id : null);
   const { data: referrer } = useMember(member.referralMemberId);
   const { data: org } = useOrgProfile();
-  const rank = org ? computeRank(member.referralPointsBalance, org) : null;
+  const batch = org ? computeVolunteerBatch(member.referralPointsBalance, org) : null;
+  const user = useAuthStore((state) => state.user);
+  const generateCode = useGenerateReferralCode();
+
+  const referralLink = member.referralCode
+    ? `${window.location.origin}/join?ref=${member.referralCode}`
+    : null;
+
+  function copyLink() {
+    if (!referralLink) return;
+    navigator.clipboard.writeText(referralLink);
+    toast.success("Referral link copied");
+  }
+
+  async function shareLink() {
+    if (!referralLink) return;
+    // Native share sheet where supported — falls back to a pre-filled
+    // WhatsApp chat, matching the member portal's own share behaviour.
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: REFERRAL_SHARE_MESSAGE, url: referralLink });
+      } catch (err) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          toast.error("Couldn't open the share sheet");
+        }
+      }
+      return;
+    }
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${REFERRAL_SHARE_MESSAGE} ${referralLink}`)}`;
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  }
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <SectionCard title="Referral Summary">
-        <Detail
-          icon={IdCard}
-          label="Referral Code"
-          value={member.referralCode ?? (member.status === "ACTIVE" ? "Not generated yet" : "Available once ACTIVE")}
-        />
+        {member.referralCode ? (
+          <Detail icon={IdCard} label="Referral Code" value={member.referralCode} />
+        ) : member.status === "ACTIVE" && user && CAN_MANAGE_LIFECYCLE.includes(user.role) ? (
+          <div className="flex items-center gap-2 text-sm">
+            <IdCard className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-[80px] text-muted-foreground">Referral Code:</span>
+            <span className="font-medium">Not generated yet</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-1"
+              disabled={generateCode.isPending}
+              onClick={() => generateCode.mutate(member.id)}
+            >
+              {generateCode.isPending ? "Generating…" : "Generate"}
+            </Button>
+          </div>
+        ) : (
+          <Detail
+            icon={IdCard}
+            label="Referral Code"
+            value={member.status === "ACTIVE" ? "Not generated yet" : "Available once ACTIVE"}
+          />
+        )}
+        {referralLink && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+              <span className="flex-1 truncate text-sm">{referralLink}</span>
+              <Button variant="ghost" size="sm" onClick={copyLink}>
+                <Copy className="mr-1.5 size-4" />
+                Copy
+              </Button>
+              <Button variant="ghost" size="sm" onClick={shareLink}>
+                <Share2 className="mr-1.5 size-4" />
+                Share
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Anyone who joins through this link is automatically credited to {member.fullName.split(" ")[0]}.
+            </p>
+          </div>
+        )}
         <Detail icon={Award} label="Points Balance" value={String(member.referralPointsBalance)} />
         <div className="flex items-center gap-2 text-sm">
           <Award className="size-4 shrink-0 text-muted-foreground" />
           <span className="min-w-[80px] text-muted-foreground">Volunteer Batch:</span>
-          <RankBadge rank={rank} />
+          <VolunteerBatchBadge batch={batch} />
         </div>
         {member.referralMemberId && <Detail icon={User} label="Referred By" value={referrer?.fullName ?? member.referralMemberId} />}
       </SectionCard>
@@ -323,15 +396,18 @@ function ReferralsTab({ member }: { member: MemberResponse }) {
 
 export function MemberProfile() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
   const [promoteOpen, setPromoteOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { data: member, isLoading } = useMember(id ?? null);
   const { data: documents = [] } = useMemberDocuments(id ?? null);
   const { data: payments = [] } = useMemberPayments(id ?? null);
   const { data: statusHistory = [] } = useMemberStatusHistory(id ?? null);
   const user = useAuthStore((state) => state.user);
+  const deleteMember = useDeleteMember();
 
   const form = useMemo(() => (member ? memberToWizardForm(member) : null), [member]);
 
@@ -387,6 +463,18 @@ export function MemberProfile() {
               </Link>
             </Button>
           )}
+          {member.status === "DRAFT" &&
+            user &&
+            (CAN_MANAGE_LIFECYCLE.includes(user.role) || member.createdById === user.id) && (
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </Button>
+            )}
           {user &&
             CAN_MANAGE_LIFECYCLE.includes(user.role) &&
             member.status === "ACTIVE" &&
@@ -472,6 +560,17 @@ export function MemberProfile() {
 
           <SectionCard title="Membership">
             <Detail icon={IdCard} label="Member ID" value={member.membershipNumber} />
+            <Detail
+              icon={CreditCard}
+              label="Plan"
+              value={
+                member.planName
+                  ? member.planTier
+                    ? `${member.planName} (${member.planTier.charAt(0)}${member.planTier.slice(1).toLowerCase()})`
+                    : member.planName
+                  : null
+              }
+            />
             {member.joiningDate && <Detail icon={Calendar} label="Joined" value={formatDate(member.joiningDate, "dd/MM/yyyy")} />}
             {member.validUntil && <Detail icon={Clock} label="Valid Until" value={formatDate(member.validUntil, "dd/MM/yyyy")} />}
             <Detail icon={Shield} label="Status" value={member.status} />
@@ -483,6 +582,35 @@ export function MemberProfile() {
             {member.voterId && <Detail icon={FileText} label="Voter ID" value={member.voterId} />}
             {!member.aadhaarLast4 && !member.pan && !member.voterId && (
               <p className="text-sm text-muted-foreground">No identity documents provided</p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="KYC & Payout">
+            <div className="flex items-center gap-2 text-sm">
+              <Shield className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-[80px] text-muted-foreground">KYC Status:</span>
+              <Badge
+                className={cn(
+                  "border-transparent font-medium",
+                  member.kycStatus === "VERIFIED" && "bg-emerald-100 text-emerald-700",
+                  member.kycStatus === "PENDING" && "bg-amber-100 text-amber-700",
+                  member.kycStatus === "REJECTED" && "bg-red-100 text-red-700",
+                  member.kycStatus === "NOT_SUBMITTED" && "bg-muted text-muted-foreground",
+                )}
+              >
+                {member.kycStatus.replace(/_/g, " ")}
+              </Badge>
+            </div>
+            <Detail
+              icon={Award}
+              label="Converted"
+              value={`${member.pointsConverted} pts`}
+            />
+            <Detail icon={CreditCard} label="Withdrawn" value={`₹${member.totalWithdrawnAmount}`} />
+            {member.kycStatus !== "NOT_SUBMITTED" && (
+              <Button size="sm" variant="outline" asChild>
+                <Link to={`/admin/kyc?member=${member.id}`}>Review in KYC queue</Link>
+              </Button>
             )}
           </SectionCard>
 
@@ -616,6 +744,19 @@ export function MemberProfile() {
         onOpenChange={(open) => !open && setLifecycleAction(null)}
       />
       <PromoteToExecutiveSheet member={member} open={promoteOpen} onOpenChange={setPromoteOpen} />
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete draft?"
+        description={`This permanently deletes ${member.fullName} and any documents/nominee details saved so far. This cannot be undone.`}
+        confirmLabel="Delete"
+        isPending={deleteMember.isPending}
+        onConfirm={() => {
+          deleteMember.mutate(id, {
+            onSuccess: () => navigate("/admin/members"),
+          });
+        }}
+      />
     </div>
   );
 }

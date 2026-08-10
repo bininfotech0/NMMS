@@ -74,6 +74,7 @@ export class MemberAuthService {
   async validateCredentials(mobile: string, password: string): Promise<AuthMember> {
     const member = await this.prisma.member.findFirst({
       where: { mobile, passwordHash: { not: null } },
+      include: { plan: { select: { name: true, tier: true } } },
     });
     if (!member?.passwordHash || !(await argon2.verify(member.passwordHash, password))) {
       throw new UnauthorizedException("Invalid mobile number or password");
@@ -89,6 +90,8 @@ export class MemberAuthService {
       organizationId: member.organizationId,
       status: member.status,
       referralCode: member.referralCode,
+      planName: member.planName,
+      planTier: member.planTier,
     };
     const accessToken = await this.jwt.signAsync(accessPayload, {
       secret: this.config.getOrThrow<string>("MEMBER_JWT_ACCESS_SECRET"),
@@ -105,7 +108,10 @@ export class MemberAuthService {
   }
 
   async getAuthMemberById(id: string): Promise<AuthMember> {
-    const member = await this.prisma.member.findUnique({ where: { id } });
+    const member = await this.prisma.member.findUnique({
+      where: { id },
+      include: { plan: { select: { name: true, tier: true } } },
+    });
     if (!member || !member.passwordHash) {
       throw new UnauthorizedException("Member account no longer exists");
     }
@@ -156,6 +162,7 @@ export class MemberAuthService {
     organizationId: string;
     status: string;
     referralCode: string | null;
+    plan?: { name: string; tier: string | null } | null;
   }): AuthMember {
     return {
       id: member.id,
@@ -164,6 +171,8 @@ export class MemberAuthService {
       organizationId: member.organizationId,
       status: member.status,
       referralCode: member.referralCode,
+      planName: member.plan?.name ?? null,
+      planTier: (member.plan?.tier as AuthMember["planTier"]) ?? null,
     };
   }
 }

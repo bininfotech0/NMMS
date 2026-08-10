@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
+  GenerateReferralCodeResponse,
   ReferralLedgerEntryResponse,
   ReferralLeaderboardEntryResponse,
   ReferralNetworkNode,
+  ReferralPointRule,
+  ReferralPointRuleResponse,
   ReferralRewardResponse,
   ReferralSummaryResponse,
   ReferrerSearchResult,
@@ -44,6 +47,20 @@ export function useReferralNetwork(memberId: string | null) {
   });
 }
 
+// Staff-triggered generation for a member who has never opened their own
+// portal (e.g. registered in person, no self-service login set up yet).
+export function useGenerateReferralCode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) =>
+      apiFetch<GenerateReferralCodeResponse>(`/referrals/${memberId}/generate-code`, { method: "POST" }),
+    onSuccess: (_data, memberId) => {
+      queryClient.invalidateQueries({ queryKey: ["members", memberId] });
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to generate referral code")),
+  });
+}
+
 export function useReferralRewards(status?: RewardStatus) {
   return useQuery({
     queryKey: ["referrals", "rewards", status ?? "all"],
@@ -74,6 +91,29 @@ export function useReferralLeaderboard() {
   return useQuery({
     queryKey: ["referrals", "leaderboard"],
     queryFn: () => apiFetch<ReferralLeaderboardEntryResponse[]>("/referrals/leaderboard"),
+  });
+}
+
+export function useReferralPointRules() {
+  return useQuery({
+    queryKey: ["referrals", "point-rules"],
+    queryFn: () => apiFetch<ReferralPointRuleResponse[]>("/referrals/point-rules"),
+  });
+}
+
+export function useUpsertReferralPointRuleMatrix() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rules: ReferralPointRule[]) =>
+      apiFetch<ReferralPointRuleResponse[]>("/referrals/point-rules", {
+        method: "PUT",
+        body: JSON.stringify({ rules }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["referrals", "point-rules"] });
+      toast.success("Referral point matrix saved");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to save referral point matrix")),
   });
 }
 

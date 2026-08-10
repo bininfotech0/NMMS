@@ -10,6 +10,7 @@ import { DocumentsModule } from "./documents/documents.module";
 import { EventsModule } from "./events/events.module";
 import { HealthModule } from "./health/health.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
+import { KycModule } from "./kyc/kyc.module";
 import { MastersModule } from "./masters/masters.module";
 import { MemberAuthModule } from "./member-auth/member-auth.module";
 import { MembersModule } from "./members/members.module";
@@ -22,6 +23,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { ReferralsModule } from "./referrals/referrals.module";
 import { ReportsModule } from "./reports/reports.module";
 import { UsersModule } from "./users/users.module";
+import { WithdrawalsModule } from "./withdrawals/withdrawals.module";
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { UsersModule } from "./users/users.module";
     CardModule,
     MemberAuthModule,
     ReferralsModule,
+    KycModule,
+    WithdrawalsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RankBadge } from "@/components/shared/RankBadge";
+import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { useReferralLeaderboard } from "@/hooks/useReferrals";
 
 export function TopReferrersCard() {
@@ -27,7 +27,7 @@ export function TopReferrersCard() {
                   <Link to={`/admin/members/${entry.memberId}/profile`} className="font-medium hover:underline">
                     {entry.fullName}
                   </Link>
-                  <RankBadge rank={entry.rank} />
+                  <VolunteerBatchBadge batch={entry.batch} />
                 </div>
                 <div className="text-right">
                   <p className="font-medium">{entry.pointsBalance} pts</p>

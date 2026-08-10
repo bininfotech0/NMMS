@@ -1,8 +1,8 @@
-import { Award, Copy, Share2, Users, Wallet } from "lucide-react";
+import { Award, Copy, CreditCard, Share2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RankBadge } from "@/components/shared/RankBadge";
+import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
 import { useMemberAuthStore } from "@/stores/member-auth";
@@ -64,6 +64,28 @@ export function MemberDashboard() {
 
   return (
     <div className="space-y-4">
+      {member?.planName && (
+        <Card className="gap-3 py-4">
+          <CardContent className="flex items-center justify-between px-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Your plan</p>
+              <p className="mt-1 text-lg font-semibold">
+                {member.planName}
+                {member.planTier && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    ({member.planTier.charAt(0)}
+                    {member.planTier.slice(1).toLowerCase()})
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-brand-green/10 text-brand-green">
+              <CreditCard className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Your referral link</CardTitle>
@@ -101,11 +123,11 @@ export function MemberDashboard() {
         <Card className="gap-3 py-4">
           <CardContent className="flex items-center justify-between px-4">
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Your rank</p>
-              <RankBadge rank={summary.rank} />
-              {summary.nextRank && (
+              <p className="text-sm text-muted-foreground">Your volunteer batch</p>
+              <VolunteerBatchBadge batch={summary.batch} />
+              {summary.nextBatch && (
                 <p className="text-xs text-muted-foreground">
-                  {summary.pointsToNextRank} points to {summary.nextRank}
+                  {summary.pointsToNextBatch} points to {summary.nextBatch}
                 </p>
               )}
             </div>

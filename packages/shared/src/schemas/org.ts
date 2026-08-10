@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { withdrawalChargeTypeSchema } from "./withdrawal";
 
 export const publicOrgSchema = z.object({
   name: z.string(),
@@ -21,9 +22,21 @@ export const orgProfileSchema = z.object({
   receiptNumberFormat: z.string(),
   referralProgramEnabled: z.boolean(),
   pointsPerApprovedReferral: z.number(),
-  referralSilverMinPoints: z.number(),
-  referralGoldMinPoints: z.number(),
-  referralPlatinumMinPoints: z.number(),
+  volunteerBatchSilverMinPoints: z.number(),
+  volunteerBatchGoldMinPoints: z.number(),
+  volunteerBatchPlatinumMinPoints: z.number(),
+  referralPointsCapPerMember: z.number().nullable(),
+  referralRequireActiveReferrerPlan: z.boolean(),
+  pointsToMoneyRatioPoints: z.number(),
+  pointsToMoneyRatioAmount: z.number(),
+  kycRequireAadhaar: z.boolean(),
+  kycRequirePan: z.boolean(),
+  kycRequireBankOrUpi: z.boolean(),
+  withdrawalMinAmount: z.number(),
+  withdrawalMaxAmount: z.number().nullable(),
+  withdrawalFrequencyDays: z.number().nullable(),
+  withdrawalChargeType: withdrawalChargeTypeSchema,
+  withdrawalChargeValue: z.number(),
 });
 export type OrgProfile = z.infer<typeof orgProfileSchema>;
 
@@ -41,8 +54,20 @@ export const updateOrgSchema = z.object({
   receiptNumberFormat: z.string().min(1).optional(),
   referralProgramEnabled: z.boolean().optional(),
   pointsPerApprovedReferral: z.number().int().nonnegative().optional(),
-  referralSilverMinPoints: z.number().int().nonnegative().optional(),
-  referralGoldMinPoints: z.number().int().nonnegative().optional(),
-  referralPlatinumMinPoints: z.number().int().nonnegative().optional(),
+  volunteerBatchSilverMinPoints: z.number().int().nonnegative().optional(),
+  volunteerBatchGoldMinPoints: z.number().int().nonnegative().optional(),
+  volunteerBatchPlatinumMinPoints: z.number().int().nonnegative().optional(),
+  referralPointsCapPerMember: z.number().int().nonnegative().nullish(),
+  referralRequireActiveReferrerPlan: z.boolean().optional(),
+  pointsToMoneyRatioPoints: z.number().int().positive().optional(),
+  pointsToMoneyRatioAmount: z.number().nonnegative().optional(),
+  kycRequireAadhaar: z.boolean().optional(),
+  kycRequirePan: z.boolean().optional(),
+  kycRequireBankOrUpi: z.boolean().optional(),
+  withdrawalMinAmount: z.number().nonnegative().optional(),
+  withdrawalMaxAmount: z.number().nonnegative().nullish(),
+  withdrawalFrequencyDays: z.number().int().nonnegative().nullish(),
+  withdrawalChargeType: withdrawalChargeTypeSchema.optional(),
+  withdrawalChargeValue: z.number().nonnegative().optional(),
 });
 export type UpdateOrgInput = z.infer<typeof updateOrgSchema>;

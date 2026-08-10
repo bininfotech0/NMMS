@@ -6,7 +6,16 @@ import { AuditService } from "./audit.service";
 
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 // Known action-style suffixes on otherwise POST routes (e.g. /applications/:id/verify).
-const KNOWN_VERBS = new Set(["submit", "verify", "approve", "reject", "import", "reset-password"]);
+const KNOWN_VERBS = new Set([
+  "submit",
+  "verify",
+  "approve",
+  "reject",
+  "import",
+  "reset-password",
+  "mark-paid",
+  "reveal-bank-account",
+]);
 
 function deriveAction(method: string, path: string): string {
   const lastSegment = path.split("/").filter(Boolean).pop() ?? "";

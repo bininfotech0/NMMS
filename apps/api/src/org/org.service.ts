@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import type { OrgProfile, PublicOrg, UpdateOrgInput } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -61,9 +62,21 @@ export class OrgService {
       receiptNumberFormat: string;
       referralProgramEnabled: boolean;
       pointsPerApprovedReferral: number;
-      referralSilverMinPoints: number;
-      referralGoldMinPoints: number;
-      referralPlatinumMinPoints: number;
+      volunteerBatchSilverMinPoints: number;
+      volunteerBatchGoldMinPoints: number;
+      volunteerBatchPlatinumMinPoints: number;
+      referralPointsCapPerMember: number | null;
+      referralRequireActiveReferrerPlan: boolean;
+      pointsToMoneyRatioPoints: number;
+      pointsToMoneyRatioAmount: Prisma.Decimal;
+      kycRequireAadhaar: boolean;
+      kycRequirePan: boolean;
+      kycRequireBankOrUpi: boolean;
+      withdrawalMinAmount: Prisma.Decimal;
+      withdrawalMaxAmount: Prisma.Decimal | null;
+      withdrawalFrequencyDays: number | null;
+      withdrawalChargeType: string;
+      withdrawalChargeValue: Prisma.Decimal;
     },
   ): OrgProfile {
     return {
@@ -81,9 +94,21 @@ export class OrgService {
       receiptNumberFormat: settings.receiptNumberFormat,
       referralProgramEnabled: settings.referralProgramEnabled,
       pointsPerApprovedReferral: settings.pointsPerApprovedReferral,
-      referralSilverMinPoints: settings.referralSilverMinPoints,
-      referralGoldMinPoints: settings.referralGoldMinPoints,
-      referralPlatinumMinPoints: settings.referralPlatinumMinPoints,
+      volunteerBatchSilverMinPoints: settings.volunteerBatchSilverMinPoints,
+      volunteerBatchGoldMinPoints: settings.volunteerBatchGoldMinPoints,
+      volunteerBatchPlatinumMinPoints: settings.volunteerBatchPlatinumMinPoints,
+      referralPointsCapPerMember: settings.referralPointsCapPerMember,
+      referralRequireActiveReferrerPlan: settings.referralRequireActiveReferrerPlan,
+      pointsToMoneyRatioPoints: settings.pointsToMoneyRatioPoints,
+      pointsToMoneyRatioAmount: settings.pointsToMoneyRatioAmount.toNumber(),
+      kycRequireAadhaar: settings.kycRequireAadhaar,
+      kycRequirePan: settings.kycRequirePan,
+      kycRequireBankOrUpi: settings.kycRequireBankOrUpi,
+      withdrawalMinAmount: settings.withdrawalMinAmount.toNumber(),
+      withdrawalMaxAmount: settings.withdrawalMaxAmount?.toNumber() ?? null,
+      withdrawalFrequencyDays: settings.withdrawalFrequencyDays,
+      withdrawalChargeType: settings.withdrawalChargeType as OrgProfile["withdrawalChargeType"],
+      withdrawalChargeValue: settings.withdrawalChargeValue.toNumber(),
     };
   }
 }

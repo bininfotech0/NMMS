@@ -28,6 +28,7 @@ export class PlansService {
       data: {
         organizationId,
         name: dto.name,
+        tier: dto.tier ?? null,
         fee: dto.fee,
         validityType: dto.validityType,
         validityMonths: dto.validityType === "MONTHS" ? dto.validityMonths : null,
@@ -51,6 +52,7 @@ export class PlansService {
   private toPlanResponse(plan: {
     id: string;
     name: string;
+    tier: string | null;
     fee: Prisma.Decimal;
     validityType: string;
     validityMonths: number | null;
@@ -59,6 +61,7 @@ export class PlansService {
     return {
       id: plan.id,
       name: plan.name,
+      tier: plan.tier as PlanResponse["tier"],
       fee: plan.fee.toNumber(),
       validityType: plan.validityType as PlanResponse["validityType"],
       validityMonths: plan.validityMonths,

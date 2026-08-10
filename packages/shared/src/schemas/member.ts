@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { planTierSchema } from "./plan";
+import { kycStatusSchema } from "./kyc";
 
 export const memberStatusSchema = z.enum([
   "DRAFT",
@@ -238,6 +240,11 @@ export const memberResponseSchema = z.object({
   nominee: nomineeResponseSchema.nullable(),
 
   planId: z.string().nullable(),
+  planName: z.string().nullable(),
+  planTier: planTierSchema.nullable(),
+  kycStatus: kycStatusSchema,
+  pointsConverted: z.number(),
+  totalWithdrawnAmount: z.number(),
   feeOverride: z.number().nullable(),
   paymentFrequency: paymentFrequencySchema.nullable(),
   unit: z.string().nullable(),

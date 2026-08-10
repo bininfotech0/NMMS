@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { Role, type AuthUser } from "@nmms/shared";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -58,6 +58,11 @@ export class MembersController {
   @Patch(":id")
   update(@Param("id") id: string, @Body() dto: UpdateMemberDto, @CurrentUser() user: AuthUser) {
     return this.membersService.update(id, dto, user);
+  }
+
+  @Delete(":id")
+  remove(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.membersService.remove(id, user);
   }
 
   @Post(":id/submit")

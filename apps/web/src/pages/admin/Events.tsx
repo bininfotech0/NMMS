@@ -37,7 +37,9 @@ import {
 } from "@/hooks/useEvents";
 import { useMembers } from "@/hooks/useMembers";
 import { useAuthStore } from "@/stores/auth";
-import { Role, type EventRegistrationResponse, type EventResponse, type EventStatus } from "@nmms/shared";
+import { Role, type EventRegistrationResponse, type EventResponse, type EventStatus, type PlanTier } from "@nmms/shared";
+
+const REWARD_TIERS: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
 
 const CAN_MANAGE = [Role.SUPER_ADMIN, Role.ADMIN];
 const EVENT_STATUSES: EventStatus[] = ["PLANNED", "COMPLETED", "CANCELLED"];
@@ -197,6 +199,11 @@ function EventSheet({
   const [targetDescription, setTargetDescription] = useState(event?.targetDescription ?? "");
   const [targetQuantity, setTargetQuantity] = useState(event?.targetQuantity ? String(event.targetQuantity) : "");
   const [pointsReward, setPointsReward] = useState(event ? String(event.pointsReward) : "0");
+  const [tierOverrides, setTierOverrides] = useState<Record<PlanTier, string>>(() => ({
+    SILVER: event?.tierRewardOverrides.SILVER != null ? String(event.tierRewardOverrides.SILVER) : "",
+    GOLD: event?.tierRewardOverrides.GOLD != null ? String(event.tierRewardOverrides.GOLD) : "",
+    PLATINUM: event?.tierRewardOverrides.PLATINUM != null ? String(event.tierRewardOverrides.PLATINUM) : "",
+  }));
   const [error, setError] = useState<string | null>(null);
 
   const createEvent = useCreateEvent();
@@ -214,6 +221,7 @@ function EventSheet({
     setTargetDescription("");
     setTargetQuantity("");
     setPointsReward("0");
+    setTierOverrides({ SILVER: "", GOLD: "", PLATINUM: "" });
     setError(null);
   }
 
@@ -221,6 +229,9 @@ function EventSheet({
     e.preventDefault();
     setError(null);
     try {
+      const tierRewardOverrideEntries = REWARD_TIERS.filter((tier) => tierOverrides[tier] !== "").map(
+        (tier) => [tier, Number(tierOverrides[tier])] as const,
+      );
       const payload = {
         title,
         description: description || null,
@@ -231,6 +242,14 @@ function EventSheet({
         targetDescription: targetDescription || null,
         targetQuantity: targetQuantity ? Number(targetQuantity) : null,
         pointsReward: pointsReward ? Number(pointsReward) : 0,
+        // On create, only sent when at least one tier field has a value (no
+        // point syncing an empty rule set for a brand-new event). On edit,
+        // always sent — the fields are pre-filled from the event's current
+        // overrides, so this also correctly persists the admin explicitly
+        // clearing all three back to "use base points reward."
+        ...(isEdit || tierRewardOverrideEntries.length > 0
+          ? { tierRewardOverrides: Object.fromEntries(tierRewardOverrideEntries) }
+          : {}),
       };
       if (isEdit) {
         await updateEvent.mutateAsync({ id: event.id, dto: { ...payload, status } });
@@ -336,6 +355,30 @@ function EventSheet({
                   value={pointsReward}
                   onChange={(e) => setPointsReward(e.target.value)}
                 />
+              </div>
+            </div>
+            <div className="space-y-1.5 pt-1">
+              <Label>Reward points by plan tier (optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Leave blank to use the base points reward above for that tier.
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {REWARD_TIERS.map((tier) => (
+                  <div key={tier} className="space-y-1.5">
+                    <Label htmlFor={`tier-${tier}`} className="text-xs font-normal text-muted-foreground">
+                      {tier.charAt(0) + tier.slice(1).toLowerCase()}
+                    </Label>
+                    <Input
+                      id={`tier-${tier}`}
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder={pointsReward || "0"}
+                      value={tierOverrides[tier]}
+                      onChange={(e) => setTierOverrides((prev) => ({ ...prev, [tier]: e.target.value }))}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -452,7 +495,13 @@ function RegistrationsSheet({
               <p className="text-muted-foreground">
                 {event?.targetDescription}
                 {event?.targetQuantity ? ` (goal: ${event.targetQuantity})` : ""}
-                {event && event.pointsReward > 0 ? ` — ${event.pointsReward} pts on approval` : ""}
+                {event && event.pointsReward > 0
+                  ? ` — ${event.pointsReward} pts on approval${
+                      event.tierRewardOverrides && Object.keys(event.tierRewardOverrides).length > 0
+                        ? " (varies by plan tier)"
+                        : ""
+                    }`
+                  : ""}
               </p>
             </div>
           )}

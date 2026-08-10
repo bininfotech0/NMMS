@@ -15,6 +15,8 @@ import {
   LogOut,
   ChevronDown,
   Gift,
+  Banknote,
+  UserCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { Logo } from "@/components/brand/Logo";
@@ -54,12 +56,14 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Applications", to: "/admin/applications", icon: ClipboardCheck, badge: (q) => q > 0 },
       { label: "Membership Plans", to: "/admin/membership", icon: IdCard },
       { label: "Referral Rewards", to: "/admin/referral-rewards", icon: Gift },
+      { label: "KYC Review", to: "/admin/kyc", icon: UserCheck },
     ],
   },
   {
     label: "Finance",
     items: [
       { label: "Payments", to: "/admin/payments", icon: Wallet },
+      { label: "Withdrawals", to: "/admin/withdrawals", icon: Banknote },
     ],
   },
   {

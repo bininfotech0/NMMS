@@ -1,7 +1,7 @@
 import { Award, Gift } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { RankBadge } from "@/components/shared/RankBadge";
+import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { useMyReferralRewards, useMyReferralSummary } from "@/hooks/useReferrals";
 
 export function MemberRewards() {
@@ -14,10 +14,10 @@ export function MemberRewards() {
         <CardContent className="flex items-center justify-between px-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Your progress</p>
-            <RankBadge rank={summary?.rank ?? null} />
-            {summary?.nextRank && (
+            <VolunteerBatchBadge batch={summary?.batch ?? null} />
+            {summary?.nextBatch && (
               <p className="text-xs text-muted-foreground">
-                {summary.pointsToNextRank} more points to reach {summary.nextRank}
+                {summary.pointsToNextBatch} more points to reach {summary.nextBatch}
               </p>
             )}
           </div>
@@ -46,7 +46,7 @@ export function MemberRewards() {
               {rewards.map((reward) => (
                 <li key={reward.id} className="flex items-center justify-between py-3 text-sm">
                   <div className="flex items-center gap-2">
-                    <RankBadge rank={reward.rank} />
+                    <VolunteerBatchBadge batch={reward.batch} />
                     <span className="text-muted-foreground">at {reward.pointsAtEarn} points</span>
                   </div>
                   <Badge variant={reward.status === "FULFILLED" ? "secondary" : "outline"}>

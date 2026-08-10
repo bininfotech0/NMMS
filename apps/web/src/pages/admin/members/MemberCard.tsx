@@ -6,7 +6,7 @@ import { useMember, useCardToken } from "@/hooks/useMembers";
 import { useMemberDocuments, useDocumentImageUrl } from "@/hooks/useDocuments";
 import { usePlans } from "@/hooks/usePlans";
 import { useOrgProfile } from "@/hooks/useOrg";
-import { computeRank } from "@/lib/referral-rank";
+import { computeVolunteerBatch } from "@/lib/volunteer-batch";
 import { MembershipCardFront, MembershipCardBack, type CardDisplayData } from "@/components/cards/MembershipCard";
 
 function formatDate(d: string | Date | null): string {
@@ -53,16 +53,16 @@ export function MemberCard() {
     );
   }
 
-  const rank = org ? computeRank(member.referralPointsBalance, org) : null;
+  const batch = org ? computeVolunteerBatch(member.referralPointsBalance, org) : null;
 
   const data: CardDisplayData = {
     fullName: member.fullName,
-    planName: plans.find((p) => p.id === member.planId)?.name ?? "—",
+    planName: member.planName ?? plans.find((p) => p.id === member.planId)?.name ?? "—",
     membershipNumber: member.membershipNumber,
     mobile: member.mobile,
     joiningDate: formatDate(member.joiningDate),
     validUntil: member.validUntil ? formatDate(member.validUntil) : "Lifetime",
-    volunteerBatch: rank ? `${rank.charAt(0)}${rank.slice(1).toLowerCase()}` : null,
+    volunteerBatch: batch ? `${batch.charAt(0)}${batch.slice(1).toLowerCase()}` : null,
   };
 
   return (

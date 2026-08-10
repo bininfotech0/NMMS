@@ -1,4 +1,11 @@
 import { z } from "zod";
+import { planTierSchema } from "./plan";
+
+// Optional override of pointsReward for a specific plan tier — e.g. the same
+// event pays Silver=1pt, Gold=2pt, Platinum=3pt. A tier with no entry falls
+// back to the event's base pointsReward.
+export const tierRewardOverridesSchema = z.record(planTierSchema, z.number().int().nonnegative());
+export type TierRewardOverrides = z.infer<typeof tierRewardOverridesSchema>;
 
 export const eventStatusSchema = z.enum(["PLANNED", "COMPLETED", "CANCELLED"]);
 export type EventStatus = z.infer<typeof eventStatusSchema>;
@@ -25,6 +32,7 @@ export const createEventSchema = z.object({
   targetDescription: z.string().nullish(),
   targetQuantity: z.coerce.number().int().positive().nullish(),
   pointsReward: z.coerce.number().int().nonnegative().optional(),
+  tierRewardOverrides: tierRewardOverridesSchema.optional(),
 });
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 
@@ -39,6 +47,7 @@ export const updateEventSchema = z.object({
   targetDescription: z.string().nullish(),
   targetQuantity: z.coerce.number().int().positive().nullish(),
   pointsReward: z.coerce.number().int().nonnegative().optional(),
+  tierRewardOverrides: tierRewardOverridesSchema.optional(),
 });
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 
@@ -79,6 +88,7 @@ export const eventResponseSchema = z.object({
   targetDescription: z.string().nullable(),
   targetQuantity: z.number().nullable(),
   pointsReward: z.number(),
+  tierRewardOverrides: tierRewardOverridesSchema,
   createdById: z.string(),
   registrationCount: z.number(),
   attendedCount: z.number(),

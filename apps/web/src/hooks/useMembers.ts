@@ -55,6 +55,18 @@ export function useUpdateMember() {
   });
 }
 
+export function useDeleteMember() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/members/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members"] });
+      toast.success("Draft deleted");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to delete member")),
+  });
+}
+
 export function useSubmitMember() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -1,31 +1,47 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type {
+  PlanTier,
   ReferralLedgerEntryResponse,
   ReferralLeaderboardEntryResponse,
   ReferralNetworkNode,
-  ReferralRank,
+  ReferralPointRuleResponse,
   ReferralRewardResponse,
   ReferralSummaryResponse,
   RewardStatus,
+  VolunteerBatch,
 } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { PlanRewardsService } from "../plans/plan-rewards.service";
 import { generateReferralCode } from "./referral-code.util";
-import { computeRank, type RankThresholds } from "./referral-rank.util";
+import { batchMinPoints, computeVolunteerBatch, type VolunteerBatchThresholds } from "./volunteer-batch.util";
 
-const TIERS: ReferralRank[] = ["SILVER", "GOLD", "PLATINUM"];
+const TIERS: VolunteerBatch[] = ["SILVER", "GOLD", "PLATINUM"];
 const MAX_CODE_ATTEMPTS = 5;
 const MAX_NETWORK_DEPTH = 5;
 
+interface ReferralSettings extends VolunteerBatchThresholds {
+  referralProgramEnabled: boolean;
+  pointsPerApprovedReferral: number;
+  referralPointsCapPerMember: number | null;
+  referralRequireActiveReferrerPlan: boolean;
+}
+
 @Injectable()
 export class ReferralsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly planRewards: PlanRewardsService,
+  ) {}
 
   // Called from ApplicationsService.approve() right after a referred member
   // becomes ACTIVE — the single choke point for every approval, mirroring how
   // PaymentsService.finalizePayment() already fires NotificationService there.
   async awardPointsForApproval(approvedMemberId: string): Promise<void> {
-    const approvedMember = await this.prisma.member.findUnique({ where: { id: approvedMemberId } });
+    const approvedMember = await this.prisma.member.findUnique({
+      where: { id: approvedMemberId },
+      include: { plan: { select: { tier: true } } },
+    });
     if (!approvedMember?.referralMemberId) {
       return;
     }
@@ -35,12 +51,36 @@ export class ReferralsService {
       return;
     }
 
+    const referrer = await this.prisma.member.findUnique({
+      where: { id: approvedMember.referralMemberId },
+      include: { plan: { select: { tier: true, isActive: true } } },
+    });
+    if (!referrer) {
+      return;
+    }
+
+    if (settings.referralRequireActiveReferrerPlan && referrer.plan?.isActive !== true) {
+      return;
+    }
+
+    const points = await this.planRewards.computeReferralPoints(
+      approvedMember.organizationId,
+      (referrer.plan?.tier as PlanTier | null) ?? null,
+      (approvedMember.plan?.tier as PlanTier | null) ?? null,
+      settings.pointsPerApprovedReferral,
+    );
+
+    const cappedPoints = await this.applyReferralCap(referrer.id, points, settings.referralPointsCapPerMember);
+    if (cappedPoints <= 0) {
+      return;
+    }
+
     await this.prisma.$transaction((tx) =>
       this.creditPoints(
         tx,
         approvedMember.organizationId,
-        approvedMember.referralMemberId!,
-        settings.pointsPerApprovedReferral,
+        referrer.id,
+        cappedPoints,
         "REFERRAL_APPROVED",
         { relatedMemberId: approvedMember.id },
         settings,
@@ -48,12 +88,26 @@ export class ReferralsService {
     );
   }
 
+  // Clamps `points` so the referrer's lifetime REFERRAL_APPROVED total never
+  // exceeds `cap` (null = uncapped). Returns 0 if the cap was already reached.
+  private async applyReferralCap(referrerId: string, points: number, cap: number | null): Promise<number> {
+    if (cap == null) {
+      return points;
+    }
+    const { _sum } = await this.prisma.referralPointsLedger.aggregate({
+      where: { memberId: referrerId, reason: "REFERRAL_APPROVED" },
+      _sum: { points: true },
+    });
+    const alreadyEarned = _sum.points ?? 0;
+    return Math.max(0, Math.min(points, cap - alreadyEarned));
+  }
+
   // Called from EventsService when staff approve a member's submitted
   // evidence for an event's target — the analogous choke point to
   // awardPointsForApproval, just for the event path. Deliberately not gated
   // by OrgSettings.referralProgramEnabled (that toggle governs the
   // self-referral/link feature specifically; event-based points are a
-  // separate earning channel into the same balance/rank/reward system).
+  // separate earning channel into the same balance/batch/reward system).
   async awardPointsForEventCompletion(
     organizationId: string,
     memberId: string,
@@ -79,7 +133,8 @@ export class ReferralsService {
 
   // Shared by both earning paths above: increments the cached balance,
   // appends a ledger row, and upserts a PENDING ReferralReward for any newly
-  // crossed tier (idempotent via the @@unique([memberId, rank]) constraint).
+  // crossed volunteer batch (idempotent via the @@unique([memberId, batch])
+  // constraint).
   private async creditPoints(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -87,7 +142,7 @@ export class ReferralsService {
     points: number,
     reason: "REFERRAL_APPROVED" | "EVENT_TARGET_COMPLETED",
     related: { relatedMemberId?: string; relatedEventRegistrationId?: string },
-    thresholds: RankThresholds,
+    thresholds: VolunteerBatchThresholds,
   ): Promise<void> {
     const member = await tx.member.update({
       where: { id: memberId },
@@ -105,14 +160,14 @@ export class ReferralsService {
     });
 
     for (const tier of TIERS) {
-      if (member.referralPointsBalance >= tierMin(tier, thresholds)) {
+      if (member.referralPointsBalance >= batchMinPoints(tier, thresholds)) {
         await tx.referralReward.upsert({
-          where: { memberId_rank: { memberId, rank: tier } },
+          where: { memberId_batch: { memberId, batch: tier } },
           update: {},
           create: {
             organizationId,
             memberId,
-            rank: tier,
+            batch: tier,
             pointsAtEarn: member.referralPointsBalance,
             status: "PENDING",
           },
@@ -148,7 +203,7 @@ export class ReferralsService {
     const referralCode = member.status === "ACTIVE" ? await this.ensureReferralCode(memberId) : null;
 
     const settings = await this.getSettings(member.organizationId);
-    const { rank, nextRank, pointsToNextRank } = computeRank(member.referralPointsBalance, settings);
+    const { batch, nextBatch, pointsToNextBatch } = computeVolunteerBatch(member.referralPointsBalance, settings);
 
     const referrals = await this.prisma.member.findMany({
       where: { referralMemberId: memberId },
@@ -159,9 +214,9 @@ export class ReferralsService {
     return {
       referralCode,
       pointsBalance: member.referralPointsBalance,
-      rank,
-      nextRank,
-      pointsToNextRank,
+      batch,
+      nextBatch,
+      pointsToNextBatch,
       referrals,
     };
   }
@@ -197,6 +252,24 @@ export class ReferralsService {
 
   // Staff-facing recursive downline view, depth-capped since there is no
   // closure table — fine for the small networks this program expects.
+  // Staff-triggered equivalent of the lazy generation in getMySummary() —
+  // for members who were registered/approved by staff and have never opened
+  // their own portal (so ensureReferralCode was never called on their
+  // behalf), letting staff hand them a working link right away.
+  async ensureReferralCodeForAdmin(memberId: string, organizationId: string): Promise<string> {
+    const member = await this.prisma.member.findFirst({
+      where: { id: memberId, organizationId },
+      select: { id: true, status: true },
+    });
+    if (!member) {
+      throw new NotFoundException("Member not found");
+    }
+    if (member.status !== "ACTIVE") {
+      throw new ConflictException("Only ACTIVE members can have a referral code");
+    }
+    return this.ensureReferralCode(member.id);
+  }
+
   async getNetwork(memberId: string, organizationId: string): Promise<ReferralNetworkNode> {
     const root = await this.prisma.member.findFirst({
       where: { id: memberId, organizationId },
@@ -276,12 +349,23 @@ export class ReferralsService {
       memberId: member.id,
       fullName: member.fullName,
       pointsBalance: member.referralPointsBalance,
-      rank: computeRank(member.referralPointsBalance, settings).rank,
+      batch: computeVolunteerBatch(member.referralPointsBalance, settings).batch,
       referralCount: member._count.referrals,
     }));
   }
 
-  private async getSettings(organizationId: string): Promise<RankThresholds & { referralProgramEnabled: boolean; pointsPerApprovedReferral: number }> {
+  async listReferralPointRules(organizationId: string): Promise<ReferralPointRuleResponse[]> {
+    return this.planRewards.listReferralPointRules(organizationId);
+  }
+
+  async upsertReferralPointRuleMatrix(
+    organizationId: string,
+    rules: { referrerTier: PlanTier; referredTier: PlanTier; points: number }[],
+  ): Promise<ReferralPointRuleResponse[]> {
+    return this.planRewards.upsertReferralPointRuleMatrix(organizationId, rules);
+  }
+
+  private async getSettings(organizationId: string): Promise<ReferralSettings> {
     return this.prisma.orgSettings.upsert({
       where: { organizationId },
       update: {},
@@ -290,22 +374,11 @@ export class ReferralsService {
   }
 }
 
-function tierMin(tier: ReferralRank, thresholds: RankThresholds): number {
-  switch (tier) {
-    case "SILVER":
-      return thresholds.referralSilverMinPoints;
-    case "GOLD":
-      return thresholds.referralGoldMinPoints;
-    case "PLATINUM":
-      return thresholds.referralPlatinumMinPoints;
-  }
-}
-
 function toRewardResponse(reward: {
   id: string;
   memberId: string;
   member: { fullName: string };
-  rank: string;
+  batch: string;
   pointsAtEarn: number;
   status: string;
   fulfilledById: string | null;
@@ -317,7 +390,7 @@ function toRewardResponse(reward: {
     id: reward.id,
     memberId: reward.memberId,
     memberName: reward.member.fullName,
-    rank: reward.rank as ReferralRewardResponse["rank"],
+    batch: reward.batch as ReferralRewardResponse["batch"],
     pointsAtEarn: reward.pointsAtEarn,
     status: reward.status as ReferralRewardResponse["status"],
     fulfilledById: reward.fulfilledById,
