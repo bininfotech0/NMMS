@@ -7,8 +7,15 @@ function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
   const jwt = { signAsync: jest.fn().mockResolvedValue("signed-token") };
   const config = { getOrThrow: jest.fn().mockReturnValue("secret") };
   const numbering = { nextRegistrationNumber: jest.fn().mockResolvedValue("REG-2026-00099") };
-  const service = new MemberAuthService(prisma as never, jwt as never, config as never, numbering as never);
-  return { service, jwt, config, numbering };
+  const aadhaar = { hash: jest.fn().mockReturnValue("hashed-aadhaar"), last4: jest.fn().mockReturnValue("1234") };
+  const service = new MemberAuthService(
+    prisma as never,
+    jwt as never,
+    config as never,
+    numbering as never,
+    aadhaar as never,
+  );
+  return { service, jwt, config, numbering, aadhaar };
 }
 
 describe("MemberAuthService", () => {
@@ -24,7 +31,7 @@ describe("MemberAuthService", () => {
         makeMember({ id: "member-1", fullName: "New Member", mobile: "9800000001", status: "DRAFT" }),
       );
 
-      const member = await service.register({ fullName: "New Member", mobile: "9800000001", password: "Passw0rd!" });
+      const member = await service.register({ fullName: "New Member", mobile: "9800000001", aadhaarNumber: "123456789012", password: "Passw0rd!" });
 
       expect(member.status).toBe("DRAFT");
       expect(numbering.nextRegistrationNumber).toHaveBeenCalledWith("org-1");
@@ -44,6 +51,60 @@ describe("MemberAuthService", () => {
       );
     });
 
+    it("hashes the Aadhaar number and stores its last 4 digits", async () => {
+      const prisma = makeMockPrisma();
+      const { service, aadhaar } = makeService(prisma);
+      prisma.organization.findFirst.mockResolvedValue({ id: "org-1" });
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue({ id: "system-user-1" });
+      prisma.member.create.mockResolvedValue(makeMember({ status: "DRAFT" }));
+
+      await service.register({
+        fullName: "New Member",
+        mobile: "9800000001",
+        aadhaarNumber: "123456789012",
+        password: "Passw0rd!",
+      });
+
+      expect(aadhaar.hash).toHaveBeenCalledWith("123456789012");
+      expect(aadhaar.last4).toHaveBeenCalledWith("123456789012");
+      expect(prisma.member.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ aadhaarHash: "hashed-aadhaar", aadhaarLast4: "1234" }),
+        }),
+      );
+    });
+
+    it("persists an optional email when provided, or null when omitted", async () => {
+      const prisma = makeMockPrisma();
+      const { service } = makeService(prisma);
+      prisma.organization.findFirst.mockResolvedValue({ id: "org-1" });
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue({ id: "system-user-1" });
+      prisma.member.create.mockResolvedValue(makeMember({ status: "DRAFT" }));
+
+      await service.register({
+        fullName: "New Member",
+        mobile: "9800000001",
+        aadhaarNumber: "123456789012",
+        email: "new@member.test",
+        password: "Passw0rd!",
+      });
+      expect(prisma.member.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ email: "new@member.test" }) }),
+      );
+
+      await service.register({
+        fullName: "New Member",
+        mobile: "9800000002",
+        aadhaarNumber: "123456789013",
+        password: "Passw0rd!",
+      });
+      expect(prisma.member.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ email: null }) }),
+      );
+    });
+
     it("reuses an existing system user instead of creating a duplicate", async () => {
       const prisma = makeMockPrisma();
       const { service } = makeService(prisma);
@@ -52,7 +113,7 @@ describe("MemberAuthService", () => {
       prisma.user.findUnique.mockResolvedValue({ id: "existing-system-user" });
       prisma.member.create.mockResolvedValue(makeMember({ status: "DRAFT" }));
 
-      await service.register({ fullName: "New Member", mobile: "9800000001", password: "Passw0rd!" });
+      await service.register({ fullName: "New Member", mobile: "9800000001", aadhaarNumber: "123456789012", password: "Passw0rd!" });
 
       expect(prisma.user.create).not.toHaveBeenCalled();
       expect(prisma.member.create).toHaveBeenCalledWith(
@@ -67,7 +128,7 @@ describe("MemberAuthService", () => {
       prisma.member.findFirst.mockResolvedValue(makeMember({ passwordHash: "already-set" }));
 
       await expect(
-        service.register({ fullName: "New Member", mobile: "9800000001", password: "Passw0rd!" }),
+        service.register({ fullName: "New Member", mobile: "9800000001", aadhaarNumber: "123456789012", password: "Passw0rd!" }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.member.create).not.toHaveBeenCalled();
     });
@@ -85,6 +146,7 @@ describe("MemberAuthService", () => {
       await service.register({
         fullName: "New Member",
         mobile: "9800000001",
+        aadhaarNumber: "123456789012",
         password: "Passw0rd!",
         referralCode: "ABCD1234",
       });
@@ -106,6 +168,7 @@ describe("MemberAuthService", () => {
         service.register({
           fullName: "New Member",
           mobile: "9800000001",
+          aadhaarNumber: "123456789012",
           password: "Passw0rd!",
           referralCode: "NOPE0000",
         }),

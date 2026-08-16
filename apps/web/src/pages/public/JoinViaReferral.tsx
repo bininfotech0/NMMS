@@ -17,6 +17,8 @@ export function JoinViaReferral() {
   const [referrerName, setReferrerName] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [mobile, setMobile] = useState("");
+  const [aadhaarNumber, setAadhaarNumber] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,7 +35,14 @@ export function JoinViaReferral() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await registerMember({ fullName, mobile, password, referralCode });
+      await registerMember({
+        fullName,
+        mobile,
+        aadhaarNumber,
+        email: email || undefined,
+        password,
+        referralCode,
+      });
       navigate("/member");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -80,6 +89,27 @@ export function JoinViaReferral() {
               value={mobile}
               onChange={(e) => setMobile(e.target.value)}
               required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="aadhaarNumber">Aadhaar number</Label>
+            <Input
+              id="aadhaarNumber"
+              placeholder="12-digit number"
+              value={aadhaarNumber}
+              onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, ""))}
+              maxLength={12}
+              required
+            />
+            <p className="text-xs text-muted-foreground">Only stored as a hash for duplicate checks.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email (optional)</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
           <div className="space-y-1.5">

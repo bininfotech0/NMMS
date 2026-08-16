@@ -4,6 +4,8 @@ import { planTierSchema } from "./plan";
 export const memberRegisterSchema = z.object({
   fullName: z.string().min(1),
   mobile: z.string().min(6),
+  aadhaarNumber: z.string().regex(/^\d{12}$/, "Aadhaar number must be 12 digits"),
+  email: z.string().email().optional(),
   password: z.string().min(8),
   referralCode: z.string().min(1).optional(),
 });

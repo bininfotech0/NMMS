@@ -8,6 +8,7 @@ import type { AuthMember, MemberRegisterInput, ResolveReferralCodeResponse } fro
 import { Role } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { NumberingService } from "../common/numbering.service";
+import { AadhaarHashService } from "../common/aadhaar-hash.service";
 
 // Sentinel account attributed as Member.createdById for self-registered
 // members (createdById is NOT NULL and there's no staff user to point to).
@@ -22,6 +23,7 @@ export class MemberAuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly numbering: NumberingService,
+    private readonly aadhaar: AadhaarHashService,
   ) {}
 
   async register(dto: MemberRegisterInput): Promise<AuthMember> {
@@ -59,6 +61,9 @@ export class MemberAuthService {
         organizationId: org.id,
         fullName: dto.fullName,
         mobile: dto.mobile,
+        email: dto.email ?? null,
+        aadhaarHash: this.aadhaar.hash(dto.aadhaarNumber),
+        aadhaarLast4: this.aadhaar.last4(dto.aadhaarNumber),
         passwordHash,
         referralMemberId,
         selfRegistered: true,
