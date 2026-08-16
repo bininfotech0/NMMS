@@ -44,6 +44,7 @@ export function Dashboard() {
       planBreakdown: reportData.planBreakdown ?? emptySummary.planBreakdown,
       monthlyGrowth: reportData.monthlyGrowth ?? emptySummary.monthlyGrowth,
       recentActivity: reportData.recentActivity ?? emptySummary.recentActivity,
+      expiringThisMonth: reportData.expiringThisMonth ?? 0,
     };
   }, [reportData]);
 

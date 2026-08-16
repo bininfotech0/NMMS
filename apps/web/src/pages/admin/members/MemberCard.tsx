@@ -95,7 +95,7 @@ export function MemberCard() {
         </div>
         <div>
           <p className="no-print mb-2 text-sm font-medium text-muted-foreground">Back</p>
-          <MembershipCardBack />
+          {org && <MembershipCardBack org={org} />}
         </div>
       </div>
     </div>

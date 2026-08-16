@@ -1,7 +1,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import { User } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
-import { organization } from "@/lib/mock-data";
+import type { OrgProfile } from "@nmms/shared";
 
 const CARD_CLASS = "w-[340px] h-[214px] rounded-2xl shadow-md overflow-hidden";
 
@@ -70,18 +70,16 @@ export function MembershipCardFront({
   );
 }
 
-export function MembershipCardBack() {
+export function MembershipCardBack({ org }: { org: Pick<OrgProfile, "name" | "address" | "contactPhone" | "contactEmail"> }) {
   return (
     <div className={`${CARD_CLASS} relative flex flex-col justify-between bg-brand-bg-soft px-4 py-3`}>
       <div className="text-[11px] leading-relaxed text-brand-green-dark">
         <p className="font-heading font-bold">If found, please return to:</p>
-        <p className="mt-1 font-semibold">{organization.name} ({organization.nameLocal})</p>
-        <p>{organization.address}</p>
-        <p>{organization.phone}</p>
-        <p>{organization.email}</p>
-        <p>{organization.website}</p>
+        <p className="mt-1 font-semibold">{org.name}</p>
+        {org.address && <p>{org.address}</p>}
+        {org.contactPhone && <p>{org.contactPhone}</p>}
+        {org.contactEmail && <p>{org.contactEmail}</p>}
       </div>
-      <p className="text-center text-[11px] font-medium text-brand-green">{organization.tagline}</p>
     </div>
   );
 }
