@@ -221,50 +221,94 @@ describe("ReferralsService", () => {
     });
   });
 
-  describe("awardPointsForEventCompletion", () => {
-    it("does nothing when pointsReward is zero or negative", async () => {
+  describe("recordPendingEventPoints", () => {
+    it("does nothing when points is zero or negative", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
 
-      await service.awardPointsForEventCompletion("org-1", "member-1", "reg-1", 0);
+      await service.recordPendingEventPoints("org-1", "member-1", "reg-1", 0);
 
-      expect(prisma.orgSettings.upsert).not.toHaveBeenCalled();
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.referralPointsLedger.findFirst).not.toHaveBeenCalled();
+      expect(prisma.referralPointsLedger.create).not.toHaveBeenCalled();
     });
 
-    it("credits the member's own balance via the same ledger/reward machinery as referrals", async () => {
+    it("creates a PENDING ledger row without touching the cached balance", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
-      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
-      prisma.member.update.mockResolvedValue(makeMember({ id: "member-1", referralPointsBalance: 15 }));
+      prisma.referralPointsLedger.findFirst.mockResolvedValue(null);
 
-      await service.awardPointsForEventCompletion("org-1", "member-1", "reg-1", 15);
+      await service.recordPendingEventPoints("org-1", "member-1", "reg-1", 15);
 
-      expect(prisma.member.update).toHaveBeenCalledWith({
-        where: { id: "member-1" },
-        data: { referralPointsBalance: { increment: 15 } },
-      });
       expect(prisma.referralPointsLedger.create).toHaveBeenCalledWith({
         data: {
           organizationId: "org-1",
           memberId: "member-1",
           points: 15,
           reason: "EVENT_TARGET_COMPLETED",
-          relatedMemberId: undefined,
           relatedEventRegistrationId: "reg-1",
+          status: "PENDING",
         },
       });
+      expect(prisma.member.update).not.toHaveBeenCalled();
     });
 
-    it("is not gated by OrgSettings.referralProgramEnabled", async () => {
+    it("updates an existing PENDING row instead of creating a duplicate on resubmission", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
-      prisma.orgSettings.upsert.mockResolvedValue(makeSettings({ referralProgramEnabled: false }));
+      prisma.referralPointsLedger.findFirst.mockResolvedValue({ id: "ledger-1", points: 10 });
+
+      await service.recordPendingEventPoints("org-1", "member-1", "reg-1", 20);
+
+      expect(prisma.referralPointsLedger.update).toHaveBeenCalledWith({
+        where: { id: "ledger-1" },
+        data: { points: 20 },
+      });
+      expect(prisma.referralPointsLedger.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("resolveEventEvidence", () => {
+    it("does nothing when there is no PENDING row for the registration", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.referralPointsLedger.findFirst.mockResolvedValue(null);
+
+      await service.resolveEventEvidence("org-1", "member-1", "reg-1", true);
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("on rejection, flips the row to REJECTED without touching the balance", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.referralPointsLedger.findFirst.mockResolvedValue({ id: "ledger-1", points: 15 });
+
+      await service.resolveEventEvidence("org-1", "member-1", "reg-1", false);
+
+      expect(prisma.referralPointsLedger.update).toHaveBeenCalledWith({
+        where: { id: "ledger-1" },
+        data: { status: "REJECTED" },
+      });
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+
+    it("on approval, credits the locked-in points and flips the row to APPROVED", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.referralPointsLedger.findFirst.mockResolvedValue({ id: "ledger-1", points: 15 });
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
       prisma.member.update.mockResolvedValue(makeMember({ id: "member-1", referralPointsBalance: 15 }));
 
-      await service.awardPointsForEventCompletion("org-1", "member-1", "reg-1", 15);
+      await service.resolveEventEvidence("org-1", "member-1", "reg-1", true);
 
-      expect(prisma.referralPointsLedger.create).toHaveBeenCalled();
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: "member-1" },
+        data: { referralPointsBalance: { increment: 15 } },
+      });
+      expect(prisma.referralPointsLedger.update).toHaveBeenCalledWith({
+        where: { id: "ledger-1" },
+        data: { status: "APPROVED" },
+      });
     });
   });
 

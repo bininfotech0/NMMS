@@ -9,6 +9,7 @@ import type {
   PaymentResponse,
   PromoteToExecutiveInput,
   UpdateMemberInput,
+  UpgradeMemberPlanInput,
   UserResponse,
 } from "@nmms/shared";
 import { apiFetch } from "@/lib/api-client";
@@ -55,6 +56,25 @@ export function useUpdateMember() {
   });
 }
 
+export function useUpgradeMemberPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: UpgradeMemberPlanInput }) =>
+      apiFetch<MemberResponse>(`/members/${id}/payments/upgrade-plan`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["members"] });
+      queryClient.setQueryData(["members", data.id], data);
+      queryClient.invalidateQueries({ queryKey: ["members", data.id, "payments"] });
+      queryClient.invalidateQueries({ queryKey: ["members", data.id, "status-history"] });
+      toast.success("Membership plan upgraded");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to upgrade plan")),
+  });
+}
+
 export function useDeleteMember() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -96,6 +116,7 @@ export function useDedupeCheck() {
       const query = new URLSearchParams();
       if (params.mobile) query.set("mobile", params.mobile);
       if (params.aadhaarNumber) query.set("aadhaarNumber", params.aadhaarNumber);
+      if (params.fullName) query.set("fullName", params.fullName);
       return apiFetch<DedupeMatch[]>(`/members/dedupe-check?${query.toString()}`);
     },
   });

@@ -126,6 +126,7 @@ export class ReportsService {
       totalCollection: totalCollected,
       thisMonthCollected,
       monthlyCollection: thisMonthCollected,
+      monthlyCollections: this.bucketMonthlyAmounts(payments, monthKeys),
       recentActivity,
       expiringThisMonth: expiredCount,
     };
@@ -257,6 +258,15 @@ export class ReportsService {
       where: { organizationId: user.organizationId, member: buildJurisdictionWhere(user) },
       select: { amount: true, paidAt: true },
     });
+    return this.bucketMonthlyAmounts(payments, monthKeys);
+  }
+
+  // Shared by revenueCollection() and summary()'s monthlyCollections field —
+  // both need the same trailing-12-months bucketing over a payments list.
+  private bucketMonthlyAmounts(
+    payments: { amount: { toNumber(): number }; paidAt: Date }[],
+    monthKeys: string[],
+  ): MonthlyAmount[] {
     const totals = new Map<string, number>(monthKeys.map((k) => [k, 0]));
     for (const p of payments) {
       const key = monthKey(p.paidAt);

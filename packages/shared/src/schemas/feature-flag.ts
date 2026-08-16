@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const featureFlagKeySchema = z.enum([
   "PAYMENT_GATEWAY",
+  "PAYMENT_GATEWAY_PAYOUTS",
   "WHATSAPP_NOTIFY",
   "AI_DEDUPE",
   "AI_OCR",

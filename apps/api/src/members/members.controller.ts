@@ -30,7 +30,7 @@ export class MembersController {
   // "unclaimed-referrals" aren't swallowed as an id param.
   @Get("dedupe-check")
   dedupeCheck(@Query() query: DedupeCheckDto, @CurrentUser() user: AuthUser) {
-    return this.membersService.dedupeCheck(query.mobile, query.aadhaarNumber, user.organizationId);
+    return this.membersService.dedupeCheck(query.mobile, query.aadhaarNumber, query.fullName, user.organizationId);
   }
 
   @Get("search-referrer")

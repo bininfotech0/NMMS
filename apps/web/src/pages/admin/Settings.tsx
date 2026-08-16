@@ -47,6 +47,10 @@ const INTEGRATION_INFO: Record<FeatureFlagKey, { label: string; description: str
     label: "Payment Gateway",
     description: "Accept online membership payments via a card/UPI gateway.",
   },
+  PAYMENT_GATEWAY_PAYOUTS: {
+    label: "Payout Gateway (RazorpayX)",
+    description: "Automatically send approved withdrawals via RazorpayX instead of marking them paid by hand.",
+  },
   WHATSAPP_NOTIFY: {
     label: "WhatsApp Notifications",
     description: "Send approval, receipt, and expiry alerts over WhatsApp.",
@@ -62,6 +66,15 @@ const INTEGRATION_INFO: Record<FeatureFlagKey, { label: string; description: str
   SMS: { label: "SMS Notifications", description: "Send SMS alerts for approvals and renewals." },
   EMAIL: { label: "Email Notifications", description: "Send email receipts and renewal reminders." },
 };
+
+// Flags with an expandable credential form below the enable/disable toggle.
+const CONFIGURABLE_INTEGRATION_KEYS = new Set<FeatureFlagKey>([
+  "PAYMENT_GATEWAY",
+  "PAYMENT_GATEWAY_PAYOUTS",
+  "SMS",
+  "WHATSAPP_NOTIFY",
+  "EMAIL",
+]);
 
 export function Settings() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Organization");
@@ -826,7 +839,7 @@ function IntegrationsSettings() {
                 <p className="text-sm text-muted-foreground">{info.description}</p>
               </div>
               <div className="flex items-center gap-2">
-                {flag.key === "PAYMENT_GATEWAY" && (
+                {CONFIGURABLE_INTEGRATION_KEYS.has(flag.key) && (
                   <Button size="sm" variant="ghost" onClick={() => setExpandedKey((k) => (k === flag.key ? null : flag.key))}>
                     Configure
                     {expandedKey === flag.key ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
@@ -846,6 +859,20 @@ function IntegrationsSettings() {
               </div>
             </div>
             {flag.key === "PAYMENT_GATEWAY" && expandedKey === "PAYMENT_GATEWAY" && <PaymentGatewayConfigForm />}
+            {flag.key === "PAYMENT_GATEWAY_PAYOUTS" && expandedKey === "PAYMENT_GATEWAY_PAYOUTS" && (
+              <PayoutGatewayConfigForm />
+            )}
+            {flag.key === "SMS" && expandedKey === "SMS" && (
+              <TwilioConfigForm flagKey="SMS" fromLabel="From Number" fromPlaceholder="+15551234567" />
+            )}
+            {flag.key === "WHATSAPP_NOTIFY" && expandedKey === "WHATSAPP_NOTIFY" && (
+              <TwilioConfigForm
+                flagKey="WHATSAPP_NOTIFY"
+                fromLabel="WhatsApp From Number"
+                fromPlaceholder="+15551234567"
+              />
+            )}
+            {flag.key === "EMAIL" && expandedKey === "EMAIL" && <ResendConfigForm />}
           </div>
         );
       })}
@@ -918,6 +945,237 @@ function PaymentGatewayConfigForm() {
       <div className="space-y-1.5">
         <Label>Webhook URL — paste this into Razorpay Dashboard → Webhooks</Label>
         <Input readOnly value={webhookUrl} className="bg-muted font-mono text-xs" />
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Credentials are encrypted at rest and are write-only — they won't be shown again after saving.
+      </p>
+
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={updateIntegration.isPending} className="bg-brand-green hover:bg-brand-green/90">
+          {updateIntegration.isPending ? "Saving…" : "Save Credentials"}
+        </Button>
+        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+      </div>
+    </form>
+  );
+}
+
+function PayoutGatewayConfigForm() {
+  const organizationId = useAuthStore((s) => s.user?.organizationId);
+  const updateIntegration = useUpdateIntegration();
+
+  const [keyId, setKeyId] = useState("");
+  const [keySecret, setKeySecret] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const webhookUrl = organizationId
+    ? `${window.location.origin}/api/v1/webhooks/razorpayx-payouts/${organizationId}`
+    : "";
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    await updateIntegration.mutateAsync({
+      key: "PAYMENT_GATEWAY_PAYOUTS",
+      dto: { config: { keyId, keySecret, webhookSecret, accountNumber } },
+    });
+    setKeyId("");
+    setKeySecret("");
+    setWebhookSecret("");
+    setAccountNumber("");
+    setSaved(true);
+  }
+
+  return (
+    <form onSubmit={handleSave} className="mt-4 space-y-4 border-t border-border pt-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="rzpx-key-id">Key ID</Label>
+          <Input
+            id="rzpx-key-id"
+            value={keyId}
+            onChange={(e) => setKeyId(e.target.value)}
+            placeholder="rzp_live_..."
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="rzpx-key-secret">Key Secret</Label>
+          <Input
+            id="rzpx-key-secret"
+            type="password"
+            value={keySecret}
+            onChange={(e) => setKeySecret(e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="rzpx-account-number">RazorpayX Account Number</Label>
+          <Input
+            id="rzpx-account-number"
+            value={accountNumber}
+            onChange={(e) => setAccountNumber(e.target.value)}
+            placeholder="The virtual account payouts are sent from"
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="rzpx-webhook-secret">Webhook Secret</Label>
+          <Input
+            id="rzpx-webhook-secret"
+            type="password"
+            value={webhookSecret}
+            onChange={(e) => setWebhookSecret(e.target.value)}
+            placeholder="From Razorpay Dashboard → Webhooks"
+            required
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Webhook URL — paste this into Razorpay Dashboard → Webhooks</Label>
+        <Input readOnly value={webhookUrl} className="bg-muted font-mono text-xs" />
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Credentials are encrypted at rest and are write-only — they won't be shown again after saving.
+      </p>
+
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={updateIntegration.isPending} className="bg-brand-green hover:bg-brand-green/90">
+          {updateIntegration.isPending ? "Saving…" : "Save Credentials"}
+        </Button>
+        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+      </div>
+    </form>
+  );
+}
+
+function TwilioConfigForm({
+  flagKey,
+  fromLabel,
+  fromPlaceholder,
+}: {
+  flagKey: "SMS" | "WHATSAPP_NOTIFY";
+  fromLabel: string;
+  fromPlaceholder: string;
+}) {
+  const updateIntegration = useUpdateIntegration();
+
+  const [accountSid, setAccountSid] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [fromNumber, setFromNumber] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    await updateIntegration.mutateAsync({
+      key: flagKey,
+      dto: { config: { accountSid, authToken, fromNumber } },
+    });
+    setAccountSid("");
+    setAuthToken("");
+    setFromNumber("");
+    setSaved(true);
+  }
+
+  return (
+    <form onSubmit={handleSave} className="mt-4 space-y-4 border-t border-border pt-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={`twilio-sid-${flagKey}`}>Twilio Account SID</Label>
+          <Input
+            id={`twilio-sid-${flagKey}`}
+            value={accountSid}
+            onChange={(e) => setAccountSid(e.target.value)}
+            placeholder="AC..."
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`twilio-token-${flagKey}`}>Auth Token</Label>
+          <Input
+            id={`twilio-token-${flagKey}`}
+            type="password"
+            value={authToken}
+            onChange={(e) => setAuthToken(e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor={`twilio-from-${flagKey}`}>{fromLabel}</Label>
+          <Input
+            id={`twilio-from-${flagKey}`}
+            value={fromNumber}
+            onChange={(e) => setFromNumber(e.target.value)}
+            placeholder={fromPlaceholder}
+            required
+          />
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Credentials are encrypted at rest and are write-only — they won't be shown again after saving.
+      </p>
+
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={updateIntegration.isPending} className="bg-brand-green hover:bg-brand-green/90">
+          {updateIntegration.isPending ? "Saving…" : "Save Credentials"}
+        </Button>
+        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+      </div>
+    </form>
+  );
+}
+
+function ResendConfigForm() {
+  const updateIntegration = useUpdateIntegration();
+
+  const [apiKey, setApiKey] = useState("");
+  const [fromAddress, setFromAddress] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    await updateIntegration.mutateAsync({
+      key: "EMAIL",
+      dto: { config: { apiKey, fromAddress } },
+    });
+    setApiKey("");
+    setFromAddress("");
+    setSaved(true);
+  }
+
+  return (
+    <form onSubmit={handleSave} className="mt-4 space-y-4 border-t border-border pt-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="resend-api-key">Resend API Key</Label>
+          <Input
+            id="resend-api-key"
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="re_..."
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="resend-from-address">From Address</Label>
+          <Input
+            id="resend-from-address"
+            type="email"
+            value={fromAddress}
+            onChange={(e) => setFromAddress(e.target.value)}
+            placeholder="notifications@yourorg.org"
+            required
+          />
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">

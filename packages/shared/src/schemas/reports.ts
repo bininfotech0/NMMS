@@ -41,6 +41,7 @@ export const reportsSummaryResponseSchema = z.object({
   totalCollection: z.number().optional(),
   thisMonthCollected: z.number(),
   monthlyCollection: z.number().optional(),
+  monthlyCollections: z.array(monthlyAmountSchema).optional(),
   recentActivity: z.array(recentActivitySchema).optional(),
   expiringThisMonth: z.number().optional(),
 });

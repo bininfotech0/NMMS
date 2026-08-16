@@ -279,6 +279,7 @@ export type IdentityAutoFillResponse = z.infer<typeof identityAutoFillResponseSc
 export const dedupeCheckSchema = z.object({
   mobile: z.string().optional(),
   aadhaarNumber: z.string().regex(/^\d{12}$/).optional(),
+  fullName: z.string().optional(),
 });
 export type DedupeCheckInput = z.infer<typeof dedupeCheckSchema>;
 
@@ -286,7 +287,7 @@ export interface DedupeMatch {
   id: string;
   fullName: string;
   status: MemberStatus;
-  matchedOn: "mobile" | "aadhaar";
+  matchedOn: "mobile" | "aadhaar" | "name";
 }
 
 // Promotes an ACTIVE member to a Field Executive staff account — the admin

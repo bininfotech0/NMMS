@@ -20,7 +20,14 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { captureGeolocation, getOrCreateDeviceId, isOnline } from "@/lib/device";
 import { useCreateMember, useDedupeCheck, useDeleteMember, useMembers } from "@/hooks/useMembers";
-import type { MemberResponse, MemberStatus } from "@nmms/shared";
+import type { DedupeMatch, MemberResponse, MemberStatus } from "@nmms/shared";
+
+function describeDedupeMatch(match: DedupeMatch): string {
+  if (match.matchedOn === "name") {
+    return `This name is similar to an existing member: ${match.fullName} (${match.status}). Please confirm this isn't a duplicate.`;
+  }
+  return `This mobile number matches an existing member: ${match.fullName} (${match.status}).`;
+}
 
 const STATUS_FILTERS: ("All" | MemberStatus)[] = [
   "All",
@@ -276,12 +283,8 @@ function AddMemberSheet({
 
   async function handleMobileBlur() {
     if (mobile.length < 10) return;
-    const matches = await dedupeCheck.mutateAsync({ mobile });
-    setDedupeWarning(
-      matches.length > 0
-        ? `This mobile number matches an existing member: ${matches[0].fullName} (${matches[0].status}).`
-        : null,
-    );
+    const matches = await dedupeCheck.mutateAsync({ mobile, fullName: fullName || undefined });
+    setDedupeWarning(matches.length > 0 ? describeDedupeMatch(matches[0]) : null);
   }
 
   async function handleSubmit(e: React.FormEvent) {

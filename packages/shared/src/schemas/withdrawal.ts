@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { payoutMethodSchema } from "./kyc";
 
-export const withdrawalStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED", "PAID"]);
+export const withdrawalStatusSchema = z.enum([
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "PAYOUT_PROCESSING",
+  "PAYOUT_FAILED",
+  "PAID",
+]);
 export type WithdrawalStatus = z.infer<typeof withdrawalStatusSchema>;
 
 export const withdrawalChargeTypeSchema = z.enum(["NONE", "FLAT", "PERCENTAGE"]);
@@ -30,6 +37,9 @@ export const withdrawalRequestResponseSchema = z.object({
   status: withdrawalStatusSchema,
   reviewedAt: z.date().nullable(),
   reviewNote: z.string().nullable(),
+  payoutInitiatedAt: z.date().nullable(),
+  payoutGatewayUtr: z.string().nullable(),
+  payoutFailureReason: z.string().nullable(),
   paidAt: z.date().nullable(),
   paymentReference: z.string().nullable(),
   createdAt: z.date(),
@@ -37,6 +47,10 @@ export const withdrawalRequestResponseSchema = z.object({
 export type WithdrawalRequestResponse = z.infer<typeof withdrawalRequestResponseSchema>;
 
 // The spec's six wallet fields — see WithdrawalsService.getWalletSummary.
+// pendingPoints/approvedPoints reflect open WithdrawalRequest locks, not
+// activity-level review status; pendingReviewPoints (added later) is the
+// separate "event evidence awaiting staff review" total from
+// ReferralPointsLedger — it never overlaps with earnedPoints until approved.
 export const walletSummaryResponseSchema = z.object({
   earnedPoints: z.number(),
   pendingPoints: z.number(),
@@ -45,6 +59,7 @@ export const walletSummaryResponseSchema = z.object({
   availableBalancePoints: z.number(),
   availableBalanceAmount: z.number(),
   withdrawnAmount: z.number(),
+  pendingReviewPoints: z.number(),
 });
 export type WalletSummaryResponse = z.infer<typeof walletSummaryResponseSchema>;
 

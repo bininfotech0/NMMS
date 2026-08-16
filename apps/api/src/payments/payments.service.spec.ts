@@ -53,11 +53,12 @@ describe("PaymentsService.recordPayment", () => {
     expect(prisma.member.update).not.toHaveBeenCalled();
   });
 
-  it("records a renewal payment for an ACTIVE member: extends validUntil, no status change, no notify", async () => {
+  it("records a renewal payment for an ACTIVE member: CAS'd back to ACTIVE, extends validUntil, records RENEWED audit trail, no notify", async () => {
     const prisma = makeMockPrisma();
     const { service, notifications } = makeService(prisma);
     const active = makeMember({ status: "ACTIVE", plan: monthsPlan });
     prisma.member.findFirst.mockResolvedValue(active);
+    prisma.member.updateMany.mockResolvedValue({ count: 1 });
     prisma.payment.create.mockResolvedValue({
       id: "payment-2",
       memberId: "member-1",
@@ -73,14 +74,75 @@ describe("PaymentsService.recordPayment", () => {
     const user = makeAuthUser();
     await service.recordPayment("member-1", { amount: 500, mode: "UPI", transactionNumber: "UPI123" }, user);
 
-    // No CAS/status transition for a renewal — the member stays ACTIVE.
-    expect(prisma.member.updateMany).not.toHaveBeenCalled();
-    expect(prisma.statusHistory.create).not.toHaveBeenCalled();
-    expect(notifications.notify).not.toHaveBeenCalled();
-    expect(prisma.member.update).toHaveBeenCalledWith({
-      where: { id: "member-1" },
-      data: { validUntil: expect.any(Date) },
+    expect(prisma.member.updateMany).toHaveBeenCalledWith({
+      where: { id: "member-1", status: "ACTIVE" },
+      data: { status: "ACTIVE", validUntil: expect.any(Date) },
     });
+    expect(prisma.statusHistory.create).toHaveBeenCalledWith({
+      data: { memberId: "member-1", fromStatus: "ACTIVE", toStatus: "RENEWED", actorId: user.id },
+    });
+    expect(prisma.statusHistory.create).toHaveBeenCalledWith({
+      data: { memberId: "member-1", fromStatus: "RENEWED", toStatus: "ACTIVE", actorId: user.id },
+    });
+    expect(notifications.notify).not.toHaveBeenCalled();
+    // The old direct-update path must not fire for a renewal.
+    expect(prisma.member.update).not.toHaveBeenCalled();
+  });
+
+  it("renews a lapsed EXPIRED member back to ACTIVE", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const expired = makeMember({ status: "EXPIRED", plan: monthsPlan });
+    prisma.member.findFirst.mockResolvedValue(expired);
+    prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.payment.create.mockResolvedValue({
+      id: "payment-4",
+      memberId: "member-1",
+      amount: decimal(500),
+      mode: "CASH",
+      receiptNumber: "RCPT-2026-00001",
+      transactionNumber: null,
+      remarks: null,
+      receivedById: "user-1",
+      paidAt: new Date(),
+    });
+
+    const user = makeAuthUser();
+    await service.recordPayment("member-1", { amount: 500, mode: "CASH" }, user);
+
+    expect(prisma.member.updateMany).toHaveBeenCalledWith({
+      where: { id: "member-1", status: "EXPIRED" },
+      data: { status: "ACTIVE", validUntil: expect.any(Date) },
+    });
+    expect(prisma.statusHistory.create).toHaveBeenCalledWith({
+      data: { memberId: "member-1", fromStatus: "EXPIRED", toStatus: "RENEWED", actorId: user.id },
+    });
+    expect(prisma.statusHistory.create).toHaveBeenCalledWith({
+      data: { memberId: "member-1", fromStatus: "RENEWED", toStatus: "ACTIVE", actorId: user.id },
+    });
+  });
+
+  it("throws a ConflictException if the member's status changed before the renewal CAS lands", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const active = makeMember({ status: "ACTIVE", plan: monthsPlan });
+    prisma.member.findFirst.mockResolvedValue(active);
+    prisma.member.updateMany.mockResolvedValue({ count: 0 });
+    prisma.payment.create.mockResolvedValue({
+      id: "payment-5",
+      memberId: "member-1",
+      amount: decimal(500),
+      mode: "CASH",
+      receiptNumber: "RCPT-2026-00001",
+      transactionNumber: null,
+      remarks: null,
+      receivedById: "user-1",
+      paidAt: new Date(),
+    });
+
+    await expect(
+      service.recordPayment("member-1", { amount: 500, mode: "CASH" }, makeAuthUser()),
+    ).rejects.toThrow(ConflictException);
   });
 
   it("gives a LIFETIME plan renewal a null validUntil", async () => {
@@ -88,6 +150,7 @@ describe("PaymentsService.recordPayment", () => {
     const { service } = makeService(prisma);
     const active = makeMember({ status: "ACTIVE", plan: { validityType: "LIFETIME", validityMonths: null } });
     prisma.member.findFirst.mockResolvedValue(active);
+    prisma.member.updateMany.mockResolvedValue({ count: 1 });
     prisma.payment.create.mockResolvedValue({
       id: "payment-3",
       memberId: "member-1",
@@ -101,7 +164,10 @@ describe("PaymentsService.recordPayment", () => {
     });
 
     await service.recordPayment("member-1", { amount: 1000, mode: "CASH" }, makeAuthUser());
-    expect(prisma.member.update).toHaveBeenCalledWith({ where: { id: "member-1" }, data: { validUntil: null } });
+    expect(prisma.member.updateMany).toHaveBeenCalledWith({
+      where: { id: "member-1", status: "ACTIVE" },
+      data: { status: "ACTIVE", validUntil: null },
+    });
   });
 
   it("404s when the member doesn't exist or is out of the caller's scope", async () => {

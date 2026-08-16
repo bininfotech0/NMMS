@@ -100,3 +100,39 @@ export function useMarkWithdrawalPaid() {
     onError: (err) => toast.error(errorMessage(err, "Failed to mark withdrawal as paid")),
   });
 }
+
+// Whether the org has RazorpayX payout credentials configured — gates
+// whether the "Send Payout" button shows at all, same pattern as
+// usePayments' gateway/status check on the collection side.
+export function usePayoutGatewayStatus() {
+  return useQuery({
+    queryKey: ["withdrawals", "gateway", "status"],
+    queryFn: () => apiFetch<{ enabled: boolean }>("/withdrawals/gateway/status"),
+  });
+}
+
+export function useInitiatePayout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<WithdrawalRequestResponse>(`/withdrawals/${id}/initiate-payout`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["withdrawals", "admin"] });
+      toast.success("Payout initiated");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to initiate payout")),
+  });
+}
+
+export function useCheckPayoutStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<WithdrawalRequestResponse>(`/withdrawals/${id}/check-payout-status`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["withdrawals", "admin"] });
+      toast.success("Payout status refreshed");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to check payout status")),
+  });
+}

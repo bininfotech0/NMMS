@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { FeatureFlagKey } from "@prisma/client";
 import type { Prisma, Member } from "@prisma/client";
 import type {
   AuthUser,
@@ -16,13 +17,26 @@ import { AadhaarHashService } from "../common/aadhaar-hash.service";
 import { DocumentStorageService } from "../common/document-storage.service";
 import { NumberingService } from "../common/numbering.service";
 import { buildJurisdictionWhere } from "../common/scope.util";
+import { jaroWinklerSimilarity } from "../common/string-similarity.util";
+import { IntegrationsService } from "../integrations/integrations.service";
 import { UsersService } from "../users/users.service";
 import { toMemberResponse } from "./member.mapper";
 
+// AI_DEDUPE's fuzzy name pass: below this Jaro-Winkler score, two names are
+// treated as unrelated rather than a likely duplicate registration.
+const NAME_MATCH_THRESHOLD = 0.88;
+
 // Editable pre-submission — DRAFT while filling the form, PAYMENT_COLLECTED
 // after the registration fee is recorded but before the wizard's later steps
-// (documents/declaration/review) are saved. Locked once SUBMITTED.
+// (documents/declaration/review) are saved. Locked once SUBMITTED (through
+// SUBMITTED/APPROVED) so a pending application can't be altered mid-review.
 const EDITABLE_STATUSES = ["DRAFT", "PAYMENT_COLLECTED"] as const;
+// ACTIVE/SUSPENDED members can still have their profile corrected by staff
+// (e.g. a typo'd address or phone number) — but only by ADMIN/SUPER_ADMIN,
+// not the field executive who created them, since the record is now
+// lifecycle-locked and out of that field executive's day-to-day workflow.
+const STAFF_ONLY_EDITABLE_STATUSES = ["ACTIVE", "SUSPENDED"] as const;
+const CAN_EDIT_ACTIVE_MEMBER: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 
 const MEMBER_INCLUDE = {
   nominee: true,
@@ -49,6 +63,7 @@ export class MembersService {
     private readonly numbering: NumberingService,
     private readonly usersService: UsersService,
     private readonly storage: DocumentStorageService,
+    private readonly integrations: IntegrationsService,
   ) {}
 
   async findAll(user: AuthUser): Promise<MemberResponse[]> {
@@ -94,10 +109,11 @@ export class MembersService {
     const existing = await this.findEditable(id, user);
 
     // Once the registration fee is collected, the plan/fee it was collected
-    // against must not silently drift — PAYMENT_COLLECTED stays editable for
-    // the wizard's later steps (documents/declaration/review), but changing
-    // what was actually paid for requires a new payment cycle, not a PATCH.
-    if (existing.status === "PAYMENT_COLLECTED") {
+    // against must not silently drift — PAYMENT_COLLECTED/ACTIVE/SUSPENDED
+    // all stay editable for other profile fields, but changing what was
+    // actually paid for requires a new payment cycle (or a dedicated
+    // upgrade flow, not yet built), not a PATCH.
+    if (existing.status !== "DRAFT") {
       const planChanged = dto.planId !== undefined && dto.planId !== existing.planId;
       const feeChanged =
         dto.feeOverride !== undefined &&
@@ -176,30 +192,58 @@ export class MembersService {
   async dedupeCheck(
     mobile: string | undefined,
     aadhaarNumber: string | undefined,
+    fullName: string | undefined,
     organizationId: string,
   ): Promise<DedupeMatch[]> {
     const aadhaarHash = aadhaarNumber ? this.aadhaar.hash(aadhaarNumber) : undefined;
-    if (!mobile && !aadhaarHash) {
-      return [];
+    const results = new Map<string, DedupeMatch>();
+
+    if (mobile || aadhaarHash) {
+      const exactMatches = await this.prisma.member.findMany({
+        where: {
+          organizationId,
+          status: { not: "REJECTED" },
+          OR: [
+            ...(mobile ? [{ mobile }] : []),
+            ...(aadhaarHash ? [{ aadhaarHash }] : []),
+          ],
+        },
+      });
+      for (const m of exactMatches) {
+        results.set(m.id, {
+          id: m.id,
+          fullName: m.fullName,
+          status: m.status as DedupeMatch["status"],
+          matchedOn: aadhaarHash && m.aadhaarHash === aadhaarHash ? "aadhaar" : "mobile",
+        });
+      }
     }
 
-    const matches = await this.prisma.member.findMany({
-      where: {
-        organizationId,
-        status: { not: "REJECTED" },
-        OR: [
-          ...(mobile ? [{ mobile }] : []),
-          ...(aadhaarHash ? [{ aadhaarHash }] : []),
-        ],
-      },
-    });
+    // AI_DEDUPE: a fuzzy pass on top of the exact mobile/Aadhaar match above,
+    // catching near-duplicate registrations (typos, family members with
+    // slightly varied names) that share neither contact field.
+    if (fullName && fullName.trim().length > 1) {
+      const enabled = await this.integrations.isEnabled(FeatureFlagKey.AI_DEDUPE, organizationId);
+      if (enabled) {
+        const candidates = await this.prisma.member.findMany({
+          where: { organizationId, status: { not: "REJECTED" } },
+          select: { id: true, fullName: true, status: true },
+        });
+        for (const c of candidates) {
+          if (results.has(c.id)) continue;
+          if (jaroWinklerSimilarity(fullName, c.fullName) >= NAME_MATCH_THRESHOLD) {
+            results.set(c.id, {
+              id: c.id,
+              fullName: c.fullName,
+              status: c.status as DedupeMatch["status"],
+              matchedOn: "name",
+            });
+          }
+        }
+      }
+    }
 
-    return matches.map((m) => ({
-      id: m.id,
-      fullName: m.fullName,
-      status: m.status as DedupeMatch["status"],
-      matchedOn: aadhaarHash && m.aadhaarHash === aadhaarHash ? ("aadhaar" as const) : ("mobile" as const),
-    }));
+    return Array.from(results.values());
   }
 
   // Powers the "Referred by" typeahead in the registration wizard — any
@@ -354,12 +398,23 @@ export class MembersService {
     return member;
   }
 
-  // Editable by its creator or by an org admin, only pre-submission (DRAFT or
-  // PAYMENT_COLLECTED — see EDITABLE_STATUSES).
+  // Editable by its creator or by an org admin, pre-submission (DRAFT or
+  // PAYMENT_COLLECTED — see EDITABLE_STATUSES). ACTIVE/SUSPENDED members are
+  // also editable, but only by an ADMIN/SUPER_ADMIN (see
+  // STAFF_ONLY_EDITABLE_STATUSES) — not by the field executive who created
+  // them, since the record is lifecycle-locked at that point.
   private async findEditable(id: string, user: AuthUser): Promise<Member> {
     const member = await this.findOwned(id, user);
-    if (!EDITABLE_STATUSES.includes(member.status as (typeof EDITABLE_STATUSES)[number])) {
-      throw new ConflictException("Only members in DRAFT or PAYMENT_COLLECTED status can be edited");
+    const preSubmissionEditable = EDITABLE_STATUSES.includes(
+      member.status as (typeof EDITABLE_STATUSES)[number],
+    );
+    const staffCorrectable =
+      CAN_EDIT_ACTIVE_MEMBER.includes(user.role) &&
+      STAFF_ONLY_EDITABLE_STATUSES.includes(member.status as (typeof STAFF_ONLY_EDITABLE_STATUSES)[number]);
+    if (!preSubmissionEditable && !staffCorrectable) {
+      throw new ConflictException(
+        "Only members in DRAFT or PAYMENT_COLLECTED status can be edited (ACTIVE/SUSPENDED members can be corrected by an admin)",
+      );
     }
     return member;
   }

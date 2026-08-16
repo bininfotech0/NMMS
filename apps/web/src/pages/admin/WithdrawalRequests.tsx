@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Landmark } from "lucide-react";
+import { Check, Landmark, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,10 @@ import { ApiError } from "@/lib/api-client";
 import {
   useAdminWithdrawals,
   useApproveWithdrawal,
+  useCheckPayoutStatus,
+  useInitiatePayout,
   useMarkWithdrawalPaid,
+  usePayoutGatewayStatus,
   useRejectWithdrawal,
 } from "@/hooks/useWithdrawals";
 import type { WithdrawalRequestResponse, WithdrawalStatus } from "@nmms/shared";
@@ -34,6 +37,8 @@ import type { WithdrawalRequestResponse, WithdrawalStatus } from "@nmms/shared";
 const TABS: { label: string; value: WithdrawalStatus | undefined }[] = [
   { label: "Pending", value: "PENDING" },
   { label: "Approved", value: "APPROVED" },
+  { label: "Processing", value: "PAYOUT_PROCESSING" },
+  { label: "Payout Failed", value: "PAYOUT_FAILED" },
   { label: "Rejected", value: "REJECTED" },
   { label: "Paid", value: "PAID" },
   { label: "All", value: undefined },
@@ -42,6 +47,8 @@ const TABS: { label: string; value: WithdrawalStatus | undefined }[] = [
 const STATUS_STYLES: Record<WithdrawalStatus, string> = {
   PENDING: "bg-amber-100 text-amber-700",
   APPROVED: "bg-sky-100 text-sky-700",
+  PAYOUT_PROCESSING: "bg-indigo-100 text-indigo-700",
+  PAYOUT_FAILED: "bg-orange-100 text-orange-700",
   REJECTED: "bg-red-100 text-red-700",
   PAID: "bg-emerald-100 text-emerald-700",
 };
@@ -50,6 +57,9 @@ export function WithdrawalRequests() {
   const [status, setStatus] = useState<WithdrawalStatus | undefined>("PENDING");
   const { data: requests = [], isLoading, isError } = useAdminWithdrawals(status);
   const approve = useApproveWithdrawal();
+  const initiatePayout = useInitiatePayout();
+  const checkPayoutStatus = useCheckPayoutStatus();
+  const { data: gatewayStatus } = usePayoutGatewayStatus();
   const [rejectTarget, setRejectTarget] = useState<WithdrawalRequestResponse | null>(null);
   const [payTarget, setPayTarget] = useState<WithdrawalRequestResponse | null>(null);
   const [approveTarget, setApproveTarget] = useState<WithdrawalRequestResponse | null>(null);
@@ -117,7 +127,7 @@ export function WithdrawalRequests() {
                   </TableCell>
                   <TableCell>
                     <Badge className={`border-transparent font-medium ${STATUS_STYLES[r.status]}`}>
-                      {r.status[0] + r.status.slice(1).toLowerCase()}
+                      {r.status[0] + r.status.slice(1).toLowerCase().replace(/_/g, " ")}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
@@ -143,6 +153,17 @@ export function WithdrawalRequests() {
                       )}
                       {r.status === "APPROVED" && (
                         <>
+                          {gatewayStatus?.enabled && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={initiatePayout.isPending}
+                              onClick={() => initiatePayout.mutate(r.id)}
+                            >
+                              <Send className="size-4" />
+                              Send Payout
+                            </Button>
+                          )}
                           <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
                             <Landmark className="size-4" />
                             Mark Paid
@@ -155,6 +176,36 @@ export function WithdrawalRequests() {
                           >
                             Reject
                           </Button>
+                        </>
+                      )}
+                      {r.status === "PAYOUT_PROCESSING" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={checkPayoutStatus.isPending}
+                          onClick={() => checkPayoutStatus.mutate(r.id)}
+                        >
+                          <RefreshCw className="size-4" />
+                          Check Status
+                        </Button>
+                      )}
+                      {r.status === "PAYOUT_FAILED" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
+                            <Landmark className="size-4" />
+                            Mark Paid
+                          </Button>
+                          {gatewayStatus?.enabled && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={initiatePayout.isPending}
+                              onClick={() => initiatePayout.mutate(r.id)}
+                            >
+                              <Send className="size-4" />
+                              Retry Payout
+                            </Button>
+                          )}
                         </>
                       )}
                     </div>

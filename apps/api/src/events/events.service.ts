@@ -243,6 +243,14 @@ export class EventsService {
       },
       include: { member: { select: { fullName: true, mobile: true } } },
     });
+
+    // Lock in the points value now, at submission time — see
+    // ReferralsService.recordPendingEventPoints for why review time doesn't
+    // recompute it.
+    const tier = await this.planRewards.getMemberTier(member.id);
+    const points = await this.planRewards.computeEventPoints(member.organizationId, eventId, tier);
+    await this.referrals.recordPendingEventPoints(member.organizationId, member.id, registration.id, points);
+
     return this.toRegistrationResponse(updated);
   }
 
@@ -265,7 +273,7 @@ export class EventsService {
     note: string | undefined,
     user: AuthUser,
   ): Promise<EventRegistrationResponse> {
-    const event = await this.findScoped(eventId, user.organizationId);
+    await this.findScoped(eventId, user.organizationId); // 404s if the event doesn't exist / isn't in this org
     const registration = await this.prisma.eventRegistration.findFirst({
       where: { id: registrationId, eventId },
     });
@@ -287,16 +295,7 @@ export class EventsService {
       include: { member: { select: { fullName: true, mobile: true } } },
     });
 
-    if (approved) {
-      const tier = await this.planRewards.getMemberTier(registration.memberId);
-      const points = await this.planRewards.computeEventPoints(user.organizationId, event.id, tier);
-      await this.referrals.awardPointsForEventCompletion(
-        user.organizationId,
-        registration.memberId,
-        registration.id,
-        points,
-      );
-    }
+    await this.referrals.resolveEventEvidence(user.organizationId, registration.memberId, registration.id, approved);
 
     return this.toRegistrationResponse(updated);
   }

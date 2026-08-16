@@ -22,12 +22,14 @@ export class IdentityAutoFillController {
   @Post("auto-fill")
   async autoFill(@Param("memberId") _memberId: string, @Req() req: FastifyRequest, @CurrentUser() user: AuthUser) {
     let fileBuffer: Buffer | undefined;
+    let mimeType: string | undefined;
     let typeValue: string | undefined;
 
     try {
       for await (const part of req.parts()) {
         if (part.type === "file") {
           fileBuffer = await part.toBuffer();
+          mimeType = part.mimetype;
         } else if (part.fieldname === "type") {
           typeValue = String(part.value);
         }
@@ -36,7 +38,7 @@ export class IdentityAutoFillController {
       throw new BadRequestException("File exceeds the 2 MB upload limit");
     }
 
-    if (!fileBuffer) {
+    if (!fileBuffer || !mimeType) {
       throw new BadRequestException("A file is required");
     }
     const type = documentTypeSchema.safeParse(typeValue);
@@ -44,6 +46,6 @@ export class IdentityAutoFillController {
       throw new BadRequestException("A valid document type is required");
     }
 
-    return this.ocrService.extract(fileBuffer, type.data, user.organizationId);
+    return this.ocrService.extract(fileBuffer, mimeType, type.data, user.organizationId);
   }
 }

@@ -2,20 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { FeatureFlagKey, type DocumentType } from "@prisma/client";
 import type { IdentityAutoFillResponse } from "@nmms/shared";
 import { IntegrationsService } from "../integrations/integrations.service";
-
-export interface OcrProvider {
-  extract(document: Buffer, docType: DocumentType): Promise<Partial<IdentityAutoFillResponse>>;
-}
-
-// No OCR vendor is integrated yet — auto-fill always falls back to manual
-// entry. Swap this out for a real provider once one is chosen; the AI_OCR
-// feature flag (checked in OcrService.extract) is the gate that controls
-// whether extraction is even attempted.
-class NoOpOcrProvider implements OcrProvider {
-  async extract(): Promise<Partial<IdentityAutoFillResponse>> {
-    return {};
-  }
-}
+import { ClaudeOcrProvider } from "./providers/claude-ocr-provider";
 
 const EMPTY_RESULT: IdentityAutoFillResponse = {
   fullName: null,
@@ -30,12 +17,14 @@ const EMPTY_RESULT: IdentityAutoFillResponse = {
 
 @Injectable()
 export class OcrService {
-  private readonly provider: OcrProvider = new NoOpOcrProvider();
-
-  constructor(private readonly integrations: IntegrationsService) {}
+  constructor(
+    private readonly integrations: IntegrationsService,
+    private readonly provider: ClaudeOcrProvider,
+  ) {}
 
   async extract(
     document: Buffer,
+    mimeType: string,
     docType: DocumentType,
     organizationId: string,
   ): Promise<IdentityAutoFillResponse> {
@@ -43,7 +32,7 @@ export class OcrService {
     if (!enabled) {
       return EMPTY_RESULT;
     }
-    const extracted = await this.provider.extract(document, docType);
+    const extracted = await this.provider.extract(document, mimeType, docType);
     return { ...EMPTY_RESULT, ...extracted };
   }
 }

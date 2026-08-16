@@ -153,6 +153,7 @@ model User {
   kycReviewedMembers         Member[]               @relation("MemberKycReviewedBy")
   reviewedWithdrawalRequests WithdrawalRequest[]    @relation("WithdrawalReviewedBy")
   paidWithdrawalRequests     WithdrawalRequest[]    @relation("WithdrawalPaidBy")
+  payoutInitiatedWithdrawalRequests WithdrawalRequest[] @relation("WithdrawalPayoutInitiatedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -234,6 +235,7 @@ model Lookup {
 
 enum FeatureFlagKey {
   PAYMENT_GATEWAY
+  PAYMENT_GATEWAY_PAYOUTS
   WHATSAPP_NOTIFY
   AI_DEDUPE
   AI_OCR
@@ -798,9 +800,14 @@ model ReferralPointsLedger {
 
   points Int
   reason ReferralLedgerReason
-  // Phase 1 always inserts APPROVED (both earning paths only credit after the
-  // underlying action is already approved). PENDING/CONVERTED are reserved
-  // for a future points-to-money conversion/withdrawal lifecycle.
+  // REFERRAL_APPROVED always inserts APPROVED directly — a referral only
+  // fires once the referred member is already active, so there's no
+  // meaningful pending window. EVENT_TARGET_COMPLETED inserts PENDING at
+  // evidence-submission time (see ReferralsService.recordPendingEventPoints)
+  // and is resolved to APPROVED/REJECTED on staff review (see
+  // ReferralsService.resolveEventEvidence) — only APPROVED rows count toward
+  // Member.referralPointsBalance. CONVERTED is reserved for a future
+  // points-to-money conversion lifecycle beyond the current withdrawal flow.
   status PointsLedgerStatus   @default(APPROVED)
 
   // The referred member whose approval triggered this entry — null for
@@ -838,6 +845,10 @@ enum PointsLedgerStatus {
   PENDING
   APPROVED
   CONVERTED
+  // A PENDING event-evidence submission that staff rejected — never counted
+  // toward Member.referralPointsBalance. The ledger stays append-only: this
+  // row is never deleted, just closed out in place.
+  REJECTED
 }
 
 // Points-threshold badge tier, computed at read time from
@@ -920,6 +931,12 @@ enum WithdrawalStatus {
   PENDING
   APPROVED
   REJECTED
+  // Gateway payout created (RazorpayX), awaiting webhook/manual confirmation.
+  PAYOUT_PROCESSING
+  // Gateway reported (or an admin's manual status check detected) a failed
+  // or reversed transfer. Distinct from REJECTED, which is a pre-payout
+  // admin decision, not a failed transfer attempt.
+  PAYOUT_FAILED
   PAID
 }
 
@@ -970,6 +987,26 @@ model WithdrawalRequest {
   paidBy           User?     @relation("WithdrawalPaidBy", fields: [paidById], references: [id])
   paidAt           DateTime?
   paymentReference String?
+
+  // Set once "Send Payout" is clicked — who/when initiated the gateway
+  // transfer. Distinct from paidBy/paidAt, which are only set once the
+  // request actually reaches PAID (manually or via gateway confirmation).
+  payoutInitiatedById String?
+  payoutInitiatedBy   User?     @relation("WithdrawalPayoutInitiatedBy", fields: [payoutInitiatedById], references: [id])
+  payoutInitiatedAt   DateTime?
+
+  // RazorpayX correlation ids, persisted for audit/support and for the
+  // manual "Check Status" reconciliation action. Recreated (idempotently,
+  // via reference_id) on every initiatePayout call rather than cached on
+  // Member — see WithdrawalsService.initiatePayout.
+  payoutGatewayContactId     String?
+  payoutGatewayFundAccountId String?
+  // Idempotency key for webhook re-delivery — same role as Payment.gatewayPaymentId.
+  payoutGatewayPayoutId      String? @unique
+  payoutGatewayUtr           String?
+
+  // Set only when status = PAYOUT_FAILED — surfaced directly in the admin queue.
+  payoutFailureReason String?
 
   ledgerEntry ReferralPointsLedger?
 

@@ -36,6 +36,7 @@ services:
       FEATURE_FLAG_ENCRYPTION_KEY: ${FEATURE_FLAG_ENCRYPTION_KEY:-change-me-feature-flag-encryption-key}
       AADHAAR_HASH_SECRET: ${AADHAAR_HASH_SECRET:-change-me-aadhaar-hash-secret}
       CARD_QR_SECRET: ${CARD_QR_SECRET:-change-me-card-qr-secret}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-change-me-anthropic-api-key}
       STORAGE_ROOT: /repo/storage
     ports:
       - "3000:3000"

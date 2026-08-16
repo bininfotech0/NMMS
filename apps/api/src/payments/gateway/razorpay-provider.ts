@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { verifyHmacSha256 } from "../../common/hmac.util";
 
 export interface RazorpayCredentials {
   keyId: string;
@@ -18,13 +18,6 @@ export interface CreateOrderResult {
   orderId: string;
   amountPaise: number;
   currency: string;
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
 }
 
 // Thin wrapper around Razorpay's REST API — deliberately no SDK dependency,
@@ -84,15 +77,11 @@ export class RazorpayProvider {
     signature: string;
     keySecret: string;
   }): boolean {
-    const expected = createHmac("sha256", params.keySecret)
-      .update(`${params.orderId}|${params.paymentId}`)
-      .digest("hex");
-    return safeEqual(expected, params.signature);
+    return verifyHmacSha256(`${params.orderId}|${params.paymentId}`, params.signature, params.keySecret);
   }
 
   // Verifies a webhook request: HMAC-SHA256(rawBody, webhookSecret).
   verifyWebhookSignature(params: { rawBody: string; signature: string; webhookSecret: string }): boolean {
-    const expected = createHmac("sha256", params.webhookSecret).update(params.rawBody).digest("hex");
-    return safeEqual(expected, params.signature);
+    return verifyHmacSha256(params.rawBody, params.signature, params.webhookSecret);
   }
 }

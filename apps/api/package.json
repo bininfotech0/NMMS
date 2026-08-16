@@ -15,17 +15,24 @@
     "db:seed": "tsx ../../prisma/seed.ts"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "@fastify/cookie": "^9.3.1",
     "@fastify/multipart": "^8.3.1",
     "@fastify/static": "^7.0.4",
@@ -35,6 +42,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-fastify": "^10.4.15",
+    "@nestjs/schedule": "^4.1.2",
     "@nestjs/swagger": "^8.1.0",
     "@nestjs/throttler": "^6.5.0",
     "@nmms/shared": "workspace:*",
@@ -46,7 +54,7 @@
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "zod": "^3.24.1"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",

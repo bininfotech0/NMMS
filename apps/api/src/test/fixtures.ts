@@ -195,6 +195,7 @@ export function makeMockPrisma() {
       updateMany: jest.fn(),
       create: jest.fn(),
       delete: jest.fn(),
+      count: jest.fn(),
     },
     payment: {
       create: jest.fn(),
@@ -234,7 +235,9 @@ export function makeMockPrisma() {
     },
     referralPointsLedger: {
       create: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
+      update: jest.fn(),
       deleteMany: jest.fn(),
       updateMany: jest.fn(),
       aggregate: jest.fn(),
@@ -268,6 +271,7 @@ export function makeMockPrisma() {
       create: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
       updateMany: jest.fn(),
       groupBy: jest.fn(),

@@ -9,6 +9,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { WithdrawalsService } from "./withdrawals.service";
 import { ReviewWithdrawalDto } from "./dto/review-withdrawal.dto";
 import { MarkWithdrawalPaidDto } from "./dto/mark-withdrawal-paid.dto";
+import { PayoutGatewayService } from "./gateway/payout-gateway.service";
 
 const CAN_MANAGE_WITHDRAWALS: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 
@@ -17,7 +18,16 @@ const CAN_MANAGE_WITHDRAWALS: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("withdrawals")
 export class WithdrawalsAdminController {
-  constructor(private readonly withdrawalsService: WithdrawalsService) {}
+  constructor(
+    private readonly withdrawalsService: WithdrawalsService,
+    private readonly payoutGatewayService: PayoutGatewayService,
+  ) {}
+
+  @Get("gateway/status")
+  @Roles(...CAN_MANAGE_WITHDRAWALS)
+  async gatewayStatus(@CurrentUser() user: AuthUser) {
+    return { enabled: await this.payoutGatewayService.isEnabled(user.organizationId) };
+  }
 
   @Get()
   @Roles(...CAN_MANAGE_WITHDRAWALS)
@@ -47,5 +57,17 @@ export class WithdrawalsAdminController {
   @Roles(...CAN_MANAGE_WITHDRAWALS)
   markPaid(@Param("id") id: string, @Body() dto: MarkWithdrawalPaidDto, @CurrentUser() user: AuthUser) {
     return this.withdrawalsService.markPaid(id, user.organizationId, user.id, dto.paymentReference);
+  }
+
+  @Post(":id/initiate-payout")
+  @Roles(...CAN_MANAGE_WITHDRAWALS)
+  initiatePayout(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.payoutGatewayService.initiatePayout(id, user.organizationId, user.id);
+  }
+
+  @Post(":id/check-payout-status")
+  @Roles(...CAN_MANAGE_WITHDRAWALS)
+  checkPayoutStatus(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.payoutGatewayService.checkStatus(id, user.organizationId);
   }
 }

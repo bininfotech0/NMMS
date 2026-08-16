@@ -8,14 +8,16 @@ function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
   const numbering = { nextRegistrationNumber: jest.fn().mockResolvedValue("REG-2026-00001") };
   const usersService = { create: jest.fn() };
   const storage = { remove: jest.fn().mockResolvedValue(undefined) };
+  const integrations = { isEnabled: jest.fn().mockResolvedValue(false) };
   const service = new MembersService(
     prisma as never,
     aadhaar as never,
     numbering as never,
     usersService as never,
     storage as never,
+    integrations as never,
   );
-  return { service, aadhaar, numbering, usersService, storage };
+  return { service, aadhaar, numbering, usersService, storage, integrations };
 }
 
 describe("MembersService.create", () => {
@@ -144,6 +146,52 @@ describe("MembersService.update", () => {
     const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
     await service.update("member-1", { fullName: "New Name" }, user);
     expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("an ADMIN can correct an ACTIVE member's profile", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ status: "ACTIVE", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
+
+    const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await service.update("member-1", { mobile: "9800000099" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("a SUPER_ADMIN can correct a SUSPENDED member's profile", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ status: "SUSPENDED", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
+
+    const user = makeAuthUser({ id: "super-1", role: Role.SUPER_ADMIN });
+    await service.update("member-1", { addressLine: "New address" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("a FIELD_EXECUTIVE cannot edit an ACTIVE member, even one they created", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "ACTIVE", createdById: "fe-1" }));
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.update("member-1", { fullName: "New Name" }, user)).rejects.toThrow(ConflictException);
+    expect(prisma.member.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks an admin from changing the plan or fee on an ACTIVE member", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(
+      makeMember({ status: "ACTIVE", createdById: "fe-1", planId: "plan-a" }),
+    );
+
+    const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await expect(service.update("member-1", { planId: "plan-b" }, user)).rejects.toThrow(ConflictException);
+    expect(prisma.member.update).not.toHaveBeenCalled();
   });
 });
 
@@ -300,5 +348,60 @@ describe("MembersService.promoteToExecutive", () => {
       service.promoteToExecutive("member-1", { email: "promo@example.com", password: "Passw0rd!" }, admin),
     ).rejects.toThrow(ConflictException);
     expect(usersService.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("MembersService.dedupeCheck", () => {
+  it("matches on exact mobile regardless of the AI_DEDUPE flag", async () => {
+    const prisma = makeMockPrisma();
+    const { service, integrations } = makeService(prisma);
+    prisma.member.findMany.mockResolvedValue([
+      makeMember({ id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE", mobile: "9800000000" }),
+    ]);
+
+    const matches = await service.dedupeCheck("9800000000", undefined, undefined, "org-1");
+
+    expect(matches).toEqual([{ id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE", matchedOn: "mobile" }]);
+    expect(integrations.isEnabled).not.toHaveBeenCalled();
+  });
+
+  it("skips the fuzzy name pass entirely when AI_DEDUPE is disabled", async () => {
+    const prisma = makeMockPrisma();
+    const { service, integrations } = makeService(prisma);
+    integrations.isEnabled.mockResolvedValue(false);
+
+    const matches = await service.dedupeCheck(undefined, undefined, "Ramesh Kumar", "org-1");
+
+    expect(matches).toEqual([]);
+    expect(prisma.member.findMany).not.toHaveBeenCalled();
+  });
+
+  it("finds a near-duplicate name when AI_DEDUPE is enabled", async () => {
+    const prisma = makeMockPrisma();
+    const { service, integrations } = makeService(prisma);
+    integrations.isEnabled.mockResolvedValue(true);
+    prisma.member.findMany.mockResolvedValue([
+      { id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE" },
+      { id: "member-2", fullName: "Totally Different Name", status: "ACTIVE" },
+    ]);
+
+    const matches = await service.dedupeCheck(undefined, undefined, "Ramesh Kumer", "org-1");
+
+    expect(matches).toEqual([{ id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE", matchedOn: "name" }]);
+  });
+
+  it("doesn't double-report a member already matched by mobile in the fuzzy pass", async () => {
+    const prisma = makeMockPrisma();
+    const { service, integrations } = makeService(prisma);
+    integrations.isEnabled.mockResolvedValue(true);
+    prisma.member.findMany
+      .mockResolvedValueOnce([
+        makeMember({ id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE", mobile: "9800000000" }),
+      ])
+      .mockResolvedValueOnce([{ id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE" }]);
+
+    const matches = await service.dedupeCheck("9800000000", undefined, "Ramesh Kumar", "org-1");
+
+    expect(matches).toEqual([{ id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE", matchedOn: "mobile" }]);
   });
 });

@@ -102,13 +102,14 @@ export class ReferralsService {
     return Math.max(0, Math.min(points, cap - alreadyEarned));
   }
 
-  // Called from EventsService when staff approve a member's submitted
-  // evidence for an event's target — the analogous choke point to
-  // awardPointsForApproval, just for the event path. Deliberately not gated
-  // by OrgSettings.referralProgramEnabled (that toggle governs the
-  // self-referral/link feature specifically; event-based points are a
-  // separate earning channel into the same balance/batch/reward system).
-  async awardPointsForEventCompletion(
+  // Called from EventsService.submitEvidence when a member (re)submits
+  // evidence — locks in the points value at submission time (not recomputed
+  // at review time, so a mid-review rule change never silently alters an
+  // already-submitted amount). Does NOT touch Member.referralPointsBalance —
+  // that stays the lifetime *approved* total until resolveEventEvidence
+  // credits it, so WithdrawalsService's available-balance math is untouched
+  // by points still awaiting review.
+  async recordPendingEventPoints(
     organizationId: string,
     memberId: string,
     eventRegistrationId: string,
@@ -117,24 +118,66 @@ export class ReferralsService {
     if (points <= 0) {
       return;
     }
-    const settings = await this.getSettings(organizationId);
-    await this.prisma.$transaction((tx) =>
-      this.creditPoints(
-        tx,
-        organizationId,
-        memberId,
-        points,
-        "EVENT_TARGET_COMPLETED",
-        { relatedEventRegistrationId: eventRegistrationId },
-        settings,
-      ),
-    );
+    const existing = await this.prisma.referralPointsLedger.findFirst({
+      where: { relatedEventRegistrationId: eventRegistrationId, reason: "EVENT_TARGET_COMPLETED", status: "PENDING" },
+    });
+    if (existing) {
+      await this.prisma.referralPointsLedger.update({ where: { id: existing.id }, data: { points } });
+    } else {
+      await this.prisma.referralPointsLedger.create({
+        data: {
+          organizationId,
+          memberId,
+          points,
+          reason: "EVENT_TARGET_COMPLETED",
+          relatedEventRegistrationId: eventRegistrationId,
+          status: "PENDING",
+        },
+      });
+    }
   }
 
-  // Shared by both earning paths above: increments the cached balance,
-  // appends a ledger row, and upserts a PENDING ReferralReward for any newly
-  // crossed volunteer batch (idempotent via the @@unique([memberId, batch])
-  // constraint).
+  // Called from EventsService.reviewEvidence for both the approve and reject
+  // branches — the analogous choke point to awardPointsForApproval's credit,
+  // just resolving a PENDING row created by recordPendingEventPoints instead
+  // of crediting fresh. No-ops if there's no PENDING row (e.g. a 0-point
+  // event never got one). Deliberately not gated by
+  // OrgSettings.referralProgramEnabled (that toggle governs the
+  // self-referral/link feature specifically; event-based points are a
+  // separate earning channel into the same balance/batch/reward system).
+  async resolveEventEvidence(
+    organizationId: string,
+    memberId: string,
+    eventRegistrationId: string,
+    approved: boolean,
+  ): Promise<void> {
+    const pending = await this.prisma.referralPointsLedger.findFirst({
+      where: { relatedEventRegistrationId: eventRegistrationId, reason: "EVENT_TARGET_COMPLETED", status: "PENDING" },
+    });
+    if (!pending) {
+      return;
+    }
+    if (!approved) {
+      await this.prisma.referralPointsLedger.update({ where: { id: pending.id }, data: { status: "REJECTED" } });
+      return;
+    }
+
+    const settings = await this.getSettings(organizationId);
+    await this.prisma.$transaction(async (tx) => {
+      const member = await tx.member.update({
+        where: { id: memberId },
+        data: { referralPointsBalance: { increment: pending.points } },
+      });
+      await tx.referralPointsLedger.update({ where: { id: pending.id }, data: { status: "APPROVED" } });
+      await this.upsertBatchRewards(tx, organizationId, memberId, member.referralPointsBalance, settings);
+    });
+  }
+
+  // Shared by the referral-approval path and resolveEventEvidence: appends a
+  // ledger row (already-credited APPROVED for referrals; PENDING is handled
+  // separately by recordPendingEventPoints), increments the cached balance,
+  // and upserts a PENDING ReferralReward for any newly crossed volunteer
+  // batch (idempotent via the @@unique([memberId, batch]) constraint).
   private async creditPoints(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -159,8 +202,18 @@ export class ReferralsService {
       },
     });
 
+    await this.upsertBatchRewards(tx, organizationId, memberId, member.referralPointsBalance, thresholds);
+  }
+
+  private async upsertBatchRewards(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    memberId: string,
+    balance: number,
+    thresholds: VolunteerBatchThresholds,
+  ): Promise<void> {
     for (const tier of TIERS) {
-      if (member.referralPointsBalance >= batchMinPoints(tier, thresholds)) {
+      if (balance >= batchMinPoints(tier, thresholds)) {
         await tx.referralReward.upsert({
           where: { memberId_batch: { memberId, batch: tier } },
           update: {},
@@ -168,7 +221,7 @@ export class ReferralsService {
             organizationId,
             memberId,
             batch: tier,
-            pointsAtEarn: member.referralPointsBalance,
+            pointsAtEarn: balance,
             status: "PENDING",
           },
         });
@@ -234,6 +287,7 @@ export class ReferralsService {
       id: entry.id,
       points: entry.points,
       reason: entry.reason,
+      status: entry.status as ReferralLedgerEntryResponse["status"],
       relatedMemberName: entry.relatedMember?.fullName ?? null,
       relatedEventTitle: entry.relatedEventRegistration?.event.title ?? null,
       note: entry.note,

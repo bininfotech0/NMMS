@@ -92,6 +92,7 @@ export class ApplicationsService {
       organizationId: user.organizationId,
       memberName: updated.fullName,
       mobile: updated.mobile,
+      email: updated.email,
       membershipNumber: updated.membershipNumber,
     });
     await this.referrals.awardPointsForApproval(updated.id);

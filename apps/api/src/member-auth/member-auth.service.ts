@@ -126,7 +126,11 @@ export class MemberAuthService {
     return { fullName: referrer.fullName };
   }
 
-  private async getOrCreateSystemUser(organizationId: string): Promise<string> {
+  // Public: also used as the StatusHistory actor for system-triggered
+  // transitions with no human actor (e.g. MemberExpiryScheduler), since
+  // actorId is a required FK — reuses the same per-org sentinel user
+  // self-registration already lazily creates.
+  async getOrCreateSystemUser(organizationId: string): Promise<string> {
     const email = `${SYSTEM_USER_EMAIL_PREFIX}${organizationId}${SYSTEM_USER_EMAIL_SUFFIX}`;
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {

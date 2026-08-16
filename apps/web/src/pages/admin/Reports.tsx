@@ -149,7 +149,7 @@ export function Reports() {
               </CardHeader>
               <CardContent className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.memberGrowth.map((m) => ({ month: m.month, amount: Math.round((data.monthlyCollection ?? 0) / 12) }))} margin={{ left: -20 }}>
+                  <BarChart data={data.monthlyCollections ?? []} margin={{ left: -20 }}>
                     <CartesianGrid vertical={false} stroke="var(--border)" />
                     <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
                     <YAxis tickLine={false} axisLine={false} fontSize={12} />

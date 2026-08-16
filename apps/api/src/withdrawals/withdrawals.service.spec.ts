@@ -317,10 +317,154 @@ describe("WithdrawalsService", () => {
       expect(prisma.member.update).not.toHaveBeenCalled();
       expect(prisma.referralPointsLedger.create).not.toHaveBeenCalled();
     });
+
+    it("also accepts PAYOUT_FAILED — manual fallback after a failed gateway payout", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PAYOUT_FAILED" }));
+      prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.withdrawalRequest.findUniqueOrThrow.mockResolvedValue(
+        makeWithdrawalRequest({ status: "PAID", pointsRequested: 100, netAmount: { toNumber: () => 10 } }),
+      );
+
+      await service.markPaid("withdrawal-1", "org-1", "admin-1");
+
+      expect(prisma.withdrawalRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: "withdrawal-1", organizationId: "org-1", status: { in: ["APPROVED", "PAYOUT_FAILED"] } },
+        data: expect.objectContaining({ status: "PAID" }),
+      });
+    });
+  });
+
+  describe("markPayoutProcessing", () => {
+    const gatewayIds = {
+      payoutGatewayContactId: "cont_1",
+      payoutGatewayFundAccountId: "fa_1",
+      payoutGatewayPayoutId: "pout_1",
+    };
+
+    it("CAS's an APPROVED request to PAYOUT_PROCESSING with the gateway ids", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PAYOUT_PROCESSING" }));
+
+      await service.markPayoutProcessing("withdrawal-1", "org-1", "admin-1", gatewayIds);
+
+      expect(prisma.withdrawalRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: "withdrawal-1", organizationId: "org-1", status: { in: ["APPROVED", "PAYOUT_FAILED"] } },
+        data: expect.objectContaining({
+          status: "PAYOUT_PROCESSING",
+          payoutInitiatedById: "admin-1",
+          ...gatewayIds,
+        }),
+      });
+    });
+
+    it("refuses when the request is no longer APPROVED/PAYOUT_FAILED", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.markPayoutProcessing("withdrawal-1", "org-1", "admin-1", gatewayIds),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe("markPaidFromPayout", () => {
+    it("CAS's PAYOUT_PROCESSING to PAID by gateway payout id and applies the same side effects as markPaid", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.findUnique.mockResolvedValue(
+        makeWithdrawalRequest({ id: "withdrawal-1", status: "PAYOUT_PROCESSING", payoutGatewayPayoutId: "pout_1" }),
+      );
+      prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.withdrawalRequest.findUniqueOrThrow.mockResolvedValue(
+        makeWithdrawalRequest({
+          id: "withdrawal-1",
+          status: "PAID",
+          pointsRequested: 100,
+          netAmount: { toNumber: () => 10 },
+        }),
+      );
+
+      const result = await service.markPaidFromPayout("pout_1", "UTR999");
+
+      expect(result).not.toBeNull();
+      expect(prisma.withdrawalRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: "withdrawal-1", status: "PAYOUT_PROCESSING" },
+        data: { status: "PAID", paidAt: expect.any(Date), payoutGatewayUtr: "UTR999" },
+      });
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: "member-1" },
+        data: {
+          pointsConverted: { increment: 100 },
+          totalWithdrawnAmount: { increment: expect.anything() },
+        },
+      });
+      expect(prisma.referralPointsLedger.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ reason: "WITHDRAWAL_CONVERTED", relatedWithdrawalRequestId: "withdrawal-1" }),
+      });
+    });
+
+    it("no-ops (returns null) on a redelivered webhook for an unknown payout id", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.findUnique.mockResolvedValue(null);
+
+      const result = await service.markPaidFromPayout("pout_unknown", "UTR999");
+
+      expect(result).toBeNull();
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+
+    it("no-ops (returns null) when the request already moved off PAYOUT_PROCESSING (redelivery race)", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.findUnique.mockResolvedValue(
+        makeWithdrawalRequest({ id: "withdrawal-1", status: "PAID", payoutGatewayPayoutId: "pout_1" }),
+      );
+      prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.markPaidFromPayout("pout_1", "UTR999");
+
+      expect(result).toBeNull();
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("markPayoutFailed", () => {
+    it("CAS's PAYOUT_PROCESSING to PAYOUT_FAILED with the failure reason", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.withdrawalRequest.findUniqueOrThrow.mockResolvedValue(
+        makeWithdrawalRequest({ status: "PAYOUT_FAILED", payoutFailureReason: "Insufficient balance" }),
+      );
+
+      const result = await service.markPayoutFailed("pout_1", "Insufficient balance");
+
+      expect(result).not.toBeNull();
+      expect(prisma.withdrawalRequest.updateMany).toHaveBeenCalledWith({
+        where: { payoutGatewayPayoutId: "pout_1", status: "PAYOUT_PROCESSING" },
+        data: { status: "PAYOUT_FAILED", payoutFailureReason: "Insufficient balance" },
+      });
+    });
+
+    it("no-ops (returns null) on a redelivered webhook", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.markPayoutFailed("pout_1", "Insufficient balance");
+
+      expect(result).toBeNull();
+    });
   });
 
   describe("getWalletSummary", () => {
-    it("computes all six wallet fields from the member's cached balances and open requests", async () => {
+    it("computes all seven wallet fields from the member's cached balances, open requests, and pending ledger rows", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.member.findUniqueOrThrow.mockResolvedValue(
@@ -335,6 +479,7 @@ describe("WithdrawalsService", () => {
         { status: "PENDING", _sum: { pointsRequested: 200 } },
         { status: "APPROVED", _sum: { pointsRequested: 150 } },
       ]);
+      prisma.referralPointsLedger.aggregate.mockResolvedValue({ _sum: { points: 30 } });
 
       const summary = await service.getWalletSummary("member-1");
 
@@ -346,6 +491,7 @@ describe("WithdrawalsService", () => {
         availableBalancePoints: 550,
         availableBalanceAmount: 55,
         withdrawnAmount: 5,
+        pendingReviewPoints: 30,
       });
     });
   });

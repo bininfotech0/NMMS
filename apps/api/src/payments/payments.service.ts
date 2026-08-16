@@ -1,6 +1,15 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { AuthUser, MemberResponse, PaymentMode, PaymentResponse, RecordPaymentInput } from "@nmms/shared";
+import {
+  PLAN_TIER_ORDER,
+  type AuthUser,
+  type MemberResponse,
+  type PaymentMode,
+  type PaymentResponse,
+  type PlanTier,
+  type RecordPaymentInput,
+  type UpgradeMemberPlanInput,
+} from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { NumberingService } from "../common/numbering.service";
 import { buildJurisdictionWhere } from "../common/scope.util";
@@ -64,6 +73,109 @@ export class PaymentsService {
       },
       { id: user.id, organizationId: user.organizationId },
     );
+  }
+
+  // Admin/staff-initiated tier upgrade (e.g. Silver → Gold) for an ACTIVE
+  // member. Charges only the fee difference between the current effective
+  // fee (feeOverride, if set, else the plan's fee) and the target plan's fee,
+  // floored at 0 — no charge if the target happens to be cheaper/equal.
+  // Deliberately mirrors finalizePayment's renewal branch (CAS + receipt +
+  // StatusHistory + best-effort notify) rather than reusing it, since the
+  // status here never actually changes (stays ACTIVE) and there's no
+  // validUntil extension.
+  async upgradePlan(
+    memberId: string,
+    dto: UpgradeMemberPlanInput,
+    user: AuthUser,
+  ): Promise<MemberResponse> {
+    const member = await this.prisma.member.findFirst({
+      where: { id: memberId, organizationId: user.organizationId, ...buildJurisdictionWhere(user) },
+      include: { plan: true },
+    });
+    if (!member) {
+      throw new NotFoundException("Member not found");
+    }
+    if (member.status !== "ACTIVE") {
+      throw new ConflictException("Only an ACTIVE member can be upgraded");
+    }
+    if (!member.plan) {
+      throw new ConflictException("Member has no current membership plan to upgrade from");
+    }
+
+    const newPlan = await this.prisma.membershipPlan.findFirst({
+      where: { id: dto.planId, organizationId: user.organizationId, isActive: true },
+    });
+    if (!newPlan) {
+      throw new NotFoundException("Target plan not found");
+    }
+    if (newPlan.id === member.planId) {
+      throw new ConflictException("Member is already on this plan");
+    }
+
+    const currentTier = member.plan.tier as PlanTier | null;
+    const newTier = newPlan.tier as PlanTier | null;
+    if (currentTier && newTier && PLAN_TIER_ORDER.indexOf(newTier) <= PLAN_TIER_ORDER.indexOf(currentTier)) {
+      throw new ConflictException("The selected plan is not an upgrade over the member's current plan");
+    }
+
+    const currentFee = member.feeOverride ?? member.plan.fee;
+    const amount = Math.max(newPlan.fee.toNumber() - currentFee.toNumber(), 0);
+
+    const cas = await this.prisma.member.updateMany({
+      where: { id: member.id, status: "ACTIVE", planId: member.planId },
+      data: { planId: newPlan.id, feeOverride: null },
+    });
+    if (cas.count === 0) {
+      throw new ConflictException("This member's plan just changed — please refresh and try again");
+    }
+
+    let receiptNumber: string | null = null;
+    if (amount > 0) {
+      receiptNumber = await this.numbering.nextReceiptNumber(user.organizationId);
+      await this.prisma.payment.create({
+        data: {
+          organizationId: user.organizationId,
+          memberId: member.id,
+          amount,
+          mode: dto.mode,
+          receiptNumber,
+          transactionNumber: dto.transactionNumber ?? undefined,
+          remarks: `Membership upgrade: ${member.plan.name} → ${newPlan.name}`,
+          receivedById: user.id,
+          paidAt: new Date(),
+        },
+      });
+    }
+
+    await this.prisma.statusHistory.create({
+      data: {
+        memberId: member.id,
+        fromStatus: "ACTIVE",
+        toStatus: "ACTIVE",
+        remarks: `Plan upgraded: ${member.plan.name} → ${newPlan.name}${
+          receiptNumber ? ` (receipt ${receiptNumber}, ₹${amount})` : " (no charge)"
+        }`,
+        actorId: user.id,
+      },
+    });
+
+    await this.notifications.notify({
+      type: "PLAN_UPGRADED",
+      organizationId: user.organizationId,
+      memberName: member.fullName,
+      mobile: member.mobile,
+      email: member.email,
+      oldPlanName: member.plan.name,
+      newPlanName: newPlan.name,
+      amount,
+      receiptNumber,
+    });
+
+    const updated = await this.prisma.member.findUniqueOrThrow({
+      where: { id: member.id },
+      include: { plan: true, nominee: true },
+    });
+    return toMemberResponse(updated);
   }
 
   // Records a Razorpay-originated payment reached via the authenticated
@@ -143,9 +255,9 @@ export class PaymentsService {
   }
 
   private assertPayable(member: MemberWithPlan): void {
-    if (member.status !== "DRAFT" && member.status !== "ACTIVE") {
+    if (member.status !== "DRAFT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
       throw new ConflictException(
-        "Payments can only be recorded for a DRAFT member (initial registration fee) or an ACTIVE member (renewal)",
+        "Payments can only be recorded for a DRAFT member (initial registration fee) or an ACTIVE/EXPIRED member (renewal)",
       );
     }
     if (!member.plan) {
@@ -206,17 +318,35 @@ export class PaymentsService {
         organizationId: actor.organizationId,
         memberName: member.fullName,
         mobile: member.mobile,
+        email: member.email,
         amount: payment.amount.toNumber(),
         receiptNumber: payment.receiptNumber,
       });
     } else {
+      // member.status is ACTIVE or EXPIRED here (assertPayable's guard) — a
+      // renewal payment always lands the member back on ACTIVE, resetting
+      // validUntil from today rather than stacking onto whatever was left.
+      // CAS'd against the status we loaded so a renewal racing
+      // MemberExpiryScheduler's nightly sweep can't be silently clobbered.
       const validUntil =
         member.plan!.validityType === "LIFETIME"
           ? null
           : addMonths(paidAt, member.plan!.validityMonths ?? 0);
-      await this.prisma.member.update({
-        where: { id: member.id },
-        data: { validUntil },
+      const cas = await this.prisma.member.updateMany({
+        where: { id: member.id, status: member.status },
+        data: { status: "ACTIVE", validUntil },
+      });
+      if (cas.count === 0) {
+        throw new ConflictException("This member's status just changed — please refresh and try again");
+      }
+      // Real status jumps straight to ACTIVE (never persists as RENEWED,
+      // exactly like APPROVED never persists in ApplicationsService.approve),
+      // but the audit trail records every renewal, which it didn't before.
+      await this.prisma.statusHistory.create({
+        data: { memberId: member.id, fromStatus: member.status, toStatus: "RENEWED", actorId: actor.id },
+      });
+      await this.prisma.statusHistory.create({
+        data: { memberId: member.id, fromStatus: "RENEWED", toStatus: "ACTIVE", actorId: actor.id },
       });
     }
 
@@ -243,16 +373,22 @@ export class PaymentsService {
     return payments.map(this.toResponse);
   }
 
-  // "Outstanding" now covers both payment contexts recordPayment() accepts:
-  // DRAFT members still owing their initial registration fee, and ACTIVE
-  // members whose membership is expired or renewing within 30 days.
+  // "Outstanding" now covers every payment context recordPayment() accepts:
+  // DRAFT members still owing their initial registration fee, ACTIVE members
+  // renewing within 30 days, and EXPIRED members (MemberExpiryScheduler has
+  // already flipped them, so they'd otherwise vanish from this queue instead
+  // of showing up more urgently).
   async outstanding(user: AuthUser): Promise<MemberResponse[]> {
     const renewalWindow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const members = await this.prisma.member.findMany({
       where: {
         organizationId: user.organizationId,
         ...buildJurisdictionWhere(user),
-        OR: [{ status: "DRAFT" }, { status: "ACTIVE", validUntil: { lte: renewalWindow } }],
+        OR: [
+          { status: "DRAFT" },
+          { status: "ACTIVE", validUntil: { lte: renewalWindow } },
+          { status: "EXPIRED" },
+        ],
       },
       orderBy: { updatedAt: "asc" },
     });

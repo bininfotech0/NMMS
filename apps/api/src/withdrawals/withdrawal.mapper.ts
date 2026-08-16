@@ -18,6 +18,9 @@ type WithdrawalRequestRow = {
   status: string;
   reviewedAt: Date | null;
   reviewNote: string | null;
+  payoutInitiatedAt: Date | null;
+  payoutGatewayUtr: string | null;
+  payoutFailureReason: string | null;
   paidAt: Date | null;
   paymentReference: string | null;
   createdAt: Date;
@@ -42,6 +45,9 @@ export function toWithdrawalResponse(row: WithdrawalRequestRow): WithdrawalReque
     status: row.status as WithdrawalRequestResponse["status"],
     reviewedAt: row.reviewedAt,
     reviewNote: row.reviewNote,
+    payoutInitiatedAt: row.payoutInitiatedAt,
+    payoutGatewayUtr: row.payoutGatewayUtr,
+    payoutFailureReason: row.payoutFailureReason,
     paidAt: row.paidAt,
     paymentReference: row.paymentReference,
     createdAt: row.createdAt,

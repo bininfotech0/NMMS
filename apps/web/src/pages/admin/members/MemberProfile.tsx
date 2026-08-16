@@ -4,7 +4,7 @@ import {
   ChevronLeft, IdCard, Pencil, Printer, Phone, Mail,
   MapPin, Calendar, User, Users, Award, Shield, Activity,
   FileText, CreditCard, Clock, MapPinned, Share2, Copy,
-  Ban, RotateCcw, HeartCrack, UserCog, Trash2,
+  Ban, RotateCcw, HeartCrack, UserCog, Trash2, TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,12 +34,15 @@ import {
   useMemberPayments,
   useMemberStatusHistory,
   usePromoteToExecutive,
+  useUpdateMember,
+  useUpgradeMemberPlan,
 } from "@/hooks/useMembers";
 import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
 import { useGenerateReferralCode, useReferralNetwork } from "@/hooks/useReferrals";
 import { useOrgProfile } from "@/hooks/useOrg";
+import { usePlans } from "@/hooks/usePlans";
 import { useAuthStore } from "@/stores/auth";
-import { Role, type MemberResponse } from "@nmms/shared";
+import { PLAN_TIER_ORDER, Role, type MemberResponse, type PaymentMode, type PlanTier } from "@nmms/shared";
 import { memberToWizardForm } from "./wizard-types";
 
 const CAN_MANAGE_LIFECYCLE = [Role.ADMIN, Role.SUPER_ADMIN];
@@ -198,6 +201,257 @@ function PromoteToExecutiveSheet({
           <SheetFooter className="px-0">
             <Button type="submit" disabled={promote.isPending} className="bg-brand-green hover:bg-brand-green/90">
               {promote.isPending ? "Promoting…" : "Promote"}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// Lighter-weight correction form for ACTIVE/SUSPENDED members — the full
+// 10-step MemberWizard (Payment/Documents/Submit steps) is built for the
+// pre-activation onboarding journey and doesn't apply once a member is
+// lifecycle-locked. Plan/fee aren't editable here — see the server-side
+// check in MembersService.update, which blocks them once status !== DRAFT.
+function EditActiveMemberSheet({
+  member,
+  open,
+  onOpenChange,
+}: {
+  member: MemberResponse;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const updateMember = useUpdateMember();
+  const [form, setForm] = useState({
+    fullName: member.fullName,
+    mobile: member.mobile,
+    email: member.email ?? "",
+    whatsappNumber: member.whatsappNumber ?? "",
+    addressLine: member.addressLine ?? "",
+    pincode: member.pincode ?? "",
+    landmark: member.landmark ?? "",
+    emergencyContactName: member.emergencyContactName ?? "",
+    emergencyContactMobile: member.emergencyContactMobile ?? "",
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  function field(key: keyof typeof form) {
+    return {
+      value: form[key],
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [key]: e.target.value })),
+    };
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await updateMember.mutateAsync({ id: member.id, dto: form });
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Edit member profile</SheetTitle>
+          <SheetDescription>
+            Correct {member.fullName}'s details. Plan and fee can't be changed here — see the referrals/membership
+            upgrade flow for that.
+          </SheetDescription>
+        </SheetHeader>
+        <form className="flex flex-1 flex-col gap-4 overflow-y-auto px-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-fullName">Full name</Label>
+            <Input id="edit-fullName" {...field("fullName")} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-mobile">Mobile</Label>
+            <Input id="edit-mobile" {...field("mobile")} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-email">Email</Label>
+            <Input id="edit-email" type="email" {...field("email")} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-whatsappNumber">WhatsApp number</Label>
+            <Input id="edit-whatsappNumber" {...field("whatsappNumber")} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-addressLine">Address</Label>
+            <Input id="edit-addressLine" {...field("addressLine")} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-pincode">Pincode</Label>
+              <Input id="edit-pincode" {...field("pincode")} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-landmark">Landmark</Label>
+              <Input id="edit-landmark" {...field("landmark")} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-emergencyContactName">Emergency contact name</Label>
+            <Input id="edit-emergencyContactName" {...field("emergencyContactName")} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-emergencyContactMobile">Emergency contact mobile</Label>
+            <Input id="edit-emergencyContactMobile" {...field("emergencyContactMobile")} />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <SheetFooter className="px-0">
+            <Button type="submit" disabled={updateMember.isPending} className="bg-brand-green hover:bg-brand-green/90">
+              {updateMember.isPending ? "Saving…" : "Save Changes"}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+const PAYMENT_MODES: PaymentMode[] = ["CASH", "UPI", "BANK", "CHEQUE"];
+
+// Admin/staff-only tier upgrade (e.g. Silver → Gold) for an ACTIVE member —
+// charges the fee difference between the current plan and the target plan.
+// See PaymentsService.upgradePlan for the server-side charge/CAS logic.
+function UpgradePlanSheet({
+  member,
+  open,
+  onOpenChange,
+}: {
+  member: MemberResponse;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data: plans = [] } = usePlans();
+  const upgradePlan = useUpgradeMemberPlan();
+  const [planId, setPlanId] = useState("");
+  const [mode, setMode] = useState<Exclude<PaymentMode, "ONLINE">>("CASH");
+  const [transactionNumber, setTransactionNumber] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const currentTierIndex = member.planTier ? PLAN_TIER_ORDER.indexOf(member.planTier as PlanTier) : -1;
+  const eligiblePlans = plans.filter(
+    (plan) =>
+      plan.isActive &&
+      plan.id !== member.planId &&
+      (!plan.tier || currentTierIndex === -1 || PLAN_TIER_ORDER.indexOf(plan.tier) > currentTierIndex),
+  );
+  const selectedPlan = eligiblePlans.find((plan) => plan.id === planId);
+  const currentFee = member.feeOverride ?? plans.find((p) => p.id === member.planId)?.fee ?? 0;
+  const amount = selectedPlan ? Math.max(selectedPlan.fee - currentFee, 0) : null;
+
+  function reset() {
+    setPlanId("");
+    setMode("CASH");
+    setTransactionNumber("");
+    setError(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await upgradePlan.mutateAsync({
+        id: member.id,
+        dto: { planId, mode, transactionNumber: transactionNumber || undefined },
+      });
+      reset();
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset();
+        onOpenChange(next);
+      }}
+    >
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Upgrade Plan</SheetTitle>
+          <SheetDescription>
+            Move {member.fullName} to a higher membership tier. Their earning rate changes to the new plan's rate
+            immediately.
+          </SheetDescription>
+        </SheetHeader>
+        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="upgrade-plan">New plan</Label>
+            <select
+              id="upgrade-plan"
+              value={planId}
+              onChange={(e) => setPlanId(e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              required
+            >
+              <option value="">Select a plan…</option>
+              {eligiblePlans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.name} {plan.tier ? `(${plan.tier.charAt(0)}${plan.tier.slice(1).toLowerCase()})` : ""} — ₹
+                  {plan.fee}
+                </option>
+              ))}
+            </select>
+            {eligiblePlans.length === 0 && (
+              <p className="text-xs text-muted-foreground">No higher-tier active plans available.</p>
+            )}
+          </div>
+          {amount !== null && (
+            <div className="space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Fee difference to collect</span>
+                <span className="font-medium">₹{amount}</span>
+              </div>
+              {amount === 0 && <p className="text-xs text-muted-foreground">No payment required.</p>}
+            </div>
+          )}
+          {amount !== null && amount > 0 && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="upgrade-mode">Payment mode</Label>
+                <select
+                  id="upgrade-mode"
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as Exclude<PaymentMode, "ONLINE">)}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  {PAYMENT_MODES.map((m) => (
+                    <option key={m} value={m}>
+                      {m.charAt(0) + m.slice(1).toLowerCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="upgrade-transactionNumber">Transaction reference (optional)</Label>
+                <Input
+                  id="upgrade-transactionNumber"
+                  value={transactionNumber}
+                  onChange={(e) => setTransactionNumber(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <SheetFooter className="px-0">
+            <Button
+              type="submit"
+              disabled={upgradePlan.isPending || !planId}
+              className="bg-brand-green hover:bg-brand-green/90"
+            >
+              {upgradePlan.isPending ? "Upgrading…" : "Upgrade Plan"}
             </Button>
           </SheetFooter>
         </form>
@@ -401,6 +655,8 @@ export function MemberProfile() {
   const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editActiveOpen, setEditActiveOpen] = useState(false);
+  const [upgradePlanOpen, setUpgradePlanOpen] = useState(false);
 
   const { data: member, isLoading } = useMember(id ?? null);
   const { data: documents = [] } = useMemberDocuments(id ?? null);
@@ -455,6 +711,14 @@ export function MemberProfile() {
               </Link>
             </Button>
           )}
+          {(member.status === "ACTIVE" || member.status === "SUSPENDED") &&
+            user &&
+            CAN_MANAGE_LIFECYCLE.includes(user.role) && (
+              <Button variant="outline" onClick={() => setEditActiveOpen(true)}>
+                <Pencil className="size-4" />
+                Edit
+              </Button>
+            )}
           {member.membershipNumber && (
             <Button variant="outline" asChild>
               <Link to={`/admin/members/${id}/card`}>
@@ -484,6 +748,12 @@ export function MemberProfile() {
                 Promote to Field Executive
               </Button>
             )}
+          {user && CAN_MANAGE_LIFECYCLE.includes(user.role) && member.status === "ACTIVE" && (
+            <Button variant="outline" onClick={() => setUpgradePlanOpen(true)}>
+              <TrendingUp className="size-4" />
+              Upgrade Plan
+            </Button>
+          )}
           {user && CAN_MANAGE_LIFECYCLE.includes(user.role) && member.status === "ACTIVE" && (
             <Button variant="outline" onClick={() => setLifecycleAction("suspend")}>
               <Ban className="size-4" />
@@ -744,6 +1014,8 @@ export function MemberProfile() {
         onOpenChange={(open) => !open && setLifecycleAction(null)}
       />
       <PromoteToExecutiveSheet member={member} open={promoteOpen} onOpenChange={setPromoteOpen} />
+      <EditActiveMemberSheet member={member} open={editActiveOpen} onOpenChange={setEditActiveOpen} />
+      <UpgradePlanSheet member={member} open={upgradePlanOpen} onOpenChange={setUpgradePlanOpen} />
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

@@ -52,9 +52,9 @@ export class PaymentGatewayService {
     if (!member) {
       throw new NotFoundException("Member not found");
     }
-    if (member.status !== "DRAFT" && member.status !== "ACTIVE") {
+    if (member.status !== "DRAFT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
       throw new ConflictException(
-        "Payments can only be recorded for a DRAFT member (initial registration fee) or an ACTIVE member (renewal)",
+        "Payments can only be recorded for a DRAFT member (initial registration fee) or an ACTIVE/EXPIRED member (renewal)",
       );
     }
     if (!member.plan) {

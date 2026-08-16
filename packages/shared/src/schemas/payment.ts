@@ -26,6 +26,16 @@ export const paymentResponseSchema = z.object({
 });
 export type PaymentResponse = z.infer<typeof paymentResponseSchema>;
 
+// Membership tier upgrade — collects the fee difference (if any) as a Payment
+// and reassigns the member's plan. Manual modes only, same as recordPayment
+// minus ONLINE (gateway checkout has its own dedicated flow).
+export const upgradeMemberPlanSchema = z.object({
+  planId: z.string().min(1),
+  mode: paymentModeSchema.exclude(["ONLINE"]),
+  transactionNumber: z.string().nullish(),
+});
+export type UpgradeMemberPlanInput = z.infer<typeof upgradeMemberPlanSchema>;
+
 // Payment gateway (Razorpay) — online checkout flow.
 export const gatewayOrderResponseSchema = z.object({
   orderId: z.string(),

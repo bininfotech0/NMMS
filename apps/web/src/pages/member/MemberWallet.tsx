@@ -19,12 +19,13 @@ import { useMyReferralLedger } from "@/hooks/useReferrals";
 import { useMyKyc } from "@/hooks/useKyc";
 import { useCreateWithdrawalRequest, useMyWalletSummary, useMyWithdrawals } from "@/hooks/useWithdrawals";
 import { useOrgProfile } from "@/hooks/useOrg";
-import type { WalletSummaryResponse, WithdrawalStatus } from "@nmms/shared";
+import type { ReferralLedgerEntryResponse, WalletSummaryResponse, WithdrawalStatus } from "@nmms/shared";
 
 const STAT_CARDS: { key: keyof WalletSummaryResponse; label: string; isAmount?: boolean }[] = [
   { key: "earnedPoints", label: "Earned Points" },
-  { key: "pendingPoints", label: "Pending Points" },
-  { key: "approvedPoints", label: "Approved Points" },
+  { key: "pendingReviewPoints", label: "Awaiting Review" },
+  { key: "pendingPoints", label: "Withdrawal Pending" },
+  { key: "approvedPoints", label: "Withdrawal Approved" },
   { key: "convertedPoints", label: "Converted Points" },
   { key: "availableBalancePoints", label: "Available Balance (pts)" },
   { key: "withdrawnAmount", label: "Withdrawn Amount", isAmount: true },
@@ -33,12 +34,27 @@ const STAT_CARDS: { key: keyof WalletSummaryResponse; label: string; isAmount?: 
 const WITHDRAWAL_STATUS_STYLES: Record<WithdrawalStatus, string> = {
   PENDING: "bg-amber-100 text-amber-700",
   APPROVED: "bg-sky-100 text-sky-700",
+  PAYOUT_PROCESSING: "bg-indigo-100 text-indigo-700",
+  PAYOUT_FAILED: "bg-orange-100 text-orange-700",
   REJECTED: "bg-red-100 text-red-700",
   PAID: "bg-emerald-100 text-emerald-700",
 };
 
-const LEDGER_REASON_LABELS: Record<string, (relatedMemberName: string | null) => string> = {
-  REFERRAL_APPROVED: (name) => (name ? `${name} joined and was approved` : "Referral approved"),
+// Ledger rows are always visible; only PENDING/REJECTED get a badge — the
+// still-common APPROVED/CONVERTED cases keep today's plain credit/debit look.
+const LEDGER_STATUS_STYLES: Partial<Record<ReferralLedgerEntryResponse["status"], string>> = {
+  PENDING: "bg-amber-100 text-amber-700",
+  REJECTED: "bg-red-100 text-red-700",
+};
+const LEDGER_STATUS_LABELS: Partial<Record<ReferralLedgerEntryResponse["status"], string>> = {
+  PENDING: "Pending review",
+  REJECTED: "Not approved",
+};
+
+const LEDGER_REASON_LABELS: Record<string, (entry: ReferralLedgerEntryResponse) => string> = {
+  REFERRAL_APPROVED: (entry) =>
+    entry.relatedMemberName ? `${entry.relatedMemberName} joined and was approved` : "Referral approved",
+  EVENT_TARGET_COMPLETED: (entry) => (entry.relatedEventTitle ? `Event: ${entry.relatedEventTitle}` : "Event points"),
   WITHDRAWAL_CONVERTED: () => "Withdrawal paid out",
 };
 
@@ -111,7 +127,7 @@ export function MemberWallet() {
                     <p className="text-xs text-muted-foreground">{new Date(w.createdAt).toLocaleDateString()}</p>
                   </div>
                   <Badge className={`border-transparent font-medium ${WITHDRAWAL_STATUS_STYLES[w.status]}`}>
-                    {w.status[0] + w.status.slice(1).toLowerCase()}
+                    {w.status[0] + w.status.slice(1).toLowerCase().replace(/_/g, " ")}
                   </Badge>
                 </li>
               ))}
@@ -136,8 +152,9 @@ export function MemberWallet() {
             <ul className="divide-y divide-border">
               {ledger.map((entry) => {
                 const isCredit = entry.points >= 0;
-                const label =
-                  LEDGER_REASON_LABELS[entry.reason]?.(entry.relatedMemberName) ?? entry.note ?? "Manual adjustment";
+                const label = LEDGER_REASON_LABELS[entry.reason]?.(entry) ?? entry.note ?? "Manual adjustment";
+                const statusStyle = LEDGER_STATUS_STYLES[entry.status];
+                const statusLabel = LEDGER_STATUS_LABELS[entry.status];
                 return (
                   <li key={entry.id} className="flex items-center gap-3 py-2.5 text-sm">
                     <div
@@ -150,7 +167,14 @@ export function MemberWallet() {
                       {isCredit ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate">{label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="truncate">{label}</p>
+                        {statusStyle && statusLabel && (
+                          <Badge className={`shrink-0 border-transparent font-medium ${statusStyle}`}>
+                            {statusLabel}
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {new Date(entry.createdAt).toLocaleDateString()}
                       </p>

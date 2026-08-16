@@ -72,6 +72,11 @@ export class WithdrawalsService {
     const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
     const settings = await this.getSettings(member.organizationId);
     const { pending, approved } = await this.getLockedPoints(this.prisma, memberId);
+    const { _sum } = await this.prisma.referralPointsLedger.aggregate({
+      where: { memberId, status: "PENDING" },
+      _sum: { points: true },
+    });
+    const pendingReviewPoints = _sum.points ?? 0;
 
     const earnedPoints = member.referralPointsBalance;
     const convertedPoints = member.pointsConverted;
@@ -86,6 +91,7 @@ export class WithdrawalsService {
       availableBalancePoints,
       availableBalanceAmount,
       withdrawnAmount: member.totalWithdrawnAmount.toNumber(),
+      pendingReviewPoints,
     };
   }
 
@@ -216,36 +222,123 @@ export class WithdrawalsService {
   ): Promise<WithdrawalRequestResponse> {
     await this.findScoped(id, organizationId);
     const updated = await this.prisma.$transaction(async (tx) => {
+      // APPROVED is the normal path; PAYOUT_FAILED lets an admin fall back
+      // to a manual payout when the automated RazorpayX transfer failed,
+      // without a reject-and-recreate round trip.
       const cas = await tx.withdrawalRequest.updateMany({
-        where: { id, organizationId, status: "APPROVED" },
+        where: { id, organizationId, status: { in: ["APPROVED", "PAYOUT_FAILED"] } },
         data: { status: "PAID", paidById: actingUserId, paidAt: new Date(), paymentReference: paymentReference ?? null },
       });
       if (cas.count === 0) {
-        throw new ConflictException("Only an approved request can be marked paid");
+        throw new ConflictException("Only an approved (or failed-payout) request can be marked paid");
       }
       const request = await tx.withdrawalRequest.findUniqueOrThrow({ where: { id } });
-
-      await tx.member.update({
-        where: { id: request.memberId },
-        data: {
-          pointsConverted: { increment: request.pointsRequested },
-          totalWithdrawnAmount: { increment: request.netAmount },
-        },
-      });
-      await tx.referralPointsLedger.create({
-        data: {
-          organizationId,
-          memberId: request.memberId,
-          points: -request.pointsRequested,
-          reason: "WITHDRAWAL_CONVERTED",
-          status: "CONVERTED",
-          relatedWithdrawalRequestId: request.id,
-        },
-      });
-
+      await this.applyPaidSideEffects(tx, request);
       return request;
     });
     return toWithdrawalResponse(updated);
+  }
+
+  // --- Gateway payout (RazorpayX) --------------------------------------
+  // Called by PayoutGatewayService after it creates the transfer on
+  // RazorpayX's side — this is where the CAS + DB write happens, mirroring
+  // how PaymentGatewayService.verifyAndRecord hands off to
+  // PaymentsService.recordGatewayPayment for the collection-side gateway.
+
+  async markPayoutProcessing(
+    id: string,
+    organizationId: string,
+    actorId: string,
+    gatewayIds: {
+      payoutGatewayContactId: string;
+      payoutGatewayFundAccountId: string;
+      payoutGatewayPayoutId: string;
+    },
+  ): Promise<WithdrawalRequestResponse> {
+    const cas = await this.prisma.withdrawalRequest.updateMany({
+      where: { id, organizationId, status: { in: ["APPROVED", "PAYOUT_FAILED"] } },
+      data: {
+        status: "PAYOUT_PROCESSING",
+        payoutInitiatedById: actorId,
+        payoutInitiatedAt: new Date(),
+        payoutFailureReason: null,
+        ...gatewayIds,
+      },
+    });
+    if (cas.count === 0) {
+      throw new ConflictException("Only an approved (or failed-payout) request can have a payout initiated");
+    }
+    return this.adminGet(id, organizationId);
+  }
+
+  // Looked up by the gateway's payout id, not our own id — the caller is a
+  // webhook (or the manual status check) that only knows RazorpayX's id.
+  // Returns null rather than throwing on a stale/duplicate webhook delivery
+  // (already PAID, or the id doesn't match any request) so the caller can
+  // no-op instead of treating a redelivery as an error.
+  async markPaidFromPayout(payoutGatewayPayoutId: string, utr: string | null): Promise<WithdrawalRequestResponse | null> {
+    const existing = await this.prisma.withdrawalRequest.findUnique({ where: { payoutGatewayPayoutId } });
+    if (!existing) {
+      return null;
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.withdrawalRequest.updateMany({
+        where: { id: existing.id, status: "PAYOUT_PROCESSING" },
+        data: { status: "PAID", paidAt: new Date(), payoutGatewayUtr: utr },
+      });
+      if (cas.count === 0) {
+        return null;
+      }
+      const request = await tx.withdrawalRequest.findUniqueOrThrow({ where: { id: existing.id } });
+      await this.applyPaidSideEffects(tx, request);
+      return request;
+    });
+    return updated ? toWithdrawalResponse(updated) : null;
+  }
+
+  async markPayoutFailed(payoutGatewayPayoutId: string, reason: string): Promise<WithdrawalRequestResponse | null> {
+    const cas = await this.prisma.withdrawalRequest.updateMany({
+      where: { payoutGatewayPayoutId, status: "PAYOUT_PROCESSING" },
+      data: { status: "PAYOUT_FAILED", payoutFailureReason: reason },
+    });
+    if (cas.count === 0) {
+      return null;
+    }
+    const request = await this.prisma.withdrawalRequest.findUniqueOrThrow({ where: { payoutGatewayPayoutId } });
+    return toWithdrawalResponse(request);
+  }
+
+  // Shared by markPaid() and markPaidFromPayout() — both land on PAID via
+  // different triggers (manual vs gateway webhook) but need the identical
+  // accounting: net the spent points out of the member's balance and record
+  // the ledger entry.
+  private async applyPaidSideEffects(
+    tx: Prisma.TransactionClient,
+    request: {
+      id: string;
+      organizationId: string;
+      memberId: string;
+      pointsRequested: number;
+      netAmount: Prisma.Decimal;
+    },
+  ): Promise<void> {
+    await tx.member.update({
+      where: { id: request.memberId },
+      data: {
+        pointsConverted: { increment: request.pointsRequested },
+        totalWithdrawnAmount: { increment: request.netAmount },
+      },
+    });
+    await tx.referralPointsLedger.create({
+      data: {
+        organizationId: request.organizationId,
+        memberId: request.memberId,
+        points: -request.pointsRequested,
+        reason: "WITHDRAWAL_CONVERTED",
+        status: "CONVERTED",
+        relatedWithdrawalRequestId: request.id,
+      },
+    });
   }
 
   private async findScoped(id: string, organizationId: string) {

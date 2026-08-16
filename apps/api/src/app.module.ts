@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { ApplicationsModule } from "./applications/applications.module";
 import { AuditModule } from "./audit/audit.module";
@@ -32,6 +33,7 @@ import { WithdrawalsModule } from "./withdrawals/withdrawals.module";
       envFilePath: ["../../.env"],
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
     AuditModule,

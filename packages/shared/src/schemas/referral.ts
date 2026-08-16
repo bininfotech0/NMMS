@@ -19,6 +19,13 @@ export type ReferralLedgerReason = z.infer<typeof referralLedgerReasonSchema>;
 export const rewardStatusSchema = z.enum(["PENDING", "FULFILLED"]);
 export type RewardStatus = z.infer<typeof rewardStatusSchema>;
 
+// A ledger row's own lifecycle — distinct from RewardStatus above. Only
+// EVENT_TARGET_COMPLETED rows are ever PENDING/REJECTED (evidence awaiting
+// review); REFERRAL_APPROVED rows insert straight to APPROVED. CONVERTED is
+// reserved for a future points-to-money conversion lifecycle.
+export const pointsLedgerStatusSchema = z.enum(["PENDING", "APPROVED", "CONVERTED", "REJECTED"]);
+export type PointsLedgerStatus = z.infer<typeof pointsLedgerStatusSchema>;
+
 const referredMemberSummarySchema = z.object({
   id: z.string(),
   fullName: z.string(),
@@ -42,6 +49,7 @@ export const referralLedgerEntryResponseSchema = z.object({
   id: z.string(),
   points: z.number(),
   reason: referralLedgerReasonSchema,
+  status: pointsLedgerStatusSchema,
   relatedMemberName: z.string().nullable(),
   relatedEventTitle: z.string().nullable(),
   note: z.string().nullable(),

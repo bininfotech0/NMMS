@@ -10,6 +10,10 @@ export type PlanValidityType = z.infer<typeof planValidityTypeSchema>;
 export const planTierSchema = z.enum(["SILVER", "GOLD", "PLATINUM"]);
 export type PlanTier = z.infer<typeof planTierSchema>;
 
+// Ordinal ranking of the three tiers, lowest first — used to validate that a
+// membership upgrade actually moves a member to a strictly higher tier.
+export const PLAN_TIER_ORDER: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
+
 const planValidityRefinement = <T extends { validityType: PlanValidityType; validityMonths?: number | null }>(
   data: T,
   ctx: z.RefinementCtx,
