@@ -38,7 +38,11 @@ export class AuditInterceptor implements NestInterceptor {
     >();
     const method = request.method;
 
-    if (!MUTATION_METHODS.has(method) || request.url.startsWith("/auth")) {
+    // AuthController writes its own LOGIN_SUCCESS/LOGIN_FAILED entries, so
+    // skip it here to avoid a redundant generic CREATE row per login —
+    // matched against the prefixed path since app.setGlobalPrefix makes
+    // every route "/api/v1/...", not just "/auth/...".
+    if (!MUTATION_METHODS.has(method) || request.url.startsWith("/api/v1/auth")) {
       return next.handle();
     }
 

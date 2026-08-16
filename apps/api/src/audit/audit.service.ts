@@ -24,7 +24,9 @@ export class AuditService {
     try {
       await this.prisma.auditLog.create({ data: entry });
     } catch (err) {
-      this.logger.error(`Failed to write audit log: ${(err as Error).message}`);
+      this.logger.error(
+        `Failed to write audit log: ${(err as Error).message} | entry=${JSON.stringify(entry)}`,
+      );
     }
   }
 
