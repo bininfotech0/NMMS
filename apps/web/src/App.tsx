@@ -97,10 +97,10 @@ function App() {
           <Route path="/" element={<Home />} />
         </Route>
 
-        <Route path="/login" element={<Login />} />
+        <Route path="/admin/login" element={<Login />} />
         <Route path="/verify/:token" element={<VerifyCard />} />
         <Route path="/join" element={<JoinViaReferral />} />
-        <Route path="/member/login" element={<MemberLogin />} />
+        <Route path="/login" element={<MemberLogin />} />
         <Route path="/403" element={<Forbidden />} />
         <Route path="/404" element={<NotFound />} />
 

@@ -138,7 +138,7 @@ export function JoinViaReferral() {
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Already a member?{" "}
-          <a href="/member/login" className="font-medium text-brand-green hover:underline">
+          <a href="/login" className="font-medium text-brand-green hover:underline">
             Sign in
           </a>
         </p>

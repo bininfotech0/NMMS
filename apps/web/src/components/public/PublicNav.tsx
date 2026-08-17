@@ -10,7 +10,7 @@ export function PublicNav() {
           <Logo size={32} />
         </Link>
         <Button asChild className="ml-auto bg-brand-green hover:bg-brand-green/90">
-          <Link to="/login">Login</Link>
+          <Link to="/admin/login">Login</Link>
         </Button>
       </div>
     </header>

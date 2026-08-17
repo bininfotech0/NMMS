@@ -48,7 +48,7 @@ export function Home() {
 
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <Button asChild size="lg" className="bg-brand-green hover:bg-brand-green/90">
-                <Link to="/login">
+                <Link to="/admin/login">
                   Staff Login
                   <ArrowRight className="size-4" />
                 </Link>
@@ -115,7 +115,7 @@ export function Home() {
             Part of our team? Sign in to manage members and programs.
           </h2>
           <Button asChild size="lg" className="bg-brand-gold text-brand-green-dark hover:bg-brand-gold/90">
-            <Link to="/login">
+            <Link to="/admin/login">
               Staff Login
               <ArrowRight className="size-4" />
             </Link>

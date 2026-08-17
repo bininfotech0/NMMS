@@ -214,7 +214,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     await logout();
-    navigate("/login");
+    navigate("/admin/login");
   }
 
   if (!user) return null;

@@ -14,7 +14,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (status === "unauthenticated") {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
   return children;

@@ -34,7 +34,7 @@ export function MemberPortalLayout() {
 
   async function handleLogout() {
     await logoutMember();
-    navigate("/member/login");
+    navigate("/login");
   }
 
   if (!member) return null;
