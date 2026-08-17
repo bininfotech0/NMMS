@@ -40,6 +40,16 @@ export const orgProfileSchema = z.object({
 });
 export type OrgProfile = z.infer<typeof orgProfileSchema>;
 
+// NumberingService plainly .replace()s these tokens with no fallback — a
+// format missing {SEQ} means every generated number is byte-identical
+// regardless of the incrementing counter, which then hits the DB's unique
+// constraint on the very next approval/payment and 500s until an admin fixes
+// it. Required here so a bad format can never be saved in the first place.
+const numberFormatSchema = z
+  .string()
+  .min(1)
+  .refine((v) => v.includes("{SEQ}"), { message: "Format must include the {SEQ} placeholder" });
+
 export const updateOrgSchema = z.object({
   name: z.string().min(1).optional(),
   logoUrl: z.string().nullish(),
@@ -50,8 +60,8 @@ export const updateOrgSchema = z.object({
   bankAccountNumber: z.string().nullish(),
   bankIfscCode: z.string().nullish(),
   bankName: z.string().nullish(),
-  membershipNumberFormat: z.string().min(1).optional(),
-  receiptNumberFormat: z.string().min(1).optional(),
+  membershipNumberFormat: numberFormatSchema.optional(),
+  receiptNumberFormat: numberFormatSchema.optional(),
   referralProgramEnabled: z.boolean().optional(),
   pointsPerApprovedReferral: z.number().int().nonnegative().optional(),
   volunteerBatchSilverMinPoints: z.number().int().nonnegative().optional(),

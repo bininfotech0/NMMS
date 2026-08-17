@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { FeatureFlagKey } from "@prisma/client";
-import type { Prisma, Member } from "@prisma/client";
+import type { DocumentType, Prisma, Member } from "@prisma/client";
 import type {
   AuthUser,
   CreateMemberInput,
@@ -55,6 +55,20 @@ const REQUIRED_FOR_SUBMIT = [
   "declarationAcceptPrivacyPolicy",
   "declarationAcceptTerms",
 ] as const;
+
+// At least one photo and one form of ID proof — matches the minimum any
+// membership org would need on file, and mirrors StepDocuments.tsx's own
+// "Identity verification" section. AADHAAR (legacy single-side type, kept in
+// the enum for old rows) counts alongside its AADHAAR_FRONT/BACK split.
+const ID_PROOF_DOCUMENT_TYPES: DocumentType[] = [
+  "AADHAAR",
+  "AADHAAR_FRONT",
+  "PAN",
+  "VOTER_ID",
+  "PASSPORT",
+  "DRIVING_LICENCE",
+  "GOVERNMENT_ID",
+];
 
 @Injectable()
 export class MembersService {
@@ -218,6 +232,19 @@ export class MembersService {
     const missing = REQUIRED_FOR_SUBMIT.filter((field) => !existing[field]);
     if (missing.length > 0) {
       throw new ConflictException(`Cannot submit: missing ${missing.join(", ")}`);
+    }
+
+    const [hasPhoto, hasIdProof] = await Promise.all([
+      this.prisma.memberDocument.findFirst({ where: { memberId: existing.id, type: "PHOTO" } }),
+      this.prisma.memberDocument.findFirst({
+        where: { memberId: existing.id, type: { in: ID_PROOF_DOCUMENT_TYPES } },
+      }),
+    ]);
+    const missingDocs = [!hasPhoto && "a passport photo", !hasIdProof && "an ID proof document"].filter(
+      (v): v is string => !!v,
+    );
+    if (missingDocs.length > 0) {
+      throw new ConflictException(`Cannot submit: upload ${missingDocs.join(" and ")} first`);
     }
 
     // Compare-and-swap: a concurrent duplicate submit loses the race cleanly

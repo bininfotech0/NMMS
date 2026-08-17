@@ -213,6 +213,7 @@ export function makeMockPrisma() {
       upsert: jest.fn(),
     },
     memberDocument: {
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       deleteMany: jest.fn(),
     },
@@ -224,6 +225,7 @@ export function makeMockPrisma() {
     },
     orgSettings: {
       upsert: jest.fn(),
+      update: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
@@ -232,6 +234,8 @@ export function makeMockPrisma() {
     },
     organization: {
       findFirst: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      update: jest.fn(),
     },
     referralPointsLedger: {
       create: jest.fn(),

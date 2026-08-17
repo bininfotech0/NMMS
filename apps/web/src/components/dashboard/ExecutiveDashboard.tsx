@@ -32,7 +32,6 @@ export interface DashboardSummary {
   totalMembers: number;
   activeMembers: number;
   pendingApprovals: number;
-  pendingPayments: number;
   monthlyRegistrations: number;
   totalCollections: number;
   monthlyCollection: number;
@@ -73,7 +72,7 @@ export function ExecutiveDashboard({
   const statCards = useMemo(() => [
     { label: "Total Members", value: summary.totalMembers.toLocaleString(), trend: `+${summary.monthlyRegistrations} this month`, trendUp: true },
     { label: "Active Members", value: summary.activeMembers.toLocaleString(), trend: `${((summary.activeMembers / Math.max(summary.totalMembers, 1)) * 100).toFixed(1)}% active`, trendUp: true },
-    { label: "Pending Approval", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} expiring this month`, trendUp: summary.expiringThisMonth < 10 },
+    { label: "Pending Approval", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
     { label: "Total Collections", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: true },
   ], [summary]);
 

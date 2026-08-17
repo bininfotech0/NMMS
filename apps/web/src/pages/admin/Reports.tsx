@@ -62,7 +62,10 @@ function formatCurrency(amount: number) {
 }
 
 function titleCase(s: string) {
-  return s[0] + s.slice(1).toLowerCase();
+  return s
+    .split("_")
+    .map((word) => word[0] + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 const chartTooltipStyle = { borderRadius: 8, borderColor: "var(--border)", fontSize: 12 };

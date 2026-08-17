@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { OrgProfile, PublicOrg, UpdateOrgInput } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -30,7 +30,42 @@ export class OrgService {
       ? await this.prisma.organization.update({ where: { id: organizationId }, data: { name } })
       : await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
 
-    await this.ensureSettings(organizationId);
+    const existingSettings = await this.ensureSettings(organizationId);
+    // Each field validates independently in updateOrgSchema (a PATCH can send
+    // just one of a pair), so the only place that can see the *effective*
+    // combination — this field's new value alongside the other's current or
+    // new value — is here, after merging onto what's already stored.
+    const effectiveChargeType = settingsFields.withdrawalChargeType ?? existingSettings.withdrawalChargeType;
+    const effectiveChargeValue =
+      settingsFields.withdrawalChargeValue ?? existingSettings.withdrawalChargeValue.toNumber();
+    if (effectiveChargeType === "PERCENTAGE" && effectiveChargeValue > 100) {
+      throw new BadRequestException("A percentage withdrawal charge cannot exceed 100%");
+    }
+    const effectiveMinAmount =
+      settingsFields.withdrawalMinAmount ?? existingSettings.withdrawalMinAmount.toNumber();
+    const effectiveMaxAmount =
+      settingsFields.withdrawalMaxAmount !== undefined
+        ? settingsFields.withdrawalMaxAmount
+        : (existingSettings.withdrawalMaxAmount?.toNumber() ?? null);
+    if (effectiveMaxAmount != null && effectiveMinAmount > effectiveMaxAmount) {
+      throw new BadRequestException("Minimum withdrawal amount cannot be greater than the maximum");
+    }
+
+    // VolunteerBatchUtil walks tiers in fixed SILVER→GOLD→PLATINUM order and
+    // picks the last threshold cleared — out-of-order thresholds let a member
+    // hold a batch nominally below the "next" one reported to them.
+    const effectiveSilver =
+      settingsFields.volunteerBatchSilverMinPoints ?? existingSettings.volunteerBatchSilverMinPoints;
+    const effectiveGold =
+      settingsFields.volunteerBatchGoldMinPoints ?? existingSettings.volunteerBatchGoldMinPoints;
+    const effectivePlatinum =
+      settingsFields.volunteerBatchPlatinumMinPoints ?? existingSettings.volunteerBatchPlatinumMinPoints;
+    if (effectiveSilver > effectiveGold || effectiveGold > effectivePlatinum) {
+      throw new BadRequestException(
+        "Volunteer batch thresholds must be non-decreasing: Silver <= Gold <= Platinum",
+      );
+    }
+
     const settings = await this.prisma.orgSettings.update({
       where: { organizationId },
       data: settingsFields,

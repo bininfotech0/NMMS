@@ -1,5 +1,5 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from "@nestjs/common";
-import type { AuthUser } from "@nmms/shared";
+import type { AuthMember, AuthUser } from "@nmms/shared";
 import type { FastifyRequest } from "fastify";
 import { Observable, tap } from "rxjs";
 import { AuditService } from "./audit.service";
@@ -34,7 +34,7 @@ export class AuditInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<
-      FastifyRequest & { user?: AuthUser; params?: Record<string, string> }
+      FastifyRequest & { user?: AuthUser | AuthMember; params?: Record<string, string> }
     >();
     const method = request.method;
 
@@ -51,10 +51,26 @@ export class AuditInterceptor implements NestInterceptor {
         const entity = context.getClass().name.replace(/Controller$/, "");
         const entityId = Object.values(request.params ?? {})[0] ?? null;
 
+        // AuditLog.actorId is a hard FK to User — a member-portal request's
+        // req.user is an AuthMember (its `id` is a Member.id, not a User.id),
+        // so writing it there throws an FK violation on every single write
+        // that AuditService.log() then silently swallows, losing the audit
+        // row entirely. Members have no User row to point actorId at, so
+        // leave it null for them and record identity in actorEmail instead —
+        // still gives reviewers something to search on.
+        const user = request.user;
+        const isStaff = !!user && "email" in user;
+        const actorId = isStaff ? (user as AuthUser).id : null;
+        const actorEmail = isStaff
+          ? (user as AuthUser).email
+          : user
+            ? `member:${(user as AuthMember).mobile}`
+            : null;
+
         void this.auditService.log({
-          organizationId: request.user?.organizationId ?? null,
-          actorId: request.user?.id ?? null,
-          actorEmail: request.user?.email ?? null,
+          organizationId: user?.organizationId ?? null,
+          actorId,
+          actorEmail,
           action: deriveAction(method, request.url),
           entity,
           entityId,

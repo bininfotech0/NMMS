@@ -8,6 +8,7 @@ interface DonutBreakdownProps {
 }
 
 export function DonutBreakdown({ title, data, labelKey }: DonutBreakdownProps) {
+  const total = data.reduce((sum, entry) => sum + entry.value, 0);
   return (
     <Card className="h-full">
       <CardHeader>
@@ -33,7 +34,7 @@ export function DonutBreakdown({ title, data, labelKey }: DonutBreakdownProps) {
             <li key={String(entry[labelKey])} className="flex items-center gap-2">
               <span className="size-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
               <span className="text-muted-foreground">{entry[labelKey]}</span>
-              <span className="font-medium">{entry.value}%</span>
+              <span className="font-medium">{total > 0 ? Math.round((entry.value / total) * 100) : 0}%</span>
             </li>
           ))}
         </ul>

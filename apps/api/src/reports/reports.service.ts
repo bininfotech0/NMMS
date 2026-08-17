@@ -102,11 +102,16 @@ export class ReportsService {
       status: sh.member.status,
     }));
 
-    const expiredCount = await this.prisma.member.count({
+    // True calendar-month bounds (today through the last instant of this
+    // month) — a rolling 30-day-forward window would drift in meaning by day
+    // of month (e.g. on the 30th it'd reach 29 days into next month), which
+    // doesn't match what "expiring this month" tells the admin.
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const expiringThisMonthCount = await this.prisma.member.count({
       where: {
         organizationId,
         status: "ACTIVE",
-        validUntil: { lte: new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000), gte: new Date() },
+        validUntil: { lte: endOfMonth, gte: now },
         ...scope,
       },
     });
@@ -128,7 +133,7 @@ export class ReportsService {
       monthlyCollection: thisMonthCollected,
       monthlyCollections: this.bucketMonthlyAmounts(payments, monthKeys),
       recentActivity,
-      expiringThisMonth: expiredCount,
+      expiringThisMonth: expiringThisMonthCount,
     };
   }
 

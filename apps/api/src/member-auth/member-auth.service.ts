@@ -40,6 +40,22 @@ export class MemberAuthService {
       throw new ConflictException("An account with this mobile number is already registered — please log in");
     }
 
+    // Aadhaar is the strongest identity signal this form collects — a 12-digit
+    // match to an existing member (staff-entered draft or otherwise) is
+    // effectively never a coincidence, unlike mobile (which the check above
+    // only catches once a portal password exists). Blocks the public form
+    // from creating a second, disconnected Member row for someone a field
+    // executive already registered in person but who hasn't set a password yet.
+    const aadhaarHash = this.aadhaar.hash(dto.aadhaarNumber);
+    const existingByAadhaar = await this.prisma.member.findFirst({
+      where: { organizationId: org.id, aadhaarHash, status: { not: "REJECTED" } },
+    });
+    if (existingByAadhaar) {
+      throw new ConflictException(
+        "A member with this Aadhaar number is already registered — please contact your field executive or log in if you already have an account",
+      );
+    }
+
     let referralMemberId: string | undefined;
     if (dto.referralCode) {
       const referrer = await this.prisma.member.findFirst({
@@ -67,7 +83,7 @@ export class MemberAuthService {
         fullName: dto.fullName,
         mobile: dto.mobile,
         email: dto.email ?? null,
-        aadhaarHash: this.aadhaar.hash(dto.aadhaarNumber),
+        aadhaarHash,
         aadhaarLast4: this.aadhaar.last4(dto.aadhaarNumber),
         passwordHash,
         referralMemberId,

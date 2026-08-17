@@ -1,8 +1,9 @@
 import { useLookups } from "@/hooks/useLookups";
+import { useMemberDocuments } from "@/hooks/useDocuments";
 import { useMembers } from "@/hooks/useMembers";
 import { usePlans } from "@/hooks/usePlans";
 import type { MemberResponse } from "@nmms/shared";
-import type { WizardFormState } from "../wizard-types";
+import { ID_PROOF_DOCUMENT_TYPES, type WizardFormState } from "../wizard-types";
 
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
@@ -22,8 +23,19 @@ function ReviewSection({ title, children }: { title: string; children: React.Rea
   );
 }
 
-export function StepReview({ form, member }: { form: WizardFormState; member: MemberResponse | null }) {
+export function StepReview({
+  form,
+  member,
+  memberId,
+}: {
+  form: WizardFormState;
+  member: MemberResponse | null;
+  memberId: string;
+}) {
   const { data: plans = [] } = usePlans();
+  const { data: documents = [] } = useMemberDocuments(memberId);
+  const hasPhoto = documents.some((d) => d.type === "PHOTO");
+  const hasIdProof = documents.some((d) => ID_PROOF_DOCUMENT_TYPES.includes(d.type));
   const { data: membershipCategories = [] } = useLookups("MEMBERSHIP_CATEGORY");
   const { data: branches = [] } = useLookups("BRANCH");
   const { data: religions = [] } = useLookups("RELIGION");
@@ -141,6 +153,8 @@ export function StepReview({ form, member }: { form: WizardFormState; member: Me
         <ReviewRow label="Voter ID" value={form.voterId} />
         <ReviewRow label="Passport number" value={form.passportNumber} />
         <ReviewRow label="Driving licence" value={form.drivingLicenceNumber} />
+        <ReviewRow label="Passport photo uploaded" value={hasPhoto ? "Yes" : "No — required before submitting"} />
+        <ReviewRow label="ID proof document uploaded" value={hasIdProof ? "Yes" : "No — required before submitting"} />
       </ReviewSection>
 
       <ReviewSection title="Additional Information">

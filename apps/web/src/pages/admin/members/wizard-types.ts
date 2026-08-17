@@ -1,5 +1,17 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { MemberResponse, UpdateMemberInput } from "@nmms/shared";
+import type { DocumentType, MemberResponse, UpdateMemberInput } from "@nmms/shared";
+
+// Mirrors MembersService.submit()'s server-side requirement — kept in sync
+// manually since the check lives in the API, not a shared schema.
+export const ID_PROOF_DOCUMENT_TYPES: DocumentType[] = [
+  "AADHAAR",
+  "AADHAAR_FRONT",
+  "PAN",
+  "VOTER_ID",
+  "PASSPORT",
+  "DRIVING_LICENCE",
+  "GOVERNMENT_ID",
+];
 
 // All fields are plain strings/booleans for direct binding to controlled
 // inputs; dates use "YYYY-MM-DD" (native <input type="date"> format) and are
@@ -421,4 +433,32 @@ export interface StepProps {
   form: WizardFormState;
   setForm: Dispatch<SetStateAction<WizardFormState>>;
   memberId: string;
+}
+
+// Mirrors MembersService's REQUIRED_FOR_SUBMIT — the backend only checks this
+// once, at Submit, on all fields at the same time. Re-running the same checks
+// per step here means a field executive finds out about a missing field on
+// the step where it actually lives, instead of clicking through the rest of
+// the 10-step wizard first only to get a single terse error at the end.
+export function getStepValidationError(step: number, form: WizardFormState): string | null {
+  switch (step) {
+    case 0:
+      return form.planId ? null : "Select a membership plan before continuing";
+    case 1:
+      return form.fullName.trim() ? null : "Full name is required before continuing";
+    case 3:
+      if (!form.mobile.trim()) return "Mobile number is required before continuing";
+      if (!form.addressLine.trim()) return "Address is required before continuing";
+      if (!form.pincode.trim()) return "Pincode is required before continuing";
+      return null;
+    case 8:
+      return form.declarationInfoCorrect &&
+        form.declarationAcceptConstitution &&
+        form.declarationAcceptPrivacyPolicy &&
+        form.declarationAcceptTerms
+        ? null
+        : "All declarations must be accepted before continuing";
+    default:
+      return null;
+  }
 }

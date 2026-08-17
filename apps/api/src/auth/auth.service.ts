@@ -27,6 +27,8 @@ export class AuthService {
       email: user.email,
       role: user.role,
       organizationId: user.organizationId,
+      fullName: user.fullName,
+      isActive: user.isActive,
     };
     const accessToken = await this.jwt.signAsync(accessPayload, {
       secret: this.config.getOrThrow<string>("JWT_ACCESS_SECRET"),

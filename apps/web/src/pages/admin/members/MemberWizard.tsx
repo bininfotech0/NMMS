@@ -5,8 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useMember, useSubmitMember, useUpdateMember } from "@/hooks/useMembers";
+import { useMemberDocuments } from "@/hooks/useDocuments";
 import {
   emptyWizardForm,
+  getStepValidationError,
+  ID_PROOF_DOCUMENT_TYPES,
   memberToWizardForm,
   wizardFormToUpdateDto,
   WIZARD_STEP_TITLES,
@@ -30,6 +33,7 @@ export function MemberWizard() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: member, isLoading } = useMember(id ?? null);
+  const { data: documents = [] } = useMemberDocuments(id ?? null);
   const updateMember = useUpdateMember();
   const submitMember = useSubmitMember();
 
@@ -37,6 +41,7 @@ export function MemberWizard() {
   const [form, setForm] = useState<WizardFormState>(emptyWizardForm());
   const [loaded, setLoaded] = useState(false);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const [stepError, setStepError] = useState<string | null>(null);
 
   useEffect(() => {
     if (member && !loaded) {
@@ -60,13 +65,33 @@ export function MemberWizard() {
     if (currentStep === PAYMENT_STEP && member?.status === "DRAFT") {
       return; // registration fee must be collected before continuing
     }
+    const validationError = getStepValidationError(currentStep, form);
+    if (validationError) {
+      setStepError(validationError);
+      return;
+    }
+    setStepError(null);
     const ok = await save();
     if (ok) setCurrentStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   }
 
   async function handlePrevious() {
+    setStepError(null);
     await save();
     setCurrentStep((s) => Math.max(s - 1, 0));
+  }
+
+  function handleOpenConfirmSubmit() {
+    for (let step = 0; step < TOTAL_STEPS; step++) {
+      const validationError = getStepValidationError(step, form);
+      if (validationError) {
+        setCurrentStep(step);
+        setStepError(validationError);
+        return;
+      }
+    }
+    setStepError(null);
+    setConfirmSubmitOpen(true);
   }
 
   async function handleSubmit() {
@@ -86,7 +111,14 @@ export function MemberWizard() {
   const isLastStep = currentStep === TOTAL_STEPS - 1;
   const isSaving = updateMember.isPending;
   const paymentBlocked = currentStep === PAYMENT_STEP && member?.status === "DRAFT";
-  const canSubmit = member?.status === "PAYMENT_COLLECTED";
+  const hasPhoto = documents.some((d) => d.type === "PHOTO");
+  const hasIdProof = documents.some((d) => ID_PROOF_DOCUMENT_TYPES.includes(d.type));
+  const missingDocsReason = !hasPhoto
+    ? "Upload a passport photo (Identity & Documents step) before submitting"
+    : !hasIdProof
+      ? "Upload an ID proof document (Identity & Documents step) before submitting"
+      : null;
+  const canSubmit = member?.status === "PAYMENT_COLLECTED" && !missingDocsReason;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -99,6 +131,12 @@ export function MemberWizard() {
         <Progress value={((currentStep + 1) / TOTAL_STEPS) * 100} className="mt-3" />
       </div>
 
+      {stepError && (
+        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {stepError}
+        </p>
+      )}
+
       <div className="rounded-xl border border-border bg-card p-6">
         {currentStep === 0 && <StepMembership {...stepProps} />}
         {currentStep === 1 && <StepBasicInfo {...stepProps} />}
@@ -109,7 +147,7 @@ export function MemberWizard() {
         {currentStep === 6 && <StepDocuments {...stepProps} />}
         {currentStep === 7 && <StepNominee {...stepProps} />}
         {currentStep === 8 && <StepDeclaration {...stepProps} />}
-        {currentStep === 9 && <StepReview form={form} member={member ?? null} />}
+        {currentStep === 9 && <StepReview form={form} member={member ?? null} memberId={id} />}
       </div>
 
       <div className="flex items-center justify-between">
@@ -131,8 +169,12 @@ export function MemberWizard() {
               type="button"
               className="bg-brand-green hover:bg-brand-green/90"
               disabled={isSaving || submitMember.isPending || !canSubmit}
-              title={canSubmit ? undefined : "Collect the registration fee (Payment Collection step) before submitting"}
-              onClick={() => setConfirmSubmitOpen(true)}
+              title={
+                member?.status !== "PAYMENT_COLLECTED"
+                  ? "Collect the registration fee (Payment Collection step) before submitting"
+                  : (missingDocsReason ?? undefined)
+              }
+              onClick={handleOpenConfirmSubmit}
             >
               Submit Application
             </Button>

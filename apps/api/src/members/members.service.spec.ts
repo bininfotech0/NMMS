@@ -251,6 +251,7 @@ describe("MembersService.submit", () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
     prisma.member.findFirst.mockResolvedValue(completeDraft);
+    prisma.memberDocument.findFirst.mockResolvedValue({ id: "doc-1" });
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
     prisma.member.findUniqueOrThrow.mockResolvedValue({ ...completeDraft, status: "SUBMITTED" });
 
@@ -284,10 +285,22 @@ describe("MembersService.submit", () => {
     await expect(service.submit("member-1", user)).rejects.toThrow(/missing/i);
   });
 
+  it("refuses to submit without a passport photo and an ID proof document on file", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(completeDraft);
+    prisma.memberDocument.findFirst.mockResolvedValue(null); // neither photo nor ID proof uploaded
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.submit("member-1", user)).rejects.toThrow(/photo|ID proof/i);
+    expect(prisma.member.updateMany).not.toHaveBeenCalled();
+  });
+
   it("loses a concurrent double-submit race cleanly via the CAS guard", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
     prisma.member.findFirst.mockResolvedValue(completeDraft);
+    prisma.memberDocument.findFirst.mockResolvedValue({ id: "doc-1" });
     prisma.member.updateMany.mockResolvedValue({ count: 0 });
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });

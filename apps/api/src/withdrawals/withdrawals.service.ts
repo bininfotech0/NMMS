@@ -58,7 +58,10 @@ export class WithdrawalsService {
     if (settings.withdrawalChargeType === "FLAT") {
       chargeAmount = Prisma.Decimal.min(settings.withdrawalChargeValue, grossAmount);
     } else if (settings.withdrawalChargeType === "PERCENTAGE") {
-      chargeAmount = grossAmount.mul(settings.withdrawalChargeValue).div(100);
+      // Clamped the same as FLAT — org settings only validate
+      // withdrawalChargeValue as non-negative, not <= 100, so a misconfigured
+      // >100% charge must not be able to drive netAmount negative.
+      chargeAmount = Prisma.Decimal.min(grossAmount.mul(settings.withdrawalChargeValue).div(100), grossAmount);
     }
     return { chargeType: settings.withdrawalChargeType, chargeAmount, netAmount: grossAmount.sub(chargeAmount) };
   }

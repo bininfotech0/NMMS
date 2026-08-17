@@ -40,4 +40,34 @@ describe("ReportsService.summary", () => {
     expect(result.totalCollected).toBe(650);
     expect(result.thisMonthCollected).toBe(500);
   });
+
+  it("counts expiringThisMonth against true calendar-month bounds, not a rolling 30-day window", async () => {
+    const prisma = makeMockPrisma();
+    const service = new ReportsService(prisma as never);
+
+    prisma.member.findMany.mockResolvedValue([]);
+    prisma.membershipPlan.findMany.mockResolvedValue([]);
+    prisma.payment.findMany.mockResolvedValue([]);
+    prisma.statusHistory.findMany.mockResolvedValue([]);
+    prisma.member.count.mockResolvedValue(3);
+
+    const before = new Date();
+    const result = await service.summary(makeAuthUser());
+    const after = new Date();
+
+    expect(result.expiringThisMonth).toBe(3);
+    const callArgs = prisma.member.count.mock.calls[0][0];
+    const { gte, lte } = callArgs.where.validUntil;
+
+    // gte must be "now" (not before the call started, not after it finished).
+    expect(gte.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(gte.getTime()).toBeLessThanOrEqual(after.getTime());
+
+    // lte must be the last instant of the current calendar month, not
+    // now + 30 days (which would land in the following month for most days).
+    expect(lte.getFullYear()).toBe(before.getFullYear());
+    expect(lte.getMonth()).toBe(before.getMonth());
+    const lastDayOfMonth = new Date(before.getFullYear(), before.getMonth() + 1, 0).getDate();
+    expect(lte.getDate()).toBe(lastDayOfMonth);
+  });
 });

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { TrendingUp } from "lucide-react";
+import { TrendingDown, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ export function StatCard({ label, value, trend, trendUp = true, icon: Icon, acce
               trendUp ? "text-brand-green" : "text-destructive"
             )}
           >
-            <TrendingUp className="size-3" />
+            {trendUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
             {trend}
           </div>
         </div>

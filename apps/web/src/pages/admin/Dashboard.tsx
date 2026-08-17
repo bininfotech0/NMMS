@@ -10,7 +10,6 @@ const emptySummary: DashboardSummary = {
   totalMembers: 3250,
   activeMembers: 2750,
   pendingApprovals: 150,
-  pendingPayments: 45,
   monthlyRegistrations: 280,
   totalCollections: 4560000,
   monthlyCollection: 45600,

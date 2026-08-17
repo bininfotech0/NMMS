@@ -2,8 +2,13 @@ import { of } from "rxjs";
 import { AuditInterceptor } from "./audit.interceptor";
 import type { AuditService } from "./audit.service";
 
-function makeContext(method: string, url: string, params: Record<string, string> = {}) {
-  const request = { method, url, params, user: { id: "user-1", email: "a@b.com", organizationId: "org-1" }, ip: "127.0.0.1" };
+function makeContext(
+  method: string,
+  url: string,
+  params: Record<string, string> = {},
+  user: Record<string, unknown> | undefined = { id: "user-1", email: "a@b.com", organizationId: "org-1" },
+) {
+  const request = { method, url, params, user, ip: "127.0.0.1" };
   return {
     switchToHttp: () => ({ getRequest: () => request }),
     getClass: () => ({ name: "MembersController" }),
@@ -38,6 +43,35 @@ describe("AuditInterceptor", () => {
 
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "UPDATE", entity: "Members", entityId: "m1" }),
+    );
+  });
+
+  it("audit-logs a member-portal mutation without setting actorId to the member's id (no User row to FK against)", async () => {
+    const { interceptor, auditService } = makeInterceptor();
+    const next = { handle: () => of("ok") };
+    const memberUser = {
+      id: "member-1",
+      fullName: "Test Member",
+      mobile: "9800000001",
+      organizationId: "org-1",
+      status: "ACTIVE",
+      referralCode: null,
+      planName: null,
+      planTier: null,
+    };
+
+    await new Promise((resolve) => {
+      interceptor
+        .intercept(makeContext("POST", "/api/v1/withdrawals/me", {}, memberUser), next)
+        .subscribe(resolve);
+    });
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: null,
+        actorEmail: "member:9800000001",
+        organizationId: "org-1",
+      }),
     );
   });
 });

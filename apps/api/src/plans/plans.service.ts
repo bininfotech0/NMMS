@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { CreatePlanInput, PlanResponse, UpdatePlanInput } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -38,11 +38,29 @@ export class PlansService {
   }
 
   async update(id: string, dto: UpdatePlanInput, organizationId: string): Promise<PlanResponse> {
-    await this.findOne(id, organizationId);
+    const existing = await this.findOne(id, organizationId);
 
     const data: Prisma.MembershipPlanUpdateInput = { ...dto };
     if (dto.validityType === "LIFETIME") {
       data.validityMonths = null;
+    }
+
+    // createPlanSchema's superRefine enforces validityType/validityMonths
+    // consistency, but updatePlanSchema can't — a PATCH may send only one of
+    // the two fields, so the schema alone never sees the *effective* combined
+    // state. Check it here instead, against what the plan will actually end
+    // up with, to stop it landing in a MONTHS + null-validityMonths state
+    // (silently treated as lifetime at approval time, but rejected at renewal
+    // — see ApplicationsService/PaymentsService).
+    const effectiveValidityType = dto.validityType ?? existing.validityType;
+    const effectiveValidityMonths =
+      dto.validityType === "LIFETIME"
+        ? null
+        : dto.validityMonths !== undefined
+          ? dto.validityMonths
+          : existing.validityMonths;
+    if (effectiveValidityType === "MONTHS" && !effectiveValidityMonths) {
+      throw new ConflictException("validityMonths is required when validityType is MONTHS");
     }
 
     const plan = await this.prisma.membershipPlan.update({ where: { id }, data });

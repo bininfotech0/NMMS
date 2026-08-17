@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useAutoFillIdentity, useMemberDocuments, useUploadDocument } from "@/hooks/useDocuments";
 import type { DocumentType, IdentityAutoFillResponse } from "@nmms/shared";
-import type { StepProps } from "../wizard-types";
+import { ID_PROOF_DOCUMENT_TYPES, type StepProps } from "../wizard-types";
 
 const DOCUMENT_SLOTS: { type: DocumentType; label: string }[] = [
   { type: "PHOTO", label: "Passport photo" },
@@ -157,7 +157,23 @@ export function StepDocuments({ form, setForm, memberId }: StepProps) {
       </div>
 
       <div>
-        <h3 className="mb-3 font-heading text-sm font-semibold">Documents</h3>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-heading text-sm font-semibold">Documents</h3>
+          {(() => {
+            const hasPhoto = documents.some((d) => d.type === "PHOTO");
+            const hasIdProof = documents.some((d) => ID_PROOF_DOCUMENT_TYPES.includes(d.type));
+            if (hasPhoto && hasIdProof) return null;
+            return (
+              <p className="text-xs text-destructive">
+                {!hasPhoto && !hasIdProof
+                  ? "A passport photo and one ID proof document are required to submit"
+                  : !hasPhoto
+                    ? "A passport photo is required to submit"
+                    : "One ID proof document is required to submit"}
+              </p>
+            );
+          })()}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {DOCUMENT_SLOTS.map((slot) => (
             <DocumentSlot
@@ -165,6 +181,7 @@ export function StepDocuments({ form, setForm, memberId }: StepProps) {
               memberId={memberId}
               type={slot.type}
               label={slot.label}
+              required={slot.type === "PHOTO" || ID_PROOF_DOCUMENT_TYPES.includes(slot.type)}
               fileName={documents.find((d) => d.type === slot.type)?.fileName ?? null}
             />
           ))}
@@ -178,11 +195,13 @@ function DocumentSlot({
   memberId,
   type,
   label,
+  required,
   fileName,
 }: {
   memberId: string;
   type: DocumentType;
   label: string;
+  required: boolean;
   fileName: string | null;
 }) {
   const uploadDocument = useUploadDocument();
@@ -201,7 +220,10 @@ function DocumentSlot({
       className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium">{label}</p>
+        <p className="text-sm font-medium">
+          {label}
+          {required && !fileName && <span className="ml-1 text-destructive">*</span>}
+        </p>
         <p className="truncate text-xs text-muted-foreground">{fileName ?? "Not uploaded"}</p>
       </div>
       <Button
