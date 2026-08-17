@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useMemberAuthStore } from "@/stores/member-auth";
 import type { AuthMember } from "@nmms/shared";
 import { ApiError } from "./api-client";
@@ -48,9 +49,15 @@ export async function memberApiFetch<T>(
   const res = await fetch(`${API_PREFIX}${path}`, { ...options, headers, credentials: "include" });
 
   if (res.status === 401 && !isRetry && !NO_RETRY_PATHS.has(path)) {
+    // Only warn when a real session just expired — not when memberApiFetch
+    // happens to be called with no token at all (e.g. before login).
+    const hadSession = !!useMemberAuthStore.getState().accessToken;
     const refreshed = await refreshMemberSession();
     if (refreshed) {
       return memberApiFetch<T>(path, options, true);
+    }
+    if (hadSession) {
+      toast.error("Your session has expired — please log in again.");
     }
     useMemberAuthStore.getState().clearSession();
   }

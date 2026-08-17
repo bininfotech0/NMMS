@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth";
 import type { AuthUser } from "@nmms/shared";
 
@@ -72,9 +73,15 @@ export async function apiFetch<T>(
   const res = await fetch(`${API_PREFIX}${path}`, { ...options, headers, credentials: "include" });
 
   if (res.status === 401 && !isRetry && !NO_RETRY_PATHS.has(path)) {
+    // Only warn when a real session just expired — not when apiFetch happens
+    // to be called with no token at all (e.g. before login).
+    const hadSession = !!useAuthStore.getState().accessToken;
     const refreshed = await refreshSession();
     if (refreshed) {
       return apiFetch<T>(path, options, true);
+    }
+    if (hadSession) {
+      toast.error("Your session has expired — please log in again.");
     }
     useAuthStore.getState().clearSession();
   }
