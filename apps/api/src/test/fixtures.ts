@@ -280,6 +280,11 @@ export function makeMockPrisma() {
       updateMany: jest.fn(),
       groupBy: jest.fn(),
     },
+    auditLog: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
   // Default: $transaction(cb) just runs cb with the same mock as `tx`.

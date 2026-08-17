@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, ShieldCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -12,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
-import { useAuditLogs } from "@/hooks/useAuditLogs";
+import { useAuditLogFacets, useAuditLogs } from "@/hooks/useAuditLogs";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import type { AuditLogResponse } from "@nmms/shared";
 
@@ -32,38 +33,42 @@ function actionStyle(action: string) {
 }
 
 const ALL = "all";
+const PAGE_SIZE = 50;
+
+// Small local debounce — no need for a shared hook over one input.
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 export function AuditLogs() {
-  const { data: logs = [], isLoading, isError, error } = useAuditLogs();
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const search = useDebouncedValue(searchInput, 300);
   const [actionFilter, setActionFilter] = useState(ALL);
   const [entityFilter, setEntityFilter] = useState(ALL);
+  const [page, setPage] = useState(1);
 
+  // Any filter change invalidates the current page position.
+  useEffect(() => {
+    setPage(1);
+  }, [search, actionFilter, entityFilter]);
+
+  const { data: facets } = useAuditLogFacets();
+  const { data, isLoading, isError, error } = useAuditLogs({
+    page,
+    limit: PAGE_SIZE,
+    search: search || undefined,
+    action: actionFilter === ALL ? undefined : actionFilter,
+    entity: entityFilter === ALL ? undefined : entityFilter,
+  });
+
+  const logs = data?.data ?? [];
+  const meta = data?.meta;
   const forbidden = isError && error instanceof ApiError && error.status === 403;
-
-  const actions = useMemo(
-    () => Array.from(new Set(logs.map((l) => l.action))).sort(),
-    [logs],
-  );
-  const entities = useMemo(
-    () => Array.from(new Set(logs.map((l) => l.entity))).sort(),
-    [logs],
-  );
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return logs.filter((l) => {
-      if (actionFilter !== ALL && l.action !== actionFilter) return false;
-      if (entityFilter !== ALL && l.entity !== entityFilter) return false;
-      if (!q) return true;
-      return (
-        (l.actorEmail ?? "").toLowerCase().includes(q) ||
-        l.action.toLowerCase().includes(q) ||
-        l.entity.toLowerCase().includes(q) ||
-        (l.entityId ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [logs, search, actionFilter, entityFilter]);
 
   return (
     <div className="space-y-6">
@@ -77,8 +82,8 @@ export function AuditLogs() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Input
           placeholder="Search by actor, action, entity, or ID..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           className="sm:max-w-xs"
         />
         <select
@@ -87,7 +92,7 @@ export function AuditLogs() {
           className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <option value={ALL}>All actions</option>
-          {actions.map((a) => (
+          {(facets?.actions ?? []).map((a) => (
             <option key={a} value={a}>
               {a}
             </option>
@@ -99,7 +104,7 @@ export function AuditLogs() {
           className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <option value={ALL}>All entities</option>
-          {entities.map((e) => (
+          {(facets?.entities ?? []).map((e) => (
             <option key={e} value={e}>
               {e}
             </option>
@@ -135,13 +140,15 @@ export function AuditLogs() {
                 </TableCell>
               </TableRow>
             )}
-            {!isLoading && !isError && filtered.map((log) => <AuditLogRow key={log.id} log={log} />)}
-            {!isLoading && !isError && filtered.length === 0 && (
+            {!isLoading && !isError && logs.map((log) => <AuditLogRow key={log.id} log={log} />)}
+            {!isLoading && !isError && logs.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <ShieldCheck className="size-8 text-muted-foreground/50" />
-                    {logs.length === 0 ? "No activity recorded yet." : "No logs match your filters."}
+                    {meta && meta.total === 0 && !search && actionFilter === ALL && entityFilter === ALL
+                      ? "No activity recorded yet."
+                      : "No logs match your filters."}
                   </div>
                 </TableCell>
               </TableRow>
@@ -149,6 +156,38 @@ export function AuditLogs() {
           </TableBody>
         </Table>
       </div>
+
+      {meta && meta.total > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-sm text-muted-foreground">
+            Showing {(meta.page - 1) * meta.limit + 1} to {Math.min(meta.page * meta.limit, meta.total)} of{" "}
+            {meta.total}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!meta.hasPrev}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {meta.page} of {meta.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!meta.hasNext}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
