@@ -284,6 +284,10 @@ enum RegistrationMode {
   OFFLINE
 }
 
+enum MemberRole {
+  MEMBER
+}
+
 enum IdentityEntryMethod {
   AUTO_FILL
   MANUAL
@@ -322,6 +326,7 @@ model Member {
   registrationLongitude Float?
   deviceId              String?
   registrationMode      RegistrationMode?    @default(ONLINE)
+  role                  MemberRole           @default(MEMBER)
   // Device-captured moment of registration — distinct from createdAt (server
   // receipt time), relevant for offline-first field capture.
   registeredAt          DateTime?

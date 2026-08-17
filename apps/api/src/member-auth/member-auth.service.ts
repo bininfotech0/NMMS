@@ -130,6 +130,7 @@ export class MemberAuthService {
       mobile: member.mobile,
       organizationId: member.organizationId,
       status: member.status,
+      role: member.role,
       referralCode: member.referralCode,
       planName: member.planName,
       planTier: member.planTier,
@@ -213,6 +214,7 @@ export class MemberAuthService {
     mobile: string;
     organizationId: string;
     status: string;
+    role: string;
     referralCode: string | null;
     plan?: { name: string; tier: string | null } | null;
   }): AuthMember {
@@ -222,6 +224,7 @@ export class MemberAuthService {
       mobile: member.mobile,
       organizationId: member.organizationId,
       status: member.status,
+      role: member.role as AuthMember["role"],
       referralCode: member.referralCode,
       planName: member.plan?.name ?? null,
       planTier: (member.plan?.tier as AuthMember["planTier"]) ?? null,

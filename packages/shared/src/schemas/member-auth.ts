@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { planTierSchema } from "./plan";
+import { MemberRole } from "../enums/member-role";
 
 export const memberRegisterSchema = z.object({
   fullName: z.string().min(1),
@@ -26,6 +27,7 @@ export const authMemberSchema = z.object({
   mobile: z.string(),
   organizationId: z.string(),
   status: z.string(),
+  role: z.nativeEnum(MemberRole),
   referralCode: z.string().nullable(),
   planName: z.string().nullable(),
   planTier: planTierSchema.nullable(),

@@ -1,4 +1,5 @@
 export * from "./enums/role";
+export * from "./enums/member-role";
 export * from "./schemas/application";
 export * from "./schemas/audit";
 export * from "./schemas/card";

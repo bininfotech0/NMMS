@@ -12,6 +12,7 @@ interface MemberAccessTokenPayload {
   mobile: string;
   organizationId: string;
   status: string;
+  role: string;
   referralCode: string | null;
   planName: string | null;
   planTier: PlanTier | null;
@@ -54,6 +55,7 @@ export class MemberJwtStrategy extends PassportStrategy(Strategy, "member-jwt") 
       mobile: member.mobile,
       organizationId: member.organizationId,
       status: member.status,
+      role: member.role as AuthMember["role"],
       referralCode: member.referralCode,
       planName: member.plan?.name ?? null,
       planTier: (member.plan?.tier as PlanTier) ?? null,
