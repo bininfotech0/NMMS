@@ -108,7 +108,7 @@ export function MembersList() {
         sortable: true,
       },
       {
-        key: "planId",
+        key: "planName",
         header: "Plan",
         sortable: true,
         render: (member) =>

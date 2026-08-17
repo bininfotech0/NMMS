@@ -65,7 +65,7 @@ export function MemberWallet() {
   const { data: kyc } = useMyKyc();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
-  const canWithdraw = kyc?.kycStatus === "VERIFIED";
+  const canWithdraw = kyc?.kycStatus === "VERIFIED" && kyc.isComplete;
 
   return (
     <div className="space-y-4">

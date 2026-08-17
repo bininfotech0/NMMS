@@ -190,11 +190,11 @@ function PlanSheet({
   const isPending = createPlan.isPending || updatePlan.isPending;
 
   function reset() {
-    setName("");
-    setTier("");
-    setFee("");
-    setValidityType("MONTHS");
-    setValidityMonths("12");
+    setName(plan?.name ?? "");
+    setTier(plan?.tier ?? "");
+    setFee(plan ? String(plan.fee) : "");
+    setValidityType(plan?.validityType ?? "MONTHS");
+    setValidityMonths(plan?.validityMonths ? String(plan.validityMonths) : "12");
     setError(null);
   }
 

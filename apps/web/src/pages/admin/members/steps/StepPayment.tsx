@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,13 @@ export function StepPayment({ form, memberId }: StepProps) {
   const plan = plans.find((p) => p.id === form.planId);
   const defaultAmount = form.feeOverride || (plan ? String(plan.fee) : "");
   const [amount, setAmount] = useState(defaultAmount);
+  // Plans can still be loading on first render (cold cache), in which case
+  // defaultAmount is "" here even though a plan fee will apply — backfill
+  // once it resolves, but only if the field is still untouched so this never
+  // clobbers something the user already typed.
+  useEffect(() => {
+    if (!amount && defaultAmount) setAmount(defaultAmount);
+  }, [defaultAmount]);
   const [mode, setMode] = useState<PaymentMode>("CASH");
   const [transactionNumber, setTransactionNumber] = useState("");
   const [remarks, setRemarks] = useState("");

@@ -85,7 +85,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Settings", to: "/admin/settings", icon: Settings },
       { label: "Users", to: "/admin/users", icon: UserCog, roles: [Role.ADMIN, Role.SUPER_ADMIN] },
-      { label: "Audit Logs", to: "/admin/audit-logs", icon: ShieldCheck, roles: [Role.SUPER_ADMIN] },
+      { label: "Audit Logs", to: "/admin/audit-logs", icon: ShieldCheck, roles: [Role.ADMIN, Role.SUPER_ADMIN] },
     ],
   },
 ];

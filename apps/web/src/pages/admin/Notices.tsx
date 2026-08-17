@@ -279,17 +279,22 @@ function NoticeFormSheet({
   const [body, setBody] = useState(initial?.body ?? "");
   const [audienceRole, setAudienceRole] = useState(initial?.audienceRole ?? "");
   const [publishNow, setPublishNow] = useState(false);
-  const isPending = false;
+  const [isPending, setIsPending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    await onSubmit({
-      title,
-      body,
-      audienceRole: audienceRole || null,
-      publishNow,
-    } as CreateNoticeDto);
+    setIsPending(true);
+    try {
+      await onSubmit({
+        title,
+        body,
+        audienceRole: audienceRole || null,
+        publishNow,
+      } as CreateNoticeDto);
+    } finally {
+      setIsPending(false);
+    }
   }
 
   return (

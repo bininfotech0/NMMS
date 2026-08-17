@@ -39,15 +39,20 @@ export function Payments() {
   const { data: members = [] } = useMembers();
   const nameByMemberId = useMemo(() => new Map(members.map((m) => [m.id, m.fullName])), [members]);
 
+  const paymentsWithMemberName = useMemo(
+    () => allPayments.map((p) => ({ ...p, memberName: nameByMemberId.get(p.memberId) ?? "—" })),
+    [allPayments, nameByMemberId],
+  );
+
   const totalCollected = useMemo(() => allPayments.reduce((sum, p) => sum + p.amount, 0), [allPayments]);
 
-  const paymentColumns: DataGridColumn<PaymentResponse>[] = useMemo(() => [
+  const paymentColumns: DataGridColumn<PaymentResponse & { memberName: string }>[] = useMemo(() => [
     { key: "receiptNumber", header: "Receipt #", sortable: true },
-    { key: "memberId", header: "Member", sortable: true, render: (p) => nameByMemberId.get(p.memberId) ?? "—" },
+    { key: "memberName", header: "Member", sortable: true },
     { key: "amount", header: "Amount", sortable: true, align: "right", render: (p) => <span className="font-medium">{formatCurrency(p.amount)}</span> },
     { key: "mode", header: "Mode", sortable: true, render: (p) => <Badge variant="outline" className="border-transparent bg-muted font-medium">{p.mode}</Badge> },
     { key: "paidAt", header: "Date", sortable: true, render: (p) => new Date(p.paidAt).toLocaleDateString("en-IN") },
-  ], [nameByMemberId]);
+  ], []);
 
   return (
     <div className="space-y-6">
@@ -119,7 +124,7 @@ export function Payments() {
       ) : (
         <DataGrid
           columns={paymentColumns}
-          data={allPayments}
+          data={paymentsWithMemberName}
           isLoading={paymentsLoading}
           isError={paymentsError}
           errorMessage="Failed to load payments."
@@ -127,7 +132,7 @@ export function Payments() {
           rowKey={(p) => p.id}
           searchable
           searchPlaceholder="Search by receipt, member..."
-          searchKeys={["receiptNumber", "memberId"]}
+          searchKeys={["receiptNumber", "memberName"]}
           pageSize={25}
           quickActions={(p) => (
             <Button size="sm" variant="outline" asChild>

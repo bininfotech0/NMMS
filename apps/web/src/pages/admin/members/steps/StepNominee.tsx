@@ -80,9 +80,17 @@ export function StepNominee({ form, setForm }: StepProps) {
             />
           </div>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          A nominee name is required to save nominee details; leave it blank to skip.
-        </p>
+        {!form.nomineeName &&
+        (form.nomineeRelationship || form.nomineeDob || form.nomineeAddress || form.nomineeMobile) ? (
+          <p className="mt-2 text-xs text-destructive">
+            Nominee name is required to save these details — the other fields you've entered here won't be saved
+            until you add a name.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            A nominee name is required to save nominee details; leave it blank to skip.
+          </p>
+        )}
       </div>
     </div>
   );

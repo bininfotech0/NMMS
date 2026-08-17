@@ -16,6 +16,12 @@ import type { FeatureFlagKey, LookupCategory, PlanTier, WithdrawalChargeType } f
 
 const PLAN_TIERS: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
 
+const REQUIRED_FIELD_BLANK_ERROR = "Please fill in all required fields — they can't be left blank.";
+
+function hasBlankField(values: string[]): boolean {
+  return values.some((v) => v.trim() === "");
+}
+
 const TABS = ["Organization", "Referral Program", "Withdrawals & KYC", "Integrations", "Lookups"] as const;
 
 const LOOKUP_CATEGORIES: LookupCategory[] = [
@@ -308,16 +314,16 @@ function ReferralProgramSettings() {
     setFormError(null);
     setSaved(false);
     if (
-      [
+      hasBlankField([
         form.pointsPerApprovedReferral,
         form.volunteerBatchSilverMinPoints,
         form.volunteerBatchGoldMinPoints,
         form.volunteerBatchPlatinumMinPoints,
         form.pointsToMoneyRatioPoints,
         form.pointsToMoneyRatioAmount,
-      ].some((v) => v.trim() === "")
+      ])
     ) {
-      setFormError("Please fill in all required fields — they can't be left blank.");
+      setFormError(REQUIRED_FIELD_BLANK_ERROR);
       return;
     }
     try {
@@ -659,8 +665,8 @@ function WithdrawalKycSettings() {
     e.preventDefault();
     setFormError(null);
     setSaved(false);
-    if ([form.withdrawalMinAmount, form.withdrawalChargeValue].some((v) => v.trim() === "")) {
-      setFormError("Please fill in all required fields — they can't be left blank.");
+    if (hasBlankField([form.withdrawalMinAmount, form.withdrawalChargeValue])) {
+      setFormError(REQUIRED_FIELD_BLANK_ERROR);
       return;
     }
     try {

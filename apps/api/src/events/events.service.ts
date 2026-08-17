@@ -182,8 +182,41 @@ export class EventsService {
     });
   }
 
+  // Mirrors ReferralsService.awardPointsForApproval's eligibility bar: a
+  // member has to have actually been activated at least once (ACTIVE/EXPIRED/
+  // RENEWED) to participate. SUSPENDED/DECEASED/REJECTED can't reach this
+  // code at all (blocked at auth), so this only needs to catch members who
+  // were never approved in the first place (DRAFT/SUBMITTED/PAYMENT_COLLECTED/
+  // APPROVED-but-not-yet-ACTIVE).
+  private assertMemberEventEligible(status: string) {
+    if (status !== "ACTIVE" && status !== "EXPIRED" && status !== "RENEWED") {
+      throw new ConflictException("Your membership must be active to participate in events");
+    }
+  }
+
+  // New registrations only make sense for an event that hasn't happened (or
+  // been called off) yet.
+  private assertEventOpenForRegistration(status: string) {
+    if (status !== "PLANNED") {
+      throw new ConflictException(
+        status === "CANCELLED" ? "This event has been cancelled" : "This event has already concluded",
+      );
+    }
+  }
+
+  // Evidence submission is expected to happen *after* an event takes place
+  // (staff mark it COMPLETED once it's over), so only a cancelled event
+  // blocks evidence — a completed one is the normal case.
+  private assertEventNotCancelled(status: string) {
+    if (status === "CANCELLED") {
+      throw new ConflictException("This event has been cancelled");
+    }
+  }
+
   async registerSelf(eventId: string, member: AuthMember): Promise<EventRegistrationResponse> {
-    await this.findScoped(eventId, member.organizationId);
+    this.assertMemberEventEligible(member.status);
+    const event = await this.findScoped(eventId, member.organizationId);
+    this.assertEventOpenForRegistration(event.status);
     return this.createRegistration(eventId, member.id);
   }
 
@@ -193,7 +226,9 @@ export class EventsService {
     dto: SubmitEventEvidenceInput,
     file?: { buffer: Buffer; mimeType: string; fileName: string },
   ): Promise<EventRegistrationResponse> {
-    await this.findScoped(eventId, member.organizationId); // 404s if the event doesn't exist / isn't in this member's org
+    this.assertMemberEventEligible(member.status);
+    const event = await this.findScoped(eventId, member.organizationId); // 404s if the event doesn't exist / isn't in this member's org
+    this.assertEventNotCancelled(event.status);
     const registration = await this.prisma.eventRegistration.findUnique({
       where: { eventId_memberId: { eventId, memberId: member.id } },
     });

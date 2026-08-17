@@ -380,6 +380,10 @@ export function wizardFormToUpdateDto(form: WizardFormState): UpdateMemberInput 
     emergencyContactName: form.emergencyContactName || null,
     emergencyContactMobile: form.emergencyContactMobile || null,
     emergencyContactRelationship: form.emergencyContactRelationship || null,
+    // A name is required to save a nominee. If some other nominee field was
+    // filled in but name was left blank, don't touch the saved nominee at
+    // all (undefined) rather than wiping it out (null) — the user's partial
+    // edit just doesn't get saved instead of silently deleting real data.
     nominee: form.nomineeName
       ? {
           name: form.nomineeName,
@@ -388,7 +392,9 @@ export function wizardFormToUpdateDto(form: WizardFormState): UpdateMemberInput 
           address: form.nomineeAddress || null,
           mobile: form.nomineeMobile || null,
         }
-      : null,
+      : form.nomineeRelationship || form.nomineeDob || form.nomineeAddress || form.nomineeMobile
+        ? undefined
+        : null,
     declarationInfoCorrect: form.declarationInfoCorrect,
     declarationAcceptConstitution: form.declarationAcceptConstitution,
     declarationAcceptPrivacyPolicy: form.declarationAcceptPrivacyPolicy,

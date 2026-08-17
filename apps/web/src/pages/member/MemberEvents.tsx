@@ -54,7 +54,7 @@ export function MemberEvents() {
 
 function EventCard({ event }: { event: MyEventSummary }) {
   const register = useRegisterForEventSelf();
-  const hasTarget = !!event.targetDescription || event.pointsReward > 0;
+  const hasTarget = !!event.targetDescription || !!event.targetQuantity || event.pointsReward > 0;
 
   return (
     <Card>
@@ -102,7 +102,11 @@ function EventCard({ event }: { event: MyEventSummary }) {
           </div>
         )}
 
-        {!event.registered && (
+        {event.status === "CANCELLED" && (
+          <p className="text-xs text-destructive">This event has been cancelled.</p>
+        )}
+
+        {!event.registered && event.status === "PLANNED" && (
           <Button
             size="sm"
             className="bg-brand-green hover:bg-brand-green/90"
@@ -113,7 +117,11 @@ function EventCard({ event }: { event: MyEventSummary }) {
           </Button>
         )}
 
-        {event.registered && hasTarget && event.registrationId && (
+        {!event.registered && event.status === "COMPLETED" && (
+          <p className="text-xs text-muted-foreground">This event has already concluded.</p>
+        )}
+
+        {event.registered && hasTarget && event.registrationId && event.status !== "CANCELLED" && (
           <>
             {event.completionStatus === "REJECTED" && event.reviewNote && (
               <p className="text-xs text-destructive">Reason: {event.reviewNote}</p>

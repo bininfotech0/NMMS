@@ -45,7 +45,11 @@ export class MemberAuthService {
       const referrer = await this.prisma.member.findFirst({
         where: { organizationId: org.id, referralCode: dto.referralCode },
       });
-      if (!referrer) {
+      // A referrer who's since become ineligible (matches MembersService.
+      // assertReferrerValid / ReferralsService.awardPointsForApproval) should
+      // stop accepting new signups on their link, not silently keep working
+      // forever with the referral never actually paying out.
+      if (!referrer || (BLOCKED_STATUSES as readonly string[]).includes(referrer.status)) {
         throw new NotFoundException("Referral code not found");
       }
       referralMemberId = referrer.id;
@@ -128,7 +132,7 @@ export class MemberAuthService {
 
   async resolveReferralCode(code: string): Promise<ResolveReferralCodeResponse> {
     const referrer = await this.prisma.member.findFirst({ where: { referralCode: code } });
-    if (!referrer) {
+    if (!referrer || (BLOCKED_STATUSES as readonly string[]).includes(referrer.status)) {
       throw new NotFoundException("Referral code not found");
     }
     return { fullName: referrer.fullName };

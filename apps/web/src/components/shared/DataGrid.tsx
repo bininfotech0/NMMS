@@ -112,7 +112,10 @@ export function DataGrid<T extends Record<string, unknown>>({
         const bVal = b[sortKey];
         if (aVal == null) return 1;
         if (bVal == null) return -1;
-        const cmp = String(aVal).localeCompare(String(bVal));
+        const cmp =
+          typeof aVal === "number" && typeof bVal === "number"
+            ? aVal - bVal
+            : String(aVal).localeCompare(String(bVal));
         return sortDir === "asc" ? cmp : -cmp;
       });
     }

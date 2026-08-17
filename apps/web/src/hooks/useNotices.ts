@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { CreateNoticeDto, UpdateNoticeDto, NoticeResponse } from "@nmms/shared";
 import { apiFetch } from "@/lib/api-client";
+import { errorMessage } from "@/lib/toast-utils";
 
 export function useNotices() {
   return useQuery({
@@ -34,7 +36,9 @@ export function useCreateNotice() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notices"] });
+      toast.success("Notice created");
     },
+    onError: (err) => toast.error(errorMessage(err, "Failed to create notice")),
   });
 }
 
@@ -48,7 +52,9 @@ export function useUpdateNotice() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notices"] });
+      toast.success("Notice updated");
     },
+    onError: (err) => toast.error(errorMessage(err, "Failed to update notice")),
   });
 }
 
@@ -59,7 +65,9 @@ export function usePublishNotice() {
       apiFetch<NoticeResponse>(`/notices/${id}/publish`, { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notices"] });
+      toast.success("Notice published");
     },
+    onError: (err) => toast.error(errorMessage(err, "Failed to publish notice")),
   });
 }
 
@@ -70,6 +78,8 @@ export function useDeleteNotice() {
       apiFetch<void>(`/notices/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notices"] });
+      toast.success("Notice deleted");
     },
+    onError: (err) => toast.error(errorMessage(err, "Failed to delete notice")),
   });
 }

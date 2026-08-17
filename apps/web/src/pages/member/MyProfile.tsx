@@ -46,6 +46,13 @@ interface ProfileFormState {
   // member who only has a single fullName (no first/middle/last parts) never
   // sees it collapse to just the title they're editing.
   originalFullName: string;
+
+  // True when the member already had decomposed name parts at load time.
+  // Only members in this bucket get fullName auto-recomposed as they edit
+  // title/first/middle/last — for a legacy member with only a single
+  // fullName string, editing one of these fields must not overwrite the
+  // fuller name that isn't represented in the parts at all.
+  hasNameParts: boolean;
   gender: string;
   dob: string;
   maritalStatus: string;
@@ -134,14 +141,14 @@ function composeFullName(
 }
 
 function memberToForm(member: MemberResponse): ProfileFormState {
-  const hasNameParts = member.firstName || member.middleName || member.lastName;
   return {
     title: member.title ?? "",
-    firstName: hasNameParts ? (member.firstName ?? "") : "",
-    middleName: hasNameParts ? (member.middleName ?? "") : "",
-    lastName: hasNameParts ? (member.lastName ?? "") : "",
+    firstName: member.firstName ?? "",
+    middleName: member.middleName ?? "",
+    lastName: member.lastName ?? "",
     fullName: member.fullName,
     originalFullName: member.fullName,
+    hasNameParts: !!(member.firstName || member.middleName || member.lastName),
     gender: member.gender ?? "",
     dob: dateToInput(member.dob),
     maritalStatus: member.maritalStatus ?? "",
@@ -300,7 +307,10 @@ export function MyProfile() {
                 setForm((f) => {
                   if (!f) return f;
                   const title = e.target.value;
-                  return { ...f, title, fullName: composeFullName({ ...f, title }, f.originalFullName) };
+                  const fullName = f.hasNameParts
+                    ? composeFullName({ ...f, title }, f.originalFullName)
+                    : f.fullName;
+                  return { ...f, title, fullName };
                 })
               }
             />
@@ -314,7 +324,10 @@ export function MyProfile() {
                 setForm((f) => {
                   if (!f) return f;
                   const firstName = e.target.value;
-                  return { ...f, firstName, fullName: composeFullName({ ...f, firstName }, f.originalFullName) };
+                  const fullName = f.hasNameParts
+                    ? composeFullName({ ...f, firstName }, f.originalFullName)
+                    : f.fullName;
+                  return { ...f, firstName, fullName };
                 })
               }
             />
@@ -328,7 +341,10 @@ export function MyProfile() {
                 setForm((f) => {
                   if (!f) return f;
                   const middleName = e.target.value;
-                  return { ...f, middleName, fullName: composeFullName({ ...f, middleName }, f.originalFullName) };
+                  const fullName = f.hasNameParts
+                    ? composeFullName({ ...f, middleName }, f.originalFullName)
+                    : f.fullName;
+                  return { ...f, middleName, fullName };
                 })
               }
             />
@@ -342,7 +358,10 @@ export function MyProfile() {
                 setForm((f) => {
                   if (!f) return f;
                   const lastName = e.target.value;
-                  return { ...f, lastName, fullName: composeFullName({ ...f, lastName }, f.originalFullName) };
+                  const fullName = f.hasNameParts
+                    ? composeFullName({ ...f, lastName }, f.originalFullName)
+                    : f.fullName;
+                  return { ...f, lastName, fullName };
                 })
               }
             />

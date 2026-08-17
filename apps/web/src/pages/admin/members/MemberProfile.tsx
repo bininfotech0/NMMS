@@ -43,7 +43,6 @@ import { useOrgProfile } from "@/hooks/useOrg";
 import { usePlans } from "@/hooks/usePlans";
 import { useAuthStore } from "@/stores/auth";
 import { PLAN_TIER_ORDER, Role, type MemberResponse, type PaymentMode, type PlanTier } from "@nmms/shared";
-import { memberToWizardForm } from "./wizard-types";
 
 const CAN_MANAGE_LIFECYCLE = [Role.ADMIN, Role.SUPER_ADMIN];
 
@@ -99,7 +98,16 @@ function LifecycleActionSheet({
   const copy = action ? LIFECYCLE_COPY[action] : null;
 
   return (
-    <Sheet open={action !== null} onOpenChange={onOpenChange}>
+    <Sheet
+      open={action !== null}
+      onOpenChange={(next) => {
+        if (!next) {
+          setRemarks("");
+          setError(null);
+        }
+        onOpenChange(next);
+      }}
+    >
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{copy?.title}</SheetTitle>
@@ -237,6 +245,21 @@ function EditActiveMemberSheet({
   });
   const [error, setError] = useState<string | null>(null);
 
+  function reset() {
+    setForm({
+      fullName: member.fullName,
+      mobile: member.mobile,
+      email: member.email ?? "",
+      whatsappNumber: member.whatsappNumber ?? "",
+      addressLine: member.addressLine ?? "",
+      pincode: member.pincode ?? "",
+      landmark: member.landmark ?? "",
+      emergencyContactName: member.emergencyContactName ?? "",
+      emergencyContactMobile: member.emergencyContactMobile ?? "",
+    });
+    setError(null);
+  }
+
   function field(key: keyof typeof form) {
     return {
       value: form[key],
@@ -256,7 +279,13 @@ function EditActiveMemberSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset();
+        onOpenChange(next);
+      }}
+    >
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Edit member profile</SheetTitle>
@@ -665,11 +694,9 @@ export function MemberProfile() {
   const user = useAuthStore((state) => state.user);
   const deleteMember = useDeleteMember();
 
-  const form = useMemo(() => (member ? memberToWizardForm(member) : null), [member]);
-
   if (!id) return null;
 
-  if (isLoading || !member || !form) {
+  if (isLoading || !member) {
     return <p className="py-10 text-center text-sm text-muted-foreground">Loading member...</p>;
   }
 

@@ -291,7 +291,13 @@ function EditUserSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setRole(user?.role ?? Role.FIELD_EXECUTIVE);
+        onOpenChange(next);
+      }}
+    >
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Edit User</SheetTitle>

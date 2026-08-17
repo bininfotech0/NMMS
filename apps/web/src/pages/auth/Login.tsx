@@ -9,7 +9,7 @@ import { login } from "@/lib/auth";
 
 export function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("admin@example.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);

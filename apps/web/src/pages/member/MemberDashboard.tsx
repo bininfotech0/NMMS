@@ -43,15 +43,18 @@ export function MemberDashboard() {
   }
 
   if (member?.status !== "ACTIVE") {
+    const lapsed = member?.status === "EXPIRED" || member?.status === "RENEWED";
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Registration pending review</CardTitle>
+          <CardTitle>{lapsed ? "Membership needs renewal" : "Registration pending review"}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Your membership application is currently <span className="font-medium">{member?.status}</span>.
-            Once staff approve it, you'll get your own referral link and can start earning points.
+            Your membership status is currently <span className="font-medium">{member?.status}</span>.{" "}
+            {lapsed
+              ? "Contact your field executive to renew your plan and regain full access."
+              : "Once staff approve it, you'll get your own referral link and can start earning points."}
           </p>
         </CardContent>
       </Card>

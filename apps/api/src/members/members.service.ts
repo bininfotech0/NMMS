@@ -524,8 +524,11 @@ export class MembersService {
     if (!referrer) {
       throw new NotFoundException("Referrer not found");
     }
-    if (referrer.status === "REJECTED" || referrer.status === "DECEASED") {
-      throw new ConflictException("A rejected or deceased member cannot be a referrer");
+    // Kept in sync with ReferralsService.awardPointsForApproval's own eligibility
+    // check — a referrer accepted here but ineligible there would silently earn
+    // nothing with no indication why, so reject at selection time instead.
+    if (referrer.status === "REJECTED" || referrer.status === "DECEASED" || referrer.status === "SUSPENDED") {
+      throw new ConflictException("A rejected, suspended, or deceased member cannot be a referrer");
     }
     const visited = new Set<string>([referralMemberId]);
     let cursor: { id: string; referralMemberId: string | null } | null = referrer;
