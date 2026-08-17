@@ -29,14 +29,32 @@ const NAME_MATCH_THRESHOLD = 0.88;
 
 // Editable pre-submission — DRAFT while filling the form, PAYMENT_COLLECTED
 // after the registration fee is recorded but before the wizard's later steps
-// (documents/declaration/review) are saved. Locked once SUBMITTED (through
-// SUBMITTED/APPROVED) so a pending application can't be altered mid-review.
+// (documents/declaration/review) are saved. Open to whoever owns/is scoped
+// to the record (see findEditable) — typically the field executive who's
+// still actively filling it in.
 const EDITABLE_STATUSES = ["DRAFT", "PAYMENT_COLLECTED"] as const;
-// ACTIVE/SUSPENDED members can still have their profile corrected by staff
-// (e.g. a typo'd address or phone number) — but only by ADMIN/SUPER_ADMIN,
-// not the field executive who created them, since the record is now
-// lifecycle-locked and out of that field executive's day-to-day workflow.
-const STAFF_ONLY_EDITABLE_STATUSES = ["ACTIVE", "SUSPENDED"] as const;
+// ACTIVE/SUSPENDED/EXPIRED/RENEWED members can still have their profile
+// corrected by staff (e.g. a typo'd address or phone number) — but only by
+// ADMIN/SUPER_ADMIN, not the field executive who created them, since the
+// record is now lifecycle-locked and out of that field executive's
+// day-to-day workflow. EXPIRED/RENEWED are just as much "the member is
+// already active in the org, just needs an occasional correction" as ACTIVE
+// itself — a lapsed or renewed membership is not a reason to lock the member
+// out of having their own address/phone corrected.
+// SUBMITTED/APPROVED are included too — an admin reviewing an application
+// who spots an obvious typo can fix it without a full reject-and-resubmit
+// cycle. This doesn't reopen the original "no altering mid-review" concern:
+// that was about the *submitting field executive* changing facts after
+// submission, and field executives were never in this staff-only list to
+// begin with — only the reviewer themselves gains anything here.
+const STAFF_ONLY_EDITABLE_STATUSES = [
+  "ACTIVE",
+  "SUSPENDED",
+  "EXPIRED",
+  "RENEWED",
+  "SUBMITTED",
+  "APPROVED",
+] as const;
 const CAN_EDIT_ACTIVE_MEMBER: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 
 const MEMBER_INCLUDE = {

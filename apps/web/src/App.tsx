@@ -7,6 +7,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Dashboard } from "@/pages/admin/Dashboard";
 import { MembersList } from "@/pages/admin/MembersList";
 import { MemberWizard } from "@/pages/admin/members/MemberWizard";
+import { MemberEditPage } from "@/pages/admin/members/MemberEditPage";
 import { MemberProfile } from "@/pages/admin/members/MemberProfile";
 import { MemberCard } from "@/pages/admin/members/MemberCard";
 import { PaymentReceiptPage } from "@/pages/admin/members/PaymentReceiptPage";
@@ -117,6 +118,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="members" element={<MembersList />} />
           <Route path="members/:id/wizard" element={<MemberWizard />} />
+          <Route path="members/:id/edit" element={<MemberEditPage />} />
           <Route path="members/:id/profile" element={<MemberProfile />} />
           <Route path="members/:id/card" element={<MemberCard />} />
           <Route path="members/:id/payments/:paymentId/receipt" element={<PaymentReceiptPage />} />

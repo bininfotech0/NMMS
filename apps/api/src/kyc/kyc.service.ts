@@ -51,7 +51,32 @@ export class KycService {
 
   async submitKyc(memberId: string, dto: SubmitKycInput): Promise<KycResponse> {
     const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
+    const updated = await this.prisma.member.update({
+      where: { id: memberId },
+      data: this.payoutUpdateData(dto),
+    });
+    const settings = await this.getSettings(member.organizationId);
+    return this.toKycResponse(updated, settings);
+  }
 
+  // Lets staff enter/correct a member's payout details on their behalf (e.g.
+  // a member without internet access, or one who mis-typed something) —
+  // ADMIN/SUPER_ADMIN only (see KycAdminController), same as reviewing KYC.
+  // Deliberately reuses submitKyc's own "always resets to PENDING" behavior
+  // rather than auto-verifying: an admin entering the data and an admin
+  // verifying it stay two distinct, separately-audited actions, even when
+  // it's the same admin doing both back to back.
+  async updateKycAsAdmin(memberId: string, organizationId: string, dto: SubmitKycInput): Promise<KycResponse> {
+    const member = await this.findScoped(memberId, organizationId);
+    const updated = await this.prisma.member.update({
+      where: { id: member.id },
+      data: this.payoutUpdateData(dto),
+    });
+    const settings = await this.getSettings(organizationId);
+    return this.toKycResponse(updated, settings, true);
+  }
+
+  private payoutUpdateData(dto: SubmitKycInput): Prisma.MemberUncheckedUpdateInput {
     const data: Prisma.MemberUncheckedUpdateInput = {
       payoutMethod: dto.payoutMethod,
       // kycStatus always moves to PENDING on submit — including from VERIFIED,
@@ -77,10 +102,7 @@ export class KycService {
       data.bankIfscCode = null;
       data.bankName = null;
     }
-
-    const updated = await this.prisma.member.update({ where: { id: memberId }, data });
-    const settings = await this.getSettings(member.organizationId);
-    return this.toKycResponse(updated, settings);
+    return data;
   }
 
   async listForAdmin(organizationId: string, status?: KycStatus): Promise<KycResponse[]> {

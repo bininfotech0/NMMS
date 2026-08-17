@@ -173,6 +173,64 @@ describe("MembersService.update", () => {
     expect(prisma.member.update).toHaveBeenCalled();
   });
 
+  it("an ADMIN can correct an EXPIRED member's profile", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ status: "EXPIRED", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
+
+    const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await service.update("member-1", { addressLine: "New address" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("an ADMIN can correct a RENEWED member's profile", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ status: "RENEWED", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
+
+    const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await service.update("member-1", { addressLine: "New address" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("an ADMIN can correct a SUBMITTED member's profile (e.g. a typo spotted mid-review)", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ status: "SUBMITTED", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
+
+    const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await service.update("member-1", { addressLine: "New address" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("an ADMIN can correct an APPROVED member's profile", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ status: "APPROVED", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
+
+    const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await service.update("member-1", { addressLine: "New address" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("a FIELD_EXECUTIVE cannot edit a SUBMITTED member — only the reviewer, not the submitter, gains edit access", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "SUBMITTED", createdById: "fe-1" }));
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.update("member-1", { fullName: "New Name" }, user)).rejects.toThrow(ConflictException);
+    expect(prisma.member.update).not.toHaveBeenCalled();
+  });
+
   it("a FIELD_EXECUTIVE cannot edit an ACTIVE member, even one they created", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);

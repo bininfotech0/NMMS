@@ -4,7 +4,10 @@ import { TopReferrersCard } from "@/components/dashboard/TopReferrersCard";
 import { memberGrowth } from "@/lib/mock-data";
 import { useReportsSummary } from "@/hooks/useReports";
 import { useAuthStore } from "@/stores/auth";
+import { Role } from "@nmms/shared";
 import type { DashboardSummary } from "@/components/dashboard/ExecutiveDashboard";
+
+const CAN_VIEW_ORG_WIDE_REPORTS: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 
 const emptySummary: DashboardSummary = {
   totalMembers: 3250,
@@ -27,7 +30,8 @@ const emptySummary: DashboardSummary = {
 
 export function Dashboard() {
   const user = useAuthStore((state) => state.user);
-  const { data: reportData } = useReportsSummary();
+  const canViewOrgWideReports = !!user && CAN_VIEW_ORG_WIDE_REPORTS.includes(user.role);
+  const { data: reportData } = useReportsSummary(canViewOrgWideReports);
 
   const summary = useMemo(() => {
     if (!reportData) return emptySummary;
@@ -53,7 +57,7 @@ export function Dashboard() {
         summary={summary}
         role={user?.role}
       />
-      <TopReferrersCard />
+      {canViewOrgWideReports && <TopReferrersCard />}
     </div>
   );
 }

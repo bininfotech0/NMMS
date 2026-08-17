@@ -132,6 +132,47 @@ describe("KycService", () => {
     });
   });
 
+  describe("updateKycAsAdmin", () => {
+    it("lets staff enter payout details on a member's behalf, landing back in PENDING for review", async () => {
+      const prisma = makeMockPrisma();
+      const crypto = makeCrypto();
+      const service = makeService(prisma, crypto);
+      prisma.member.findFirst.mockResolvedValue(makeMember({ organizationId: "org-1", kycStatus: "REJECTED" }));
+      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "PENDING" }));
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
+
+      await service.updateKycAsAdmin("member-1", "org-1", {
+        payoutMethod: "BANK",
+        bankAccountName: "Ramesh Kumar",
+        bankAccountNumber: "1234567890123456",
+        bankIfscCode: "SBIN0001234",
+      });
+
+      expect(prisma.member.findFirst).toHaveBeenCalledWith({
+        where: { id: "member-1", organizationId: "org-1" },
+      });
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: "member-1" },
+        data: expect.objectContaining({
+          bankAccountNumberEncrypted: "enc(1234567890123456)",
+          kycStatus: "PENDING",
+          kycReviewedById: null,
+        }),
+      });
+    });
+
+    it("404s when the member doesn't belong to the admin's org", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.member.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateKycAsAdmin("member-1", "org-1", { payoutMethod: "UPI", upiId: "a@upi" }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe("verify", () => {
     it("verifies a PENDING submission", async () => {
       const prisma = makeMockPrisma();

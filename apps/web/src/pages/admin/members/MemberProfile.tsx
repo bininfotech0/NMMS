@@ -34,7 +34,6 @@ import {
   useMemberPayments,
   useMemberStatusHistory,
   usePromoteToExecutive,
-  useUpdateMember,
   useUpgradeMemberPlan,
 } from "@/hooks/useMembers";
 import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
@@ -209,134 +208,6 @@ function PromoteToExecutiveSheet({
           <SheetFooter className="px-0">
             <Button type="submit" disabled={promote.isPending} className="bg-brand-green hover:bg-brand-green/90">
               {promote.isPending ? "Promoting…" : "Promote"}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-// Lighter-weight correction form for ACTIVE/SUSPENDED members — the full
-// 10-step MemberWizard (Payment/Documents/Submit steps) is built for the
-// pre-activation onboarding journey and doesn't apply once a member is
-// lifecycle-locked. Plan/fee aren't editable here — see the server-side
-// check in MembersService.update, which blocks them once status !== DRAFT.
-function EditActiveMemberSheet({
-  member,
-  open,
-  onOpenChange,
-}: {
-  member: MemberResponse;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const updateMember = useUpdateMember();
-  const [form, setForm] = useState({
-    fullName: member.fullName,
-    mobile: member.mobile,
-    email: member.email ?? "",
-    whatsappNumber: member.whatsappNumber ?? "",
-    addressLine: member.addressLine ?? "",
-    pincode: member.pincode ?? "",
-    landmark: member.landmark ?? "",
-    emergencyContactName: member.emergencyContactName ?? "",
-    emergencyContactMobile: member.emergencyContactMobile ?? "",
-  });
-  const [error, setError] = useState<string | null>(null);
-
-  function reset() {
-    setForm({
-      fullName: member.fullName,
-      mobile: member.mobile,
-      email: member.email ?? "",
-      whatsappNumber: member.whatsappNumber ?? "",
-      addressLine: member.addressLine ?? "",
-      pincode: member.pincode ?? "",
-      landmark: member.landmark ?? "",
-      emergencyContactName: member.emergencyContactName ?? "",
-      emergencyContactMobile: member.emergencyContactMobile ?? "",
-    });
-    setError(null);
-  }
-
-  function field(key: keyof typeof form) {
-    return {
-      value: form[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [key]: e.target.value })),
-    };
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await updateMember.mutateAsync({ id: member.id, dto: form });
-      onOpenChange(false);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
-    }
-  }
-
-  return (
-    <Sheet
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-    >
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Edit member profile</SheetTitle>
-          <SheetDescription>
-            Correct {member.fullName}'s details. Plan and fee can't be changed here — see the referrals/membership
-            upgrade flow for that.
-          </SheetDescription>
-        </SheetHeader>
-        <form className="flex flex-1 flex-col gap-4 overflow-y-auto px-4" onSubmit={handleSubmit}>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-fullName">Full name</Label>
-            <Input id="edit-fullName" {...field("fullName")} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-mobile">Mobile</Label>
-            <Input id="edit-mobile" {...field("mobile")} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-email">Email</Label>
-            <Input id="edit-email" type="email" {...field("email")} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-whatsappNumber">WhatsApp number</Label>
-            <Input id="edit-whatsappNumber" {...field("whatsappNumber")} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-addressLine">Address</Label>
-            <Input id="edit-addressLine" {...field("addressLine")} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-pincode">Pincode</Label>
-              <Input id="edit-pincode" {...field("pincode")} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-landmark">Landmark</Label>
-              <Input id="edit-landmark" {...field("landmark")} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-emergencyContactName">Emergency contact name</Label>
-            <Input id="edit-emergencyContactName" {...field("emergencyContactName")} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-emergencyContactMobile">Emergency contact mobile</Label>
-            <Input id="edit-emergencyContactMobile" {...field("emergencyContactMobile")} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <SheetFooter className="px-0">
-            <Button type="submit" disabled={updateMember.isPending} className="bg-brand-green hover:bg-brand-green/90">
-              {updateMember.isPending ? "Saving…" : "Save Changes"}
             </Button>
           </SheetFooter>
         </form>
@@ -684,7 +555,6 @@ export function MemberProfile() {
   const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editActiveOpen, setEditActiveOpen] = useState(false);
   const [upgradePlanOpen, setUpgradePlanOpen] = useState(false);
 
   const { data: member, isLoading } = useMember(id ?? null);
@@ -738,12 +608,19 @@ export function MemberProfile() {
               </Link>
             </Button>
           )}
-          {(member.status === "ACTIVE" || member.status === "SUSPENDED") &&
+          {(member.status === "ACTIVE" ||
+            member.status === "SUSPENDED" ||
+            member.status === "EXPIRED" ||
+            member.status === "RENEWED" ||
+            member.status === "SUBMITTED" ||
+            member.status === "APPROVED") &&
             user &&
             CAN_MANAGE_LIFECYCLE.includes(user.role) && (
-              <Button variant="outline" onClick={() => setEditActiveOpen(true)}>
-                <Pencil className="size-4" />
-                Edit
+              <Button variant="outline" asChild>
+                <Link to={`/admin/members/${id}/edit`}>
+                  <Pencil className="size-4" />
+                  Edit
+                </Link>
               </Button>
             )}
           {member.membershipNumber && (
@@ -961,8 +838,23 @@ export function MemberProfile() {
 
       {activeTab === "documents" && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold">Documents ({documents.length})</CardTitle>
+            {(member.status === "ACTIVE" ||
+              member.status === "SUSPENDED" ||
+              member.status === "EXPIRED" ||
+              member.status === "RENEWED" ||
+              member.status === "SUBMITTED" ||
+              member.status === "APPROVED") &&
+              user &&
+              CAN_MANAGE_LIFECYCLE.includes(user.role) && (
+                <Button size="sm" variant="outline" asChild>
+                  <Link to={`/admin/members/${id}/edit`}>
+                    <Pencil className="size-4" />
+                    Manage Documents
+                  </Link>
+                </Button>
+              )}
           </CardHeader>
           <CardContent>
             {documents.length === 0 ? (
@@ -1041,7 +933,6 @@ export function MemberProfile() {
         onOpenChange={(open) => !open && setLifecycleAction(null)}
       />
       <PromoteToExecutiveSheet member={member} open={promoteOpen} onOpenChange={setPromoteOpen} />
-      <EditActiveMemberSheet member={member} open={editActiveOpen} onOpenChange={setEditActiveOpen} />
       <UpgradePlanSheet member={member} open={upgradePlanOpen} onOpenChange={setUpgradePlanOpen} />
       <ConfirmDialog
         open={deleteOpen}

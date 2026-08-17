@@ -45,6 +45,22 @@ export function useAdminKyc(memberId: string | null) {
   });
 }
 
+// Staff entering/correcting a member's payout details on their behalf (e.g.
+// a member without internet access). Always lands the KYC back in PENDING,
+// same as the member's own self-submission via useSubmitKyc.
+export function useUpdateKycAsAdmin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ memberId, dto }: { memberId: string; dto: SubmitKycInput }) =>
+      apiFetch<KycResponse>(`/kyc/${memberId}`, { method: "PUT", body: JSON.stringify(dto) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kyc"] });
+      toast.success("Payout details updated — pending review");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to update payout details")),
+  });
+}
+
 export function useVerifyKyc() {
   const queryClient = useQueryClient();
   return useMutation({

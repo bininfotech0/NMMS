@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -19,10 +20,17 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { ApiError } from "@/lib/api-client";
-import { useAdminKycList, useRejectKyc, useRevealBankAccount, useVerifyKyc } from "@/hooks/useKyc";
-import type { KycResponse, KycStatus } from "@nmms/shared";
+import {
+  useAdminKycList,
+  useRejectKyc,
+  useRevealBankAccount,
+  useUpdateKycAsAdmin,
+  useVerifyKyc,
+} from "@/hooks/useKyc";
+import type { KycResponse, KycStatus, PayoutMethod } from "@nmms/shared";
 
 const TABS: { label: string; value: KycStatus | undefined }[] = [
   { label: "Pending", value: "PENDING" },
@@ -147,12 +155,14 @@ function KycDetailSheet({
   const [rejectNote, setRejectNote] = useState("");
   const [showReject, setShowReject] = useState(false);
   const [revealedNumber, setRevealedNumber] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setRejectNote("");
     setShowReject(false);
     setRevealedNumber(null);
+    setEditing(false);
     setError(null);
   }
 
@@ -205,110 +215,252 @@ function KycDetailSheet({
           <SheetDescription>KYC and payout details</SheetDescription>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-4 px-4">
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Aadhaar</span>
-              <span>{target?.aadhaarLast4 ? `XXXX-XXXX-${target.aadhaarLast4}` : "Not on file"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">PAN</span>
-              <span>{target?.pan ?? "Not on file"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Payout method</span>
-              <span>{target?.payoutMethod ?? "Not on file"}</span>
-            </div>
-            {target?.payoutMethod === "BANK" && (
-              <>
+          {editing && target ? (
+            <EditPayoutForm
+              target={target}
+              onCancel={() => setEditing(false)}
+              onSaved={() => setEditing(false)}
+            />
+          ) : (
+            <>
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Account holder</span>
-                  <span>{target.bankAccountName}</span>
+                  <span className="text-muted-foreground">Aadhaar</span>
+                  <span>{target?.aadhaarLast4 ? `XXXX-XXXX-${target.aadhaarLast4}` : "Not on file"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Account number</span>
-                  <span className="font-mono">
-                    {revealedNumber ?? `...${target.bankAccountNumberLast4 ?? ""}`}
-                  </span>
+                  <span className="text-muted-foreground">PAN</span>
+                  <span>{target?.pan ?? "Not on file"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">IFSC</span>
-                  <span>{target.bankIfscCode}</span>
+                  <span className="text-muted-foreground">Payout method</span>
+                  <span>{target?.payoutMethod ?? "Not on file"}</span>
                 </div>
-                {target.bankName && (
+                {target?.payoutMethod === "BANK" && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Account holder</span>
+                      <span>{target.bankAccountName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Account number</span>
+                      <span className="font-mono">
+                        {revealedNumber ?? `...${target.bankAccountNumberLast4 ?? ""}`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">IFSC</span>
+                      <span>{target.bankIfscCode}</span>
+                    </div>
+                    {target.bankName && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Bank</span>
+                        <span>{target.bankName}</span>
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={revealBankAccount.isPending}
+                      onClick={handleReveal}
+                    >
+                      {revealedNumber ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      {revealedNumber ? "Hide full number" : "Reveal full account number"}
+                    </Button>
+                  </>
+                )}
+                {target?.payoutMethod === "UPI" && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Bank</span>
-                    <span>{target.bankName}</span>
+                    <span className="text-muted-foreground">UPI ID</span>
+                    <span>{target.upiId}</span>
                   </div>
                 )}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={revealBankAccount.isPending}
-                  onClick={handleReveal}
-                >
-                  {revealedNumber ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  {revealedNumber ? "Hide full number" : "Reveal full account number"}
-                </Button>
-              </>
-            )}
-            {target?.payoutMethod === "UPI" && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">UPI ID</span>
-                <span>{target.upiId}</span>
               </div>
-            )}
-          </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          {target?.kycStatus === "PENDING" && !showReject && (
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                disabled={verifyKyc.isPending}
-                onClick={handleVerify}
-                className="bg-brand-green hover:bg-brand-green/90"
-              >
-                {verifyKyc.isPending ? "Verifying…" : "Verify"}
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+                <Pencil className="size-4" />
+                Edit payout details
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setShowReject(true)}
-              >
-                Reject
-              </Button>
-            </div>
-          )}
 
-          {target?.kycStatus === "PENDING" && showReject && (
-            <form onSubmit={handleReject} className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="kyc-reject-note">Reason for rejection</Label>
-                <textarea
-                  id="kyc-reject-note"
-                  value={rejectNote}
-                  onChange={(e) => setRejectNote(e.target.value)}
-                  rows={3}
-                  required
-                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                />
-              </div>
-              <SheetFooter className="px-0">
-                <Button type="submit" variant="destructive" disabled={rejectKyc.isPending}>
-                  {rejectKyc.isPending ? "Rejecting…" : "Confirm Rejection"}
-                </Button>
-              </SheetFooter>
-            </form>
-          )}
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {target?.kycStatus === "REJECTED" && target.kycReviewNote && (
-            <p className="text-sm text-destructive">Previously rejected: {target.kycReviewNote}</p>
+              {target?.kycStatus === "PENDING" && !showReject && (
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    disabled={verifyKyc.isPending}
+                    onClick={handleVerify}
+                    className="bg-brand-green hover:bg-brand-green/90"
+                  >
+                    {verifyKyc.isPending ? "Verifying…" : "Verify"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setShowReject(true)}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              )}
+
+              {target?.kycStatus === "PENDING" && showReject && (
+                <form onSubmit={handleReject} className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="kyc-reject-note">Reason for rejection</Label>
+                    <textarea
+                      id="kyc-reject-note"
+                      value={rejectNote}
+                      onChange={(e) => setRejectNote(e.target.value)}
+                      rows={3}
+                      required
+                      className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    />
+                  </div>
+                  <SheetFooter className="px-0">
+                    <Button type="submit" variant="destructive" disabled={rejectKyc.isPending}>
+                      {rejectKyc.isPending ? "Rejecting…" : "Confirm Rejection"}
+                    </Button>
+                  </SheetFooter>
+                </form>
+              )}
+
+              {target?.kycStatus === "REJECTED" && target.kycReviewNote && (
+                <p className="text-sm text-destructive">Previously rejected: {target.kycReviewNote}</p>
+              )}
+            </>
           )}
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function EditPayoutForm({
+  target,
+  onCancel,
+  onSaved,
+}: {
+  target: KycResponse;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const updateKyc = useUpdateKycAsAdmin();
+  const [payoutMethod, setPayoutMethod] = useState<PayoutMethod>(target.payoutMethod ?? "BANK");
+  const [bankAccountName, setBankAccountName] = useState(target.bankAccountName ?? "");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankIfscCode, setBankIfscCode] = useState(target.bankIfscCode ?? "");
+  const [bankName, setBankName] = useState(target.bankName ?? "");
+  const [upiId, setUpiId] = useState(target.upiId ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!target.memberId) return;
+    setError(null);
+    try {
+      await updateKyc.mutateAsync({
+        memberId: target.memberId,
+        dto:
+          payoutMethod === "BANK"
+            ? { payoutMethod, bankAccountName, bankAccountNumber, bankIfscCode, bankName: bankName || undefined }
+            : { payoutMethod, upiId },
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Entering payout details on the member's behalf sends this back to PENDING for review, even if it was
+        previously verified.
+      </p>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(payoutMethod === "BANK" && "border-brand-green text-brand-green")}
+          onClick={() => setPayoutMethod("BANK")}
+        >
+          Bank Account
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(payoutMethod === "UPI" && "border-brand-green text-brand-green")}
+          onClick={() => setPayoutMethod("UPI")}
+        >
+          UPI
+        </Button>
+      </div>
+
+      {payoutMethod === "BANK" ? (
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-kyc-bankAccountName">Account holder name</Label>
+            <Input
+              id="admin-kyc-bankAccountName"
+              value={bankAccountName}
+              onChange={(e) => setBankAccountName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-kyc-bankAccountNumber">
+              Account number {target.bankAccountNumberLast4 && `(currently on file: ...${target.bankAccountNumberLast4})`}
+            </Label>
+            <Input
+              id="admin-kyc-bankAccountNumber"
+              value={bankAccountNumber}
+              onChange={(e) => setBankAccountNumber(e.target.value)}
+              placeholder="Enter the account number"
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-kyc-bankIfscCode">IFSC code</Label>
+            <Input
+              id="admin-kyc-bankIfscCode"
+              value={bankIfscCode}
+              onChange={(e) => setBankIfscCode(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-kyc-bankName">Bank name (optional)</Label>
+            <Input id="admin-kyc-bankName" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <Label htmlFor="admin-kyc-upiId">UPI ID</Label>
+          <Input
+            id="admin-kyc-upiId"
+            value={upiId}
+            onChange={(e) => setUpiId(e.target.value)}
+            placeholder="name@bank"
+            required
+          />
+        </div>
+      )}
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="flex gap-2">
+        <Button type="submit" disabled={updateKyc.isPending} className="bg-brand-green hover:bg-brand-green/90">
+          {updateKyc.isPending ? "Saving…" : "Save"}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

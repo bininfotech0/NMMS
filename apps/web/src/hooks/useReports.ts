@@ -10,10 +10,14 @@ import type {
 } from "@nmms/shared";
 import { apiFetch } from "@/lib/api-client";
 
-export function useReportsSummary() {
+// GET /reports/summary is ADMIN/SUPER_ADMIN only (ReportsController) — pass
+// enabled: false for other roles so this doesn't fire a request that can
+// only ever come back 403.
+export function useReportsSummary(enabled = true) {
   return useQuery({
     queryKey: ["reports", "summary"],
     queryFn: () => apiFetch<ReportsSummaryResponse>("/reports/summary"),
+    enabled,
   });
 }
 

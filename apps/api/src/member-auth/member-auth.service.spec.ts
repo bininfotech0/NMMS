@@ -133,12 +133,27 @@ describe("MemberAuthService", () => {
       expect(prisma.member.create).not.toHaveBeenCalled();
     });
 
+    it("rejects a mobile number that matches a staff-entered draft with no portal password yet", async () => {
+      const prisma = makeMockPrisma();
+      const { service } = makeService(prisma);
+      prisma.organization.findFirst.mockResolvedValue({ id: "org-1" });
+      prisma.member.findFirst
+        .mockResolvedValueOnce(null) // no portal account with this mobile
+        .mockResolvedValueOnce(makeMember({ id: "draft-1", passwordHash: null, status: "DRAFT" })); // mobile draft check
+
+      await expect(
+        service.register({ fullName: "New Member", mobile: "9800000001", aadhaarNumber: "123456789012", password: "Passw0rd!" }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.member.create).not.toHaveBeenCalled();
+    });
+
     it("rejects an Aadhaar number that already belongs to an existing member, even a staff-entered draft with no portal account", async () => {
       const prisma = makeMockPrisma();
       const { service } = makeService(prisma);
       prisma.organization.findFirst.mockResolvedValue({ id: "org-1" });
       prisma.member.findFirst
         .mockResolvedValueOnce(null) // mobile dedupe check — different mobile, no match
+        .mockResolvedValueOnce(null) // mobile draft check — no match
         .mockResolvedValueOnce(makeMember({ id: "existing-1", passwordHash: null })); // aadhaar dedupe check
 
       await expect(
@@ -153,6 +168,7 @@ describe("MemberAuthService", () => {
       prisma.organization.findFirst.mockResolvedValue({ id: "org-1" });
       prisma.member.findFirst
         .mockResolvedValueOnce(null) // mobile dedupe check
+        .mockResolvedValueOnce(null) // mobile draft check
         .mockResolvedValueOnce(null) // aadhaar dedupe check
         .mockResolvedValueOnce(makeMember({ id: "referrer-1", referralCode: "ABCD1234" })); // referral code lookup
       prisma.user.findUnique.mockResolvedValue({ id: "system-user-1" });
@@ -177,6 +193,7 @@ describe("MemberAuthService", () => {
       prisma.organization.findFirst.mockResolvedValue({ id: "org-1" });
       prisma.member.findFirst
         .mockResolvedValueOnce(null) // mobile dedupe check
+        .mockResolvedValueOnce(null) // mobile draft check
         .mockResolvedValueOnce(null) // aadhaar dedupe check
         .mockResolvedValueOnce(null); // referral code not found
 

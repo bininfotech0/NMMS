@@ -40,6 +40,20 @@ export class MemberAuthService {
       throw new ConflictException("An account with this mobile number is already registered — please log in");
     }
 
+    // Also catches a mobile match against a staff-entered record with no
+    // portal password yet (e.g. a field executive's in-person DRAFT) — the
+    // check above only fires once a password exists, so without this a
+    // second, disconnected Member row could be created for someone staff
+    // already has on file.
+    const existingMobileDraft = await this.prisma.member.findFirst({
+      where: { organizationId: org.id, mobile: dto.mobile, passwordHash: null, status: { not: "REJECTED" } },
+    });
+    if (existingMobileDraft) {
+      throw new ConflictException(
+        "This mobile number is already on file with your organization — please contact your field executive to complete your registration",
+      );
+    }
+
     // Aadhaar is the strongest identity signal this form collects — a 12-digit
     // match to an existing member (staff-entered draft or otherwise) is
     // effectively never a coincidence, unlike mobile (which the check above

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { AuthUser, KycStatus } from "@nmms/shared";
 import { Role } from "@nmms/shared";
@@ -8,6 +8,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { KycService } from "./kyc.service";
 import { RejectKycDto } from "./dto/reject-kyc.dto";
+import { SubmitKycDto } from "./dto/submit-kyc.dto";
 
 const CAN_MANAGE_KYC: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 
@@ -30,6 +31,16 @@ export class KycAdminController {
   @Roles(...CAN_MANAGE_KYC)
   get(@Param("memberId") memberId: string, @CurrentUser() user: AuthUser) {
     return this.kycService.getForAdmin(memberId, user.organizationId);
+  }
+
+  // Lets staff enter/correct a member's payout details directly (e.g. a
+  // member without internet access, or a typo staff spotted while reviewing)
+  // — always lands back in PENDING for a (possibly separate) review, same as
+  // a member's own self-submission.
+  @Put(":memberId")
+  @Roles(...CAN_MANAGE_KYC)
+  update(@Param("memberId") memberId: string, @Body() dto: SubmitKycDto, @CurrentUser() user: AuthUser) {
+    return this.kycService.updateKycAsAdmin(memberId, user.organizationId, dto);
   }
 
   @Post(":memberId/verify")

@@ -79,9 +79,14 @@ export async function memberLoginApi(
 
 export async function memberRegisterApi(
   ctx: APIRequestContext,
-  params: { fullName: string; mobile: string; password: string; referralCode?: string },
+  params: { fullName: string; mobile: string; password: string; referralCode?: string; aadhaarNumber?: string },
 ): Promise<{ accessToken: string; memberId: string } | null> {
-  const res = await ctx.post("/api/v1/public/member-auth/register", { data: params });
+  // aadhaarNumber is required by memberRegisterSchema (12 digits) but most
+  // callers here don't have a real one to test with — derive a unique,
+  // deterministic 12-digit value from the (already-unique-per-test) mobile
+  // number rather than making every call site pass one explicitly.
+  const aadhaarNumber = params.aadhaarNumber ?? `20${params.mobile.replace(/\D/g, "").slice(-10).padStart(10, "0")}`;
+  const res = await ctx.post("/api/v1/public/member-auth/register", { data: { ...params, aadhaarNumber } });
   if (res.status() === 409) return null; // already registered — caller falls back to login
   const data = await unwrap<{ accessToken: string; member: { id: string } }>(res);
   return { accessToken: data.accessToken, memberId: data.member.id };

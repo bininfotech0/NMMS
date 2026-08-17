@@ -87,10 +87,14 @@ export function useFulfillReward() {
   });
 }
 
-export function useReferralLeaderboard() {
+// GET /referrals/leaderboard is ADMIN/SUPER_ADMIN only
+// (ReferralsAdminController) — pass enabled: false for other roles so this
+// doesn't fire a request that can only ever come back 403.
+export function useReferralLeaderboard(enabled = true) {
   return useQuery({
     queryKey: ["referrals", "leaderboard"],
     queryFn: () => apiFetch<ReferralLeaderboardEntryResponse[]>("/referrals/leaderboard"),
+    enabled,
   });
 }
 
