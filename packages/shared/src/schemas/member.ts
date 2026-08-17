@@ -156,6 +156,66 @@ export const updateMemberSchema = z.object({
 });
 export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;
 
+// Curated subset of updateMemberSchema a member may change about themselves
+// via the member portal's self-service profile page. Deliberately excludes:
+// mobile (login identifier, no DB uniqueness enforcement — stays staff-only
+// like Aadhaar/PAN), identity documents, plan/fee/payment fields, referral,
+// branch/membership category, declarations, and nominee.
+export const memberSelfUpdateSchema = z.object({
+  fullName: z.string().min(1).optional(),
+  title: z.string().nullish(),
+  firstName: z.string().nullish(),
+  middleName: z.string().nullish(),
+  lastName: z.string().nullish(),
+  dob: z.coerce.date().nullish(),
+  gender: genderSchema.nullish(),
+  maritalStatus: maritalStatusSchema.nullish(),
+  bloodGroup: z.string().nullish(),
+  nationality: z.string().nullish(),
+  fatherName: z.string().nullish(),
+  motherName: z.string().nullish(),
+
+  spouseOrGuardianName: z.string().nullish(),
+  monthlyIncome: z.number().nonnegative().nullish(),
+  familyMembersCount: z.number().int().nonnegative().nullish(),
+  familyTypeId: z.string().nullish(),
+  childrenCount: z.number().int().nonnegative().nullish(),
+  isDifferentlyAbled: z.boolean().optional(),
+  isExServiceman: z.boolean().optional(),
+  isSeniorCitizen: z.boolean().optional(),
+
+  whatsappNumber: z.string().nullish(),
+  email: z.string().email().nullish(),
+  emergencyContactName: z.string().nullish(),
+  emergencyContactMobile: z.string().nullish(),
+  emergencyContactRelationship: z.string().nullish(),
+
+  pincode: z.string().nullish(),
+  addressLine: z.string().nullish(),
+  landmark: z.string().nullish(),
+  latitude: z.number().min(-90).max(90).nullish(),
+  longitude: z.number().min(-180).max(180).nullish(),
+
+  sameAsCurrentAddress: z.boolean().optional(),
+  permPincode: z.string().nullish(),
+  permAddressLine: z.string().nullish(),
+  permLandmark: z.string().nullish(),
+
+  educationId: z.string().nullish(),
+  occupationId: z.string().nullish(),
+  qualificationDetail: z.string().nullish(),
+
+  languagesKnown: z.array(z.string()).optional(),
+  skills: z.array(z.string()).optional(),
+
+  religionId: z.string().nullish(),
+  casteCategoryId: z.string().nullish(),
+  businessTypeId: z.string().nullish(),
+
+  socialMediaLinks: z.string().nullish(),
+});
+export type MemberSelfUpdateInput = z.infer<typeof memberSelfUpdateSchema>;
+
 export const memberResponseSchema = z.object({
   id: z.string(),
   membershipNumber: z.string().nullable(),

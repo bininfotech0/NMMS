@@ -35,7 +35,7 @@ export class MembersController {
 
   @Get("search-referrer")
   searchReferrer(@Query("q") q: string, @CurrentUser() user: AuthUser) {
-    return this.membersService.searchReferrer(q ?? "", user.organizationId);
+    return this.membersService.searchReferrer(q ?? "", user);
   }
 
   @Get("unclaimed-referrals")

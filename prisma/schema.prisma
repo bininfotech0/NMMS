@@ -965,16 +965,18 @@ model WithdrawalRequest {
   chargeAmount    Decimal              @default(0) @db.Decimal(10, 2)
   netAmount       Decimal              @db.Decimal(10, 2)
 
-  // Masked snapshot of the payout destination at request time — the full
-  // bank account number is never duplicated here; staff use
-  // KycService.revealBankAccountNumber against the member's *current* KYC
-  // record to get the number needed to execute the transfer.
-  payoutMethod                 PayoutMethod
-  payoutBankAccountName        String?
-  payoutBankAccountNumberLast4 String?
-  payoutBankIfscCode           String?
-  payoutBankName               String?
-  payoutUpiId                  String?
+  // Snapshot of the payout destination at request time. The full bank account
+  // number is stored here (AES-256-GCM ciphertext, same format as
+  // Member.bankAccountNumberEncrypted) so a payout can never be redirected to
+  // a *new* account if the member edits their KYC details after the request
+  // is approved. The masked last-4 and metadata remain for display.
+  payoutMethod                     PayoutMethod
+  payoutBankAccountName            String?
+  payoutBankAccountNumberEncrypted String?
+  payoutBankAccountNumberLast4     String?
+  payoutBankIfscCode               String?
+  payoutBankName                   String?
+  payoutUpiId                      String?
 
   status WithdrawalStatus @default(PENDING)
 

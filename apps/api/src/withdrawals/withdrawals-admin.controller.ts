@@ -70,4 +70,10 @@ export class WithdrawalsAdminController {
   checkPayoutStatus(@Param("id") id: string, @CurrentUser() user: AuthUser) {
     return this.payoutGatewayService.checkStatus(id, user.organizationId);
   }
+
+  @Post(":id/reveal-bank-account")
+  @Roles(...CAN_MANAGE_WITHDRAWALS)
+  revealBankAccount(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.withdrawalsService.revealPayoutBankAccount(id, user.organizationId);
+  }
 }

@@ -11,6 +11,7 @@ import { Role } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { NumberingService } from "../common/numbering.service";
 import { buildJurisdictionWhere } from "../common/scope.util";
+import { addMonths } from "../common/date.util";
 import { MembersService } from "../members/members.service";
 import { toMemberResponse } from "../members/member.mapper";
 import { NotificationService } from "../notifications/notification.service";
@@ -108,11 +109,29 @@ export class ApplicationsService {
     }
     this.assertCanApprove(user, member);
 
-    const updated = await this.prisma.member.update({
-      where: { id: member.id },
-      data: { status: "REJECTED" },
+    // Compare-and-swap inside an interactive transaction: two concurrent
+    // rejects both pass the status read above, but only one updateMany can
+    // match a SUBMITTED row — the loser fails cleanly instead of
+    // double-writing StatusHistory.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.member.updateMany({
+        where: { id: member.id, status: "SUBMITTED" },
+        data: { status: "REJECTED" },
+      });
+      if (cas.count === 0) {
+        throw new ConflictException("This member's status just changed — please refresh and try again");
+      }
+      await tx.statusHistory.create({
+        data: {
+          memberId: member.id,
+          fromStatus: "SUBMITTED",
+          toStatus: "REJECTED",
+          actorId: user.id,
+          remarks: dto.remarks,
+        },
+      });
+      return tx.member.findUniqueOrThrow({ where: { id: member.id } });
     });
-    await this.recordHistory(member.id, member.status, "REJECTED", user.id, dto.remarks);
     return toMemberResponse(updated);
   }
 
@@ -139,11 +158,28 @@ export class ApplicationsService {
     if (!member) {
       throw new ConflictException("Only ACTIVE or SUSPENDED members can be marked deceased");
     }
-    const updated = await this.prisma.member.update({
-      where: { id: member.id },
-      data: { status: "DECEASED" },
+    // CAS on the ACTIVE-or-SUSPENDED precondition: the pre-read member could
+    // be either, so the history's fromStatus comes from that read while the
+    // updateMany guards against a concurrent transition racing us.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.member.updateMany({
+        where: { id: member.id, status: { in: ["ACTIVE", "SUSPENDED"] } },
+        data: { status: "DECEASED" },
+      });
+      if (cas.count === 0) {
+        throw new ConflictException("This member's status just changed — please refresh and try again");
+      }
+      await tx.statusHistory.create({
+        data: {
+          memberId: member.id,
+          fromStatus: member.status,
+          toStatus: "DECEASED",
+          actorId: user.id,
+          remarks: dto.remarks,
+        },
+      });
+      return tx.member.findUniqueOrThrow({ where: { id: member.id } });
     });
-    await this.recordHistory(member.id, member.status, "DECEASED", user.id, dto.remarks);
     return toMemberResponse(updated);
   }
 
@@ -160,11 +196,22 @@ export class ApplicationsService {
     if (!member) {
       throw new ConflictException(`Member is not in ${fromStatus} status`);
     }
-    const updated = await this.prisma.member.update({
-      where: { id: member.id },
-      data: { status: toStatus },
+    // Compare-and-swap inside an interactive transaction so a concurrent
+    // suspend/reactivate can't double-write StatusHistory or act on a status
+    // that changed since the read above.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.member.updateMany({
+        where: { id: member.id, status: fromStatus },
+        data: { status: toStatus },
+      });
+      if (cas.count === 0) {
+        throw new ConflictException("This member's status just changed — please refresh and try again");
+      }
+      await tx.statusHistory.create({
+        data: { memberId: member.id, fromStatus, toStatus, actorId: user.id, remarks },
+      });
+      return tx.member.findUniqueOrThrow({ where: { id: member.id } });
     });
-    await this.recordHistory(member.id, fromStatus, toStatus, user.id, remarks);
     return toMemberResponse(updated);
   }
 
@@ -218,22 +265,4 @@ export class ApplicationsService {
     }
     throw new ForbiddenException("You do not have permission to act on this application");
   }
-
-  private recordHistory(
-    memberId: string,
-    fromStatus: MemberStatus,
-    toStatus: MemberStatus,
-    actorId: string,
-    remarks: string | null,
-  ) {
-    return this.prisma.statusHistory.create({
-      data: { memberId, fromStatus, toStatus, actorId, remarks },
-    });
-  }
-}
-
-function addMonths(date: Date, months: number): Date {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
 }

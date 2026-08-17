@@ -2,12 +2,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { CreateLookupInput, LookupCategory, LookupResponse, UpdateLookupInput } from "@nmms/shared";
 import { apiFetch } from "@/lib/api-client";
+import { memberApiFetch } from "@/lib/member-api-client";
 import { errorMessage } from "@/lib/toast-utils";
 
 export function useLookups(category: LookupCategory) {
   return useQuery({
     queryKey: ["lookups", category],
     queryFn: () => apiFetch<LookupResponse[]>(`/masters/lookups?category=${category}`),
+  });
+}
+
+// Member-facing equivalent — LookupsController is staff-only, so the member
+// portal's self-service profile page reads through LookupsMemberController
+// (/masters/lookups/me) with the member token instead.
+export function useMyLookups(category: LookupCategory) {
+  return useQuery({
+    queryKey: ["lookups", "me", category],
+    queryFn: () => memberApiFetch<LookupResponse[]>(`/masters/lookups/me?category=${category}`),
   });
 }
 

@@ -182,6 +182,22 @@ describe("ReferralsService", () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
+    it("skips crediting a SUSPENDED/DECEASED/REJECTED referrer entirely", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.member.findUnique
+        .mockResolvedValueOnce(
+          makeMember({ id: "member-1", organizationId: "org-1", referralMemberId: "referrer-1" }),
+        )
+        .mockResolvedValueOnce(makeMember({ id: "referrer-1", status: "SUSPENDED" }));
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
+
+      await service.awardPointsForApproval("member-1");
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+
     it("caps credited points at referralPointsCapPerMember, accounting for previously earned referral points", async () => {
       const prisma = makeMockPrisma();
       const planRewards = makePlanRewards({ computeReferralPoints: jest.fn().mockResolvedValue(10) });

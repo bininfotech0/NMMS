@@ -94,8 +94,21 @@ export class PaymentGatewayService {
     }
 
     // Never trust a client-supplied amount — re-fetch the order from Razorpay,
-    // whose `amount` was fixed server-side at createOrder() time.
+    // whose `amount` was fixed server-side at createOrder() time. Equally
+    // important: never trust the client-supplied *member* — the order's notes
+    // record which member actually created it, so crediting another member
+    // (misattribution) is rejected rather than honored.
     const order = await this.razorpay.getOrder(input.orderId, credentials);
+    if (order.status !== "paid") {
+      throw new ConflictException("This order has not been captured yet");
+    }
+    if (order.notes.memberId !== memberId) {
+      throw new ConflictException("This order does not belong to the requested member");
+    }
+    if (order.notes.organizationId !== user.organizationId) {
+      throw new ConflictException("This order belongs to a different organization");
+    }
+
     return this.paymentsService.recordGatewayPayment(
       memberId,
       { orderId: input.orderId, paymentId: input.paymentId, amount: order.amountPaise / 100 },

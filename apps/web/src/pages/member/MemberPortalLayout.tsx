@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Award, CalendarDays, LayoutDashboard, LogOut, Share2, ShieldCheck, Wallet } from "lucide-react";
+import { Award, CalendarDays, LayoutDashboard, LogOut, Share2, ShieldCheck, UserRound, Wallet } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { to: "/member/wallet", label: "Wallet", icon: Wallet, end: false },
   { to: "/member/rewards", label: "Rewards", icon: Award, end: false },
   { to: "/member/kyc", label: "KYC", icon: ShieldCheck, end: false },
+  { to: "/member/profile", label: "Profile", icon: UserRound, end: false },
 ];
 
 function initials(name: string | undefined) {

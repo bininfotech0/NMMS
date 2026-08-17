@@ -6,6 +6,7 @@ import type {
   CreateMemberInput,
   DedupeMatch,
   MemberResponse,
+  MemberSelfUpdateInput,
   PromoteToExecutiveInput,
   ReferrerSearchResult,
   UpdateMemberInput,
@@ -86,6 +87,28 @@ export class MembersService {
     return toMemberResponse(member);
   }
 
+  // Self-service: a member reading/editing their own record. No jurisdiction
+  // or role scoping (that's a staff-vs-staff concern) and no status/plan
+  // lock-down (that's this.update()'s staff-editing-a-locked-record concern)
+  // — a member may always see and correct their own in-scope profile fields.
+  async getMe(memberId: string): Promise<MemberResponse> {
+    const member = await this.prisma.member.findUniqueOrThrow({
+      where: { id: memberId },
+      include: MEMBER_INCLUDE,
+    });
+    return toMemberResponse(member);
+  }
+
+  async updateMe(memberId: string, dto: MemberSelfUpdateInput): Promise<MemberResponse> {
+    const data: Prisma.MemberUpdateInput = { ...dto };
+    const member = await this.prisma.member.update({
+      where: { id: memberId },
+      data,
+      include: MEMBER_INCLUDE,
+    });
+    return toMemberResponse(member);
+  }
+
   async create(dto: CreateMemberInput, user: AuthUser): Promise<MemberResponse> {
     const registrationNumber = await this.numbering.nextRegistrationNumber(user.organizationId);
     const member = await this.prisma.member.create({
@@ -125,6 +148,28 @@ export class MembersService {
       }
     }
 
+    // Referenced rows must belong to the same organization as the member — a
+    // cross-org plan (its fee gates the collected amount), branch, or
+    // referrer would otherwise let staff bind this record to another org's
+    // configuration or data.
+    if (dto.planId !== undefined && dto.planId !== null) {
+      const plan = await this.prisma.membershipPlan.findFirst({
+        where: { id: dto.planId, organizationId: user.organizationId },
+      });
+      if (!plan) {
+        throw new NotFoundException("Plan not found");
+      }
+    }
+    if (dto.branchId !== undefined && dto.branchId !== null) {
+      const branch = await this.prisma.lookup.findFirst({
+        where: { id: dto.branchId, organizationId: user.organizationId, category: "BRANCH" },
+      });
+      if (!branch) {
+        throw new NotFoundException("Branch not found");
+      }
+    }
+    await this.assertReferrerValid(dto.referralMemberId, existing.id, user.organizationId);
+
     const { aadhaarNumber, nominee, ...rest } = dto;
     const data: Prisma.MemberUpdateInput = { ...rest };
     if (aadhaarNumber === null) {
@@ -135,20 +180,25 @@ export class MembersService {
       data.aadhaarLast4 = this.aadhaar.last4(aadhaarNumber);
     }
 
-    await this.prisma.member.update({ where: { id: existing.id }, data });
+    // Member + nominee in one interactive transaction so a partial failure
+    // (e.g. nominee write) can't leave the member updated without its
+    // nominee, or vice versa.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.member.update({ where: { id: existing.id }, data });
 
-    // Handled as separate calls rather than a nested write: a nested
-    // `nominee: { delete: true }` throws if no nominee row exists yet, and
-    // `deleteMany`/`upsert` are the safe create-or-update-or-clear primitives.
-    if (nominee === null) {
-      await this.prisma.nominee.deleteMany({ where: { memberId: existing.id } });
-    } else if (nominee !== undefined) {
-      await this.prisma.nominee.upsert({
-        where: { memberId: existing.id },
-        create: { memberId: existing.id, ...nominee },
-        update: nominee,
-      });
-    }
+      // Handled as separate calls rather than a nested write: a nested
+      // `nominee: { delete: true }` throws if no nominee row exists yet, and
+      // `deleteMany`/`upsert` are the safe create-or-update-or-clear primitives.
+      if (nominee === null) {
+        await tx.nominee.deleteMany({ where: { memberId: existing.id } });
+      } else if (nominee !== undefined) {
+        await tx.nominee.upsert({
+          where: { memberId: existing.id },
+          create: { memberId: existing.id, ...nominee },
+          update: nominee,
+        });
+      }
+    });
 
     const member = await this.prisma.member.findUniqueOrThrow({
       where: { id: existing.id },
@@ -248,14 +298,17 @@ export class MembersService {
 
   // Powers the "Referred by" typeahead in the registration wizard — any
   // authenticated staff role, matching how the flat dropdown it replaces was
-  // available to everyone who could open the wizard.
-  async searchReferrer(q: string, organizationId: string): Promise<ReferrerSearchResult[]> {
+  // available to everyone who could open the wizard. Results stay inside the
+  // caller's jurisdiction (a FIELD_EXECUTIVE only ever sees members they
+  // created) exactly like every other member listing.
+  async searchReferrer(q: string, user: AuthUser): Promise<ReferrerSearchResult[]> {
     if (q.trim().length < 2) {
       return [];
     }
     const members = await this.prisma.member.findMany({
       where: {
-        organizationId,
+        organizationId: user.organizationId,
+        ...buildJurisdictionWhere(user),
         OR: [
           { fullName: { contains: q, mode: "insensitive" } },
           { referralCode: { equals: q, mode: "insensitive" } },
@@ -286,9 +339,19 @@ export class MembersService {
     if (!member.selfRegistered || !member.createdBy.isSystem) {
       throw new ConflictException("This member is not an unclaimed self-registration");
     }
-    const updated = await this.prisma.member.update({
-      where: { id },
+    // Compare-and-swap: only an unclaimed self-registration (still attributed
+    // to the sentinel system user) can be claimed, so two executives racing
+    // to claim the same member can't both win — the loser's updateMany
+    // matches zero rows.
+    const cas = await this.prisma.member.updateMany({
+      where: { id, selfRegistered: true, createdBy: { isSystem: true } },
       data: { createdById: user.id },
+    });
+    if (cas.count === 0) {
+      throw new ConflictException("This member was just claimed by another executive — please refresh");
+    }
+    const updated = await this.prisma.member.findUniqueOrThrow({
+      where: { id },
       include: MEMBER_INCLUDE,
     });
     return toMemberResponse(updated);
@@ -335,7 +398,22 @@ export class MembersService {
       { email: dto.email, password: dto.password, role: Role.FIELD_EXECUTIVE },
       actingUser,
     );
-    await this.prisma.member.update({ where: { id }, data: { promotedToUserId: newUser.id } });
+    // Compare-and-swap so a concurrent double-promote can't both succeed:
+    // the loser's updateMany matches zero rows (status no longer ACTIVE or
+    // promotedToUserId already set), and we clean up the staff account we
+    // just created rather than leaving an orphaned user behind.
+    const cas = await this.prisma.member.updateMany({
+      where: { id, status: "ACTIVE", promotedToUserId: null },
+      data: { promotedToUserId: newUser.id },
+    });
+    if (cas.count === 0) {
+      try {
+        await this.prisma.user.delete({ where: { id: newUser.id } });
+      } catch {
+        // Already gone — nothing to clean up.
+      }
+      throw new ConflictException("This member's status just changed — please refresh and try again");
+    }
     return newUser;
   }
 
@@ -421,5 +499,45 @@ export class MembersService {
 
   private scopeFilter(user: AuthUser): Prisma.MemberWhereInput {
     return buildJurisdictionWhere(user);
+  }
+
+  // Referrer integrity: the referrer must be a real member of the same org,
+  // not the member themselves, and not part of a referral cycle. The chain
+  // walk starts at the candidate referrer and follows each member's own
+  // referrer upward — reaching the member being edited (or looping onto an
+  // already-visited id) means the change would create a cycle.
+  private async assertReferrerValid(
+    referralMemberId: string | null | undefined,
+    memberId: string,
+    organizationId: string,
+  ) {
+    if (referralMemberId === undefined || referralMemberId === null) {
+      return;
+    }
+    if (referralMemberId === memberId) {
+      throw new ConflictException("A member cannot refer themselves");
+    }
+    const referrer = await this.prisma.member.findFirst({
+      where: { id: referralMemberId, organizationId },
+      select: { id: true, referralMemberId: true, status: true },
+    });
+    if (!referrer) {
+      throw new NotFoundException("Referrer not found");
+    }
+    if (referrer.status === "REJECTED" || referrer.status === "DECEASED") {
+      throw new ConflictException("A rejected or deceased member cannot be a referrer");
+    }
+    const visited = new Set<string>([referralMemberId]);
+    let cursor: { id: string; referralMemberId: string | null } | null = referrer;
+    while (cursor?.referralMemberId) {
+      if (cursor.referralMemberId === memberId || visited.has(cursor.referralMemberId)) {
+        throw new ConflictException("Referral chain must not form a loop");
+      }
+      visited.add(cursor.referralMemberId);
+      cursor = await this.prisma.member.findFirst({
+        where: { id: cursor.referralMemberId, organizationId },
+        select: { id: true, referralMemberId: true, status: true },
+      });
+    }
   }
 }

@@ -10,8 +10,16 @@ function makeKyc(overrides: Record<string, jest.Mock> = {}) {
   };
 }
 
-function makeService(prisma: ReturnType<typeof makeMockPrisma>, kyc = makeKyc()) {
-  return new WithdrawalsService(prisma as never, kyc as never);
+function makeCrypto(overrides: Record<string, jest.Mock> = {}) {
+  return {
+    encrypt: jest.fn().mockImplementation((v: string) => `enc:${v}`),
+    decrypt: jest.fn().mockImplementation((v: string) => String(v).replace(/^enc:/, "")),
+    ...overrides,
+  };
+}
+
+function makeService(prisma: ReturnType<typeof makeMockPrisma>, kyc = makeKyc(), crypto = makeCrypto()) {
+  return new WithdrawalsService(prisma as never, kyc as never, crypto as never);
 }
 
 function makeSettings(overrides: Record<string, unknown> = {}) {
@@ -191,15 +199,19 @@ describe("WithdrawalsService", () => {
       expect(createCall.data.netAmount.toNumber()).toBe(0);
     });
 
-    it("snapshots the member's current payout method and masked details", async () => {
+    it("snapshots the member's current payout method, masked details, and encrypted account number", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.member.findUniqueOrThrow.mockResolvedValue(
         makeMember({
           kycStatus: "VERIFIED",
           referralPointsBalance: 1000,
-          payoutMethod: "UPI",
-          upiId: "ramesh@upi",
+          payoutMethod: "BANK",
+          bankAccountName: "Ramesh Kumar",
+          bankAccountNumberEncrypted: "enc:1234567890",
+          bankAccountNumberLast4: "7890",
+          bankIfscCode: "SBIN0001234",
+          bankName: "State Bank of India",
         }),
       );
       prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
@@ -210,7 +222,14 @@ describe("WithdrawalsService", () => {
 
       expect(prisma.withdrawalRequest.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ payoutMethod: "UPI", payoutUpiId: "ramesh@upi" }),
+          data: expect.objectContaining({
+            payoutMethod: "BANK",
+            payoutBankAccountName: "Ramesh Kumar",
+            payoutBankAccountNumberEncrypted: "enc:1234567890",
+            payoutBankAccountNumberLast4: "7890",
+            payoutBankIfscCode: "SBIN0001234",
+            payoutBankName: "State Bank of India",
+          }),
         }),
       );
     });
@@ -221,6 +240,7 @@ describe("WithdrawalsService", () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PENDING" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "ACTIVE" });
       prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
 
       await service.approve("withdrawal-1", "org-1", "admin-1");
@@ -235,10 +255,21 @@ describe("WithdrawalsService", () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PENDING" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "ACTIVE" });
       // Simulates a concurrent approve() having already won the CAS race.
       prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.approve("withdrawal-1", "org-1", "admin-1")).rejects.toThrow(ConflictException);
+    });
+
+    it("refuses to approve for a suspended/deceased member", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PENDING" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "SUSPENDED" });
+
+      await expect(service.approve("withdrawal-1", "org-1", "admin-1")).rejects.toThrow(ConflictException);
+      expect(prisma.withdrawalRequest.updateMany).not.toHaveBeenCalled();
     });
   });
 
@@ -281,6 +312,7 @@ describe("WithdrawalsService", () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "APPROVED" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "ACTIVE" });
       prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
       prisma.withdrawalRequest.findUniqueOrThrow.mockResolvedValue(
         makeWithdrawalRequest({ status: "PAID", pointsRequested: 100, netAmount: { toNumber: () => 10 } }),
@@ -311,6 +343,7 @@ describe("WithdrawalsService", () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PENDING" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "ACTIVE" });
       prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.markPaid("withdrawal-1", "org-1", "admin-1")).rejects.toThrow(ConflictException);
@@ -322,6 +355,7 @@ describe("WithdrawalsService", () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PAYOUT_FAILED" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "ACTIVE" });
       prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
       prisma.withdrawalRequest.findUniqueOrThrow.mockResolvedValue(
         makeWithdrawalRequest({ status: "PAID", pointsRequested: 100, netAmount: { toNumber: () => 10 } }),
@@ -348,6 +382,7 @@ describe("WithdrawalsService", () => {
       const service = makeService(prisma);
       prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 1 });
       prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PAYOUT_PROCESSING" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "ACTIVE" });
 
       await service.markPayoutProcessing("withdrawal-1", "org-1", "admin-1", gatewayIds);
 
@@ -364,6 +399,8 @@ describe("WithdrawalsService", () => {
     it("refuses when the request is no longer APPROVED/PAYOUT_FAILED", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
+      prisma.withdrawalRequest.findFirst.mockResolvedValue(makeWithdrawalRequest({ status: "PAYOUT_PROCESSING" }));
+      prisma.member.findUnique.mockResolvedValue({ status: "ACTIVE" });
       prisma.withdrawalRequest.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(
@@ -493,6 +530,28 @@ describe("WithdrawalsService", () => {
         withdrawnAmount: 5,
         pendingReviewPoints: 30,
       });
+    });
+
+    it("locks points held by an in-flight PAYOUT_PROCESSING request (prevents double-spend)", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.member.findUniqueOrThrow.mockResolvedValue(
+        makeMember({
+          referralPointsBalance: 1000,
+          pointsConverted: 0,
+          totalWithdrawnAmount: { toNumber: () => 0 },
+        }),
+      );
+      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
+      prisma.withdrawalRequest.groupBy.mockResolvedValue([
+        { status: "PAYOUT_PROCESSING", _sum: { pointsRequested: 300 } },
+      ]);
+      prisma.referralPointsLedger.aggregate.mockResolvedValue({ _sum: { points: 0 } });
+
+      const summary = await service.getWalletSummary("member-1");
+
+      expect(summary.availableBalancePoints).toBe(700);
+      expect(summary.availableBalanceAmount).toBe(70);
     });
   });
 });

@@ -16,7 +16,7 @@ function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
   return { service, numbering, membersService, notifications };
 }
 
-const monthsPlan = { validityType: "MONTHS", validityMonths: 12 };
+const monthsPlan = { validityType: "MONTHS", validityMonths: 12, fee: decimal(500) };
 
 describe("PaymentsService.recordPayment", () => {
   it("collects the initial fee: DRAFT → PAYMENT_COLLECTED, sets joiningDate, notifies", async () => {
@@ -148,7 +148,7 @@ describe("PaymentsService.recordPayment", () => {
   it("gives a LIFETIME plan renewal a null validUntil", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
-    const active = makeMember({ status: "ACTIVE", plan: { validityType: "LIFETIME", validityMonths: null } });
+    const active = makeMember({ status: "ACTIVE", plan: { validityType: "LIFETIME", validityMonths: null, fee: decimal(1000) } });
     prisma.member.findFirst.mockResolvedValue(active);
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
     prisma.payment.create.mockResolvedValue({
@@ -177,6 +177,41 @@ describe("PaymentsService.recordPayment", () => {
     await expect(service.recordPayment("member-1", { amount: 500, mode: "CASH" }, makeAuthUser())).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it("refuses a manual payment whose amount doesn't match the member's fee (₹1 registration blocked)", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "DRAFT", plan: monthsPlan }));
+
+    await expect(service.recordPayment("member-1", { amount: 1, mode: "CASH" }, makeAuthUser())).rejects.toThrow(
+      ConflictException,
+    );
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(prisma.member.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("honors a feeOverride as the expected manual amount", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(
+      makeMember({ status: "DRAFT", plan: monthsPlan, feeOverride: decimal(450) }),
+    );
+    prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.payment.create.mockResolvedValue({
+      id: "payment-override-1",
+      memberId: "member-1",
+      amount: decimal(450),
+      mode: "CASH",
+      receiptNumber: "RCPT-2026-00001",
+      transactionNumber: null,
+      remarks: null,
+      receivedById: "user-1",
+      paidAt: new Date(),
+    });
+
+    const result = await service.recordPayment("member-1", { amount: 450, mode: "CASH" }, makeAuthUser());
+    expect(result.amount).toBe(450);
   });
 
   it.each(["SUBMITTED", "APPROVED", "REJECTED", "SUSPENDED", "DECEASED"])(

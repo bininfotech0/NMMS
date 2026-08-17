@@ -16,11 +16,14 @@ export function AddressFields({
   value,
   onChange,
   disabled = false,
+  hideCoordinates = false,
 }: {
   idPrefix: string;
   value: AddressValue;
   onChange: (next: AddressValue) => void;
   disabled?: boolean;
+  /** Coordinates aren't persisted for this address (e.g. permanent address has no lat/long columns). */
+  hideCoordinates?: boolean;
 }) {
   const [detecting, setDetecting] = useState(false);
 
@@ -76,58 +79,60 @@ export function AddressFields({
         />
       </div>
 
-      <div className="sm:col-span-2">
-        <div className="mb-2 flex items-center justify-between">
-          <Label className="text-sm font-medium">Location Coordinates</Label>
-          <button
-            type="button"
-            onClick={handleDetectLocation}
-            disabled={disabled || detecting}
-            className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-          >
-            {detecting ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <MapPin className="size-3.5" />
-            )}
-            {detecting ? "Detecting..." : "Auto-detect"}
-          </button>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor={`${idPrefix}-latitude`} className="text-xs text-muted-foreground">
-              Latitude
-            </Label>
-            <Input
-              id={`${idPrefix}-latitude`}
-              type="number"
-              step="any"
-              min="-90"
-              max="90"
-              placeholder="e.g. 28.6139"
-              value={value.latitude}
-              disabled={disabled}
-              onChange={(e) => set({ latitude: e.target.value })}
-            />
+      {!hideCoordinates && (
+        <div className="sm:col-span-2">
+          <div className="mb-2 flex items-center justify-between">
+            <Label className="text-sm font-medium">Location Coordinates</Label>
+            <button
+              type="button"
+              onClick={handleDetectLocation}
+              disabled={disabled || detecting}
+              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            >
+              {detecting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <MapPin className="size-3.5" />
+              )}
+              {detecting ? "Detecting..." : "Auto-detect"}
+            </button>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`${idPrefix}-longitude`} className="text-xs text-muted-foreground">
-              Longitude
-            </Label>
-            <Input
-              id={`${idPrefix}-longitude`}
-              type="number"
-              step="any"
-              min="-180"
-              max="180"
-              placeholder="e.g. 77.2090"
-              value={value.longitude}
-              disabled={disabled}
-              onChange={(e) => set({ longitude: e.target.value })}
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor={`${idPrefix}-latitude`} className="text-xs text-muted-foreground">
+                Latitude
+              </Label>
+              <Input
+                id={`${idPrefix}-latitude`}
+                type="number"
+                step="any"
+                min="-90"
+                max="90"
+                placeholder="e.g. 28.6139"
+                value={value.latitude}
+                disabled={disabled}
+                onChange={(e) => set({ latitude: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${idPrefix}-longitude`} className="text-xs text-muted-foreground">
+                Longitude
+              </Label>
+              <Input
+                id={`${idPrefix}-longitude`}
+                type="number"
+                step="any"
+                min="-180"
+                max="180"
+                placeholder="e.g. 77.2090"
+                value={value.longitude}
+                disabled={disabled}
+                onChange={(e) => set({ longitude: e.target.value })}
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { Role } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { NumberingService } from "../common/numbering.service";
 import { AadhaarHashService } from "../common/aadhaar-hash.service";
+import { BLOCKED_STATUSES } from "./blocked-statuses.const";
 
 // Sentinel account attributed as Member.createdById for self-registered
 // members (createdById is NOT NULL and there's no staff user to point to).
@@ -84,6 +85,7 @@ export class MemberAuthService {
     if (!member?.passwordHash || !(await argon2.verify(member.passwordHash, password))) {
       throw new UnauthorizedException("Invalid mobile number or password");
     }
+    this.assertPortalAllowed(member.status);
     return this.toAuthMember(member);
   }
 
@@ -120,6 +122,7 @@ export class MemberAuthService {
     if (!member || !member.passwordHash) {
       throw new UnauthorizedException("Member account no longer exists");
     }
+    this.assertPortalAllowed(member.status);
     return this.toAuthMember(member);
   }
 
@@ -161,6 +164,12 @@ export class MemberAuthService {
         return existingAfterRace.id;
       }
       throw err;
+    }
+  }
+
+  private assertPortalAllowed(status: string) {
+    if (BLOCKED_STATUSES.includes(status as (typeof BLOCKED_STATUSES)[number])) {
+      throw new UnauthorizedException("Your membership is not active — please contact support");
     }
   }
 

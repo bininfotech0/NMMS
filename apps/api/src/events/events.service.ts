@@ -200,6 +200,12 @@ export class EventsService {
     if (!registration) {
       throw new NotFoundException("You are not registered for this event");
     }
+    // One approval per registration — resubmitting after APPROVED would create
+    // a second PENDING ledger row and let the member farm the event's points
+    // repeatedly (see ReferralsService.recordPendingEventPoints).
+    if (registration.completionStatus === "APPROVED") {
+      throw new ConflictException("Your evidence has already been approved — it cannot be resubmitted");
+    }
     if (!dto.note && !file) {
       throw new BadRequestException("Provide a note or a photo as evidence");
     }
@@ -348,17 +354,29 @@ export class EventsService {
   }
 
   private async createRegistration(eventId: string, memberId: string): Promise<EventRegistrationResponse> {
-    const event = await this.prisma.event.findUniqueOrThrow({ where: { id: eventId } });
-    if (event.capacity !== null) {
-      const count = await this.prisma.eventRegistration.count({ where: { eventId } });
-      if (count >= event.capacity) {
-        throw new ConflictException("Event has reached its capacity");
-      }
-    }
+    // Interactive transaction with a row lock on the event: two concurrent
+    // registrations both read `count < capacity` at the same time could both
+    // insert and overflow the capacity. Locking the event row serializes the
+    // check-then-insert so the capacity is never exceeded.
     try {
-      const registration = await this.prisma.eventRegistration.create({
-        data: { eventId, memberId },
-        include: { member: { select: { fullName: true, mobile: true } } },
+      const registration = await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<{ id: string; capacity: number | null }[]>`
+          SELECT id, capacity FROM events WHERE id = ${eventId} FOR UPDATE
+        `;
+        const event = rows[0];
+        if (!event) {
+          throw new NotFoundException("Event not found");
+        }
+        if (event.capacity !== null) {
+          const count = await tx.eventRegistration.count({ where: { eventId } });
+          if (count >= event.capacity) {
+            throw new ConflictException("Event has reached its capacity");
+          }
+        }
+        return tx.eventRegistration.create({
+          data: { eventId, memberId },
+          include: { member: { select: { fullName: true, mobile: true } } },
+        });
       });
       return this.toRegistrationResponse(registration);
     } catch (err) {

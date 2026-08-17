@@ -66,6 +66,7 @@ export function StepAddress({ form, setForm }: StepProps) {
         <AddressFields
           idPrefix="permanent"
           disabled={form.sameAsCurrentAddress}
+          hideCoordinates={!form.sameAsCurrentAddress}
           value={
             form.sameAsCurrentAddress
               ? {

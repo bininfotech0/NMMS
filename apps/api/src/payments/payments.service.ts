@@ -13,15 +13,10 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { NumberingService } from "../common/numbering.service";
 import { buildJurisdictionWhere } from "../common/scope.util";
+import { addMonths } from "../common/date.util";
 import { MembersService } from "../members/members.service";
 import { toMemberResponse } from "../members/member.mapper";
 import { NotificationService } from "../notifications/notification.service";
-
-function addMonths(date: Date, months: number): Date {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
-}
 
 interface PaymentInput {
   amount: number;
@@ -62,6 +57,7 @@ export class PaymentsService {
       throw new NotFoundException("Member not found");
     }
     this.assertPayable(member);
+    this.assertManualAmountMatchesFee(member, dto.amount);
 
     return this.finalizePayment(
       member,
@@ -73,6 +69,22 @@ export class PaymentsService {
       },
       { id: user.id, organizationId: user.organizationId },
     );
+  }
+
+  // Financial control for the manual cash/UPI path: a member's registration
+  // or renewal must be paid at the exact effective fee (feeOverride if set,
+  // else the plan fee). Without this, a ₹1 "payment" would mark a member
+  // PAYMENT_COLLECTED and complete their registration. The gateway path is
+  // exempt — its amount is fixed server-side at order-creation time and
+  // re-fetched from Razorpay at verify time, never client-supplied.
+  private assertManualAmountMatchesFee(member: MemberWithPlan, amount: number): void {
+    if (!member.plan) {
+      throw new ConflictException("Member has no current membership plan");
+    }
+    const effectiveFee = member.feeOverride?.toNumber() ?? member.plan.fee.toNumber();
+    if (amount !== effectiveFee) {
+      throw new ConflictException(`Payment amount must equal the member's fee of ₹${effectiveFee}`);
+    }
   }
 
   // Admin/staff-initiated tier upgrade (e.g. Silver → Gold) for an ACTIVE
@@ -118,45 +130,48 @@ export class PaymentsService {
       throw new ConflictException("The selected plan is not an upgrade over the member's current plan");
     }
 
-    const currentFee = member.feeOverride ?? member.plan.fee;
+    const plan = member.plan; // non-null (checked above) — captured so the transaction closure keeps the type
+    const currentFee = member.feeOverride ?? plan.fee;
     const amount = Math.max(newPlan.fee.toNumber() - currentFee.toNumber(), 0);
 
-    const cas = await this.prisma.member.updateMany({
-      where: { id: member.id, status: "ACTIVE", planId: member.planId },
-      data: { planId: newPlan.id, feeOverride: null },
-    });
-    if (cas.count === 0) {
-      throw new ConflictException("This member's plan just changed — please refresh and try again");
-    }
-
     let receiptNumber: string | null = null;
-    if (amount > 0) {
-      receiptNumber = await this.numbering.nextReceiptNumber(user.organizationId);
-      await this.prisma.payment.create({
+    await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.member.updateMany({
+        where: { id: member.id, status: "ACTIVE", planId: member.planId },
+        data: { planId: newPlan.id, feeOverride: null },
+      });
+      if (cas.count === 0) {
+        throw new ConflictException("This member's plan just changed — please refresh and try again");
+      }
+
+      if (amount > 0) {
+        receiptNumber = await this.numbering.nextReceiptNumber(user.organizationId);
+        await tx.payment.create({
+          data: {
+            organizationId: user.organizationId,
+            memberId: member.id,
+            amount,
+            mode: dto.mode,
+            receiptNumber,
+            transactionNumber: dto.transactionNumber ?? undefined,
+            remarks: `Membership upgrade: ${plan.name} → ${newPlan.name}`,
+            receivedById: user.id,
+            paidAt: new Date(),
+          },
+        });
+      }
+
+      await tx.statusHistory.create({
         data: {
-          organizationId: user.organizationId,
           memberId: member.id,
-          amount,
-          mode: dto.mode,
-          receiptNumber,
-          transactionNumber: dto.transactionNumber ?? undefined,
-          remarks: `Membership upgrade: ${member.plan.name} → ${newPlan.name}`,
-          receivedById: user.id,
-          paidAt: new Date(),
+          fromStatus: "ACTIVE",
+          toStatus: "ACTIVE",
+          remarks: `Plan upgraded: ${plan.name} → ${newPlan.name}${
+            receiptNumber ? ` (receipt ${receiptNumber}, ₹${amount})` : " (no charge)"
+          }`,
+          actorId: user.id,
         },
       });
-    }
-
-    await this.prisma.statusHistory.create({
-      data: {
-        memberId: member.id,
-        fromStatus: "ACTIVE",
-        toStatus: "ACTIVE",
-        remarks: `Plan upgraded: ${member.plan.name} → ${newPlan.name}${
-          receiptNumber ? ` (receipt ${receiptNumber}, ₹${amount})` : " (no charge)"
-        }`,
-        actorId: user.id,
-      },
     });
 
     await this.notifications.notify({
@@ -165,7 +180,7 @@ export class PaymentsService {
       memberName: member.fullName,
       mobile: member.mobile,
       email: member.email,
-      oldPlanName: member.plan.name,
+      oldPlanName: plan.name,
       newPlanName: newPlan.name,
       amount,
       receiptNumber,
@@ -266,10 +281,10 @@ export class PaymentsService {
   }
 
   // Shared by the manual and gateway paths: creates the Payment row and
-  // applies its side effects (status transition / validUntil extension /
-  // notification), reusing the same DRAFT→PAYMENT_COLLECTED CAS guard either
-  // way so two concurrent requests (retry, double click, verify+webhook
-  // racing) can't both succeed and create duplicate payments.
+  // applies its side effects (status transition / validUntil extension) in a
+  // single transaction, so a failure to persist the payment (receipt collision,
+  // DB error) can never leave a committed status change with no payment row.
+  // The notification fires afterwards, best-effort and outside the transaction.
   private async finalizePayment(
     member: MemberWithPlan,
     data: PaymentInput,
@@ -277,42 +292,88 @@ export class PaymentsService {
   ): Promise<PaymentResponse> {
     const paidAt = new Date();
 
-    if (member.status === "DRAFT") {
-      const cas = await this.prisma.member.updateMany({
-        where: { id: member.id, status: "DRAFT" },
-        data: { status: "PAYMENT_COLLECTED", joiningDate: member.joiningDate ?? paidAt },
-      });
-      if (cas.count === 0) {
-        throw new ConflictException("This member's status just changed — please refresh and try again");
+    const payment = await this.prisma.$transaction(async (tx) => {
+      if (member.status === "DRAFT") {
+        const cas = await tx.member.updateMany({
+          where: { id: member.id, status: "DRAFT" },
+          data: { status: "PAYMENT_COLLECTED", joiningDate: member.joiningDate ?? paidAt },
+        });
+        if (cas.count === 0) {
+          throw new ConflictException("This member's status just changed — please refresh and try again");
+        }
+      } else {
+        // member.status is ACTIVE or EXPIRED here (assertPayable's guard) — a
+        // renewal payment always lands the member back on ACTIVE, resetting
+        // validUntil from today rather than stacking onto whatever was left.
+        // CAS'd against the status we loaded so a renewal racing
+        // MemberExpiryScheduler's nightly sweep can't be silently clobbered.
+        // A MONTHS plan with no validityMonths configured would compute an
+        // instantly-expired member (validUntil === paidAt) — treat it as a
+        // config error and refuse the renewal rather than silently granting
+        // zero validity.
+        if (member.plan!.validityType !== "LIFETIME" && !member.plan!.validityMonths) {
+          throw new ConflictException("This plan has no validity configured — please fix the plan settings first");
+        }
+        const validUntil =
+          member.plan!.validityType === "LIFETIME"
+            ? null
+            : addMonths(paidAt, member.plan!.validityMonths ?? 0);
+        const cas = await tx.member.updateMany({
+          where: { id: member.id, status: member.status },
+          data: { status: "ACTIVE", validUntil },
+        });
+        if (cas.count === 0) {
+          throw new ConflictException("This member's status just changed — please refresh and try again");
+        }
       }
-    }
 
-    const receiptNumber = await this.numbering.nextReceiptNumber(actor.organizationId);
-    const payment = await this.prisma.payment.create({
-      data: {
-        organizationId: actor.organizationId,
-        memberId: member.id,
-        amount: data.amount,
-        mode: data.mode,
-        receiptNumber,
-        transactionNumber: data.transactionNumber ?? undefined,
-        remarks: data.remarks ?? undefined,
-        gatewayOrderId: data.gatewayOrderId ?? undefined,
-        gatewayPaymentId: data.gatewayPaymentId ?? undefined,
-        receivedById: actor.id,
-        paidAt,
-      },
+      // Allocated only after the CAS above has succeeded — nextReceiptNumber
+      // commits its own increment immediately (it isn't `tx`-aware), so
+      // fetching it before the CAS would burn a sequential receipt number
+      // every time a concurrent double-submit loses the race this guard
+      // exists to catch, leaving a permanent gap in the org's receipt series.
+      const receiptNumber = await this.numbering.nextReceiptNumber(actor.organizationId);
+      const created = await tx.payment.create({
+        data: {
+          organizationId: actor.organizationId,
+          memberId: member.id,
+          amount: data.amount,
+          mode: data.mode,
+          receiptNumber,
+          transactionNumber: data.transactionNumber ?? undefined,
+          remarks: data.remarks ?? undefined,
+          gatewayOrderId: data.gatewayOrderId ?? undefined,
+          gatewayPaymentId: data.gatewayPaymentId ?? undefined,
+          receivedById: actor.id,
+          paidAt,
+        },
+      });
+
+      if (member.status === "DRAFT") {
+        await tx.statusHistory.create({
+          data: {
+            memberId: member.id,
+            fromStatus: "DRAFT",
+            toStatus: "PAYMENT_COLLECTED",
+            actorId: actor.id,
+          },
+        });
+      } else {
+        // Real status jumps straight to ACTIVE (never persists as RENEWED,
+        // exactly like APPROVED never persists in ApplicationsService.approve),
+        // but the audit trail records every renewal, which it didn't before.
+        await tx.statusHistory.create({
+          data: { memberId: member.id, fromStatus: member.status, toStatus: "RENEWED", actorId: actor.id },
+        });
+        await tx.statusHistory.create({
+          data: { memberId: member.id, fromStatus: "RENEWED", toStatus: "ACTIVE", actorId: actor.id },
+        });
+      }
+
+      return created;
     });
 
     if (member.status === "DRAFT") {
-      await this.prisma.statusHistory.create({
-        data: {
-          memberId: member.id,
-          fromStatus: "DRAFT",
-          toStatus: "PAYMENT_COLLECTED",
-          actorId: actor.id,
-        },
-      });
       await this.notifications.notify({
         type: "PAYMENT_RECEIPT",
         organizationId: actor.organizationId,
@@ -321,32 +382,6 @@ export class PaymentsService {
         email: member.email,
         amount: payment.amount.toNumber(),
         receiptNumber: payment.receiptNumber,
-      });
-    } else {
-      // member.status is ACTIVE or EXPIRED here (assertPayable's guard) — a
-      // renewal payment always lands the member back on ACTIVE, resetting
-      // validUntil from today rather than stacking onto whatever was left.
-      // CAS'd against the status we loaded so a renewal racing
-      // MemberExpiryScheduler's nightly sweep can't be silently clobbered.
-      const validUntil =
-        member.plan!.validityType === "LIFETIME"
-          ? null
-          : addMonths(paidAt, member.plan!.validityMonths ?? 0);
-      const cas = await this.prisma.member.updateMany({
-        where: { id: member.id, status: member.status },
-        data: { status: "ACTIVE", validUntil },
-      });
-      if (cas.count === 0) {
-        throw new ConflictException("This member's status just changed — please refresh and try again");
-      }
-      // Real status jumps straight to ACTIVE (never persists as RENEWED,
-      // exactly like APPROVED never persists in ApplicationsService.approve),
-      // but the audit trail records every renewal, which it didn't before.
-      await this.prisma.statusHistory.create({
-        data: { memberId: member.id, fromStatus: member.status, toStatus: "RENEWED", actorId: actor.id },
-      });
-      await this.prisma.statusHistory.create({
-        data: { memberId: member.id, fromStatus: "RENEWED", toStatus: "ACTIVE", actorId: actor.id },
       });
     }
 

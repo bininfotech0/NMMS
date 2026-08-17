@@ -123,12 +123,17 @@ describe("ApplicationsService", () => {
       const { service } = makeService(prisma);
       const submittedMember = makeMember({ status: "SUBMITTED" });
       prisma.member.findFirst.mockResolvedValue(submittedMember);
-      prisma.member.update.mockResolvedValue({ ...submittedMember, status: "REJECTED" });
+      prisma.member.updateMany.mockResolvedValue({ count: 1 });
+      prisma.member.findUniqueOrThrow.mockResolvedValue({ ...submittedMember, status: "REJECTED" });
 
       const user = makeAuthUser({ role: Role.ADMIN });
       const result = await service.reject("member-1", { remarks: "Incomplete documents" }, user);
 
       expect(result.status).toBe("REJECTED");
+      expect(prisma.member.updateMany).toHaveBeenCalledWith({
+        where: { id: "member-1", status: "SUBMITTED" },
+        data: { status: "REJECTED" },
+      });
       expect(prisma.statusHistory.create).toHaveBeenCalledWith({
         data: { memberId: "member-1", fromStatus: "SUBMITTED", toStatus: "REJECTED", actorId: user.id, remarks: "Incomplete documents" },
       });
@@ -150,12 +155,17 @@ describe("ApplicationsService", () => {
       const { service } = makeService(prisma);
       const active = makeMember({ status: "ACTIVE" });
       prisma.member.findFirst.mockResolvedValue(active);
-      prisma.member.update.mockResolvedValue({ ...active, status: "SUSPENDED" });
+      prisma.member.updateMany.mockResolvedValue({ count: 1 });
+      prisma.member.findUniqueOrThrow.mockResolvedValue({ ...active, status: "SUSPENDED" });
 
       const user = makeAuthUser({ role: Role.ADMIN });
       const result = await service.suspend("member-1", { remarks: "Fraud investigation" }, user);
 
       expect(result.status).toBe("SUSPENDED");
+      expect(prisma.member.updateMany).toHaveBeenCalledWith({
+        where: { id: "member-1", status: "ACTIVE" },
+        data: { status: "SUSPENDED" },
+      });
       expect(prisma.statusHistory.create).toHaveBeenCalledWith({
         data: { memberId: "member-1", fromStatus: "ACTIVE", toStatus: "SUSPENDED", actorId: user.id, remarks: "Fraud investigation" },
       });
@@ -175,7 +185,8 @@ describe("ApplicationsService", () => {
       const { service } = makeService(prisma);
       const suspended = makeMember({ status: "SUSPENDED" });
       prisma.member.findFirst.mockResolvedValue(suspended);
-      prisma.member.update.mockResolvedValue({ ...suspended, status: "ACTIVE" });
+      prisma.member.updateMany.mockResolvedValue({ count: 1 });
+      prisma.member.findUniqueOrThrow.mockResolvedValue({ ...suspended, status: "ACTIVE" });
 
       const user = makeAuthUser({ role: Role.ADMIN });
       const result = await service.reactivate("member-1", { remarks: "Cleared" }, user);
@@ -187,7 +198,8 @@ describe("ApplicationsService", () => {
       const { service } = makeService(prisma);
       const active = makeMember({ status: "ACTIVE" });
       prisma.member.findFirst.mockResolvedValue(active);
-      prisma.member.update.mockResolvedValue({ ...active, status: "DECEASED" });
+      prisma.member.updateMany.mockResolvedValue({ count: 1 });
+      prisma.member.findUniqueOrThrow.mockResolvedValue({ ...active, status: "DECEASED" });
 
       const user = makeAuthUser({ role: Role.SUPER_ADMIN });
       const result = await service.markDeceased("member-1", { remarks: "Confirmed by family" }, user);
@@ -199,7 +211,8 @@ describe("ApplicationsService", () => {
       const { service } = makeService(prisma);
       const suspended = makeMember({ status: "SUSPENDED" });
       prisma.member.findFirst.mockResolvedValue(suspended);
-      prisma.member.update.mockResolvedValue({ ...suspended, status: "DECEASED" });
+      prisma.member.updateMany.mockResolvedValue({ count: 1 });
+      prisma.member.findUniqueOrThrow.mockResolvedValue({ ...suspended, status: "DECEASED" });
 
       const user = makeAuthUser({ role: Role.SUPER_ADMIN });
       const result = await service.markDeceased("member-1", { remarks: "test" }, user);

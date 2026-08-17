@@ -81,6 +81,7 @@ describe("MembersService.update", () => {
     const { service } = makeService(prisma);
     const existing = makeMember({ status: "PAYMENT_COLLECTED", createdById: "fe-1", planId: "plan-a" });
     prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.membershipPlan.findFirst.mockResolvedValue({ id: "plan-a" });
     prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
@@ -193,6 +194,42 @@ describe("MembersService.update", () => {
     await expect(service.update("member-1", { planId: "plan-b" }, user)).rejects.toThrow(ConflictException);
     expect(prisma.member.update).not.toHaveBeenCalled();
   });
+
+  it("rejects setting the member themselves as their own referrer (self-referral)", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ id: "member-1", status: "DRAFT", createdById: "fe-1" }));
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.update("member-1", { referralMemberId: "member-1" }, user)).rejects.toThrow(ConflictException);
+    expect(prisma.member.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a referrer from another organization (cross-org FK)", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst
+      .mockResolvedValueOnce(makeMember({ id: "member-1", status: "DRAFT", createdById: "fe-1" }))
+      .mockResolvedValueOnce(null); // referrer lookup scoped to org-1 finds nothing
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.update("member-1", { referralMemberId: "other-org-member" }, user)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it("rejects a referral chain that would loop back to the member being edited", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    // findEditable reads member-1, then assertReferrerValid reads the
+    // candidate referrer A whose own referrer is member-1 → forming a loop.
+    prisma.member.findFirst
+      .mockResolvedValueOnce(makeMember({ id: "member-1", status: "DRAFT", createdById: "fe-1" }))
+      .mockResolvedValueOnce(makeMember({ id: "referrer-a", referralMemberId: "member-1" }));
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.update("member-1", { referralMemberId: "referrer-a" }, user)).rejects.toThrow(ConflictException);
+  });
 });
 
 describe("MembersService.submit", () => {
@@ -265,14 +302,29 @@ describe("MembersService.claim", () => {
     const { service } = makeService(prisma);
     const unclaimed = { ...makeMember({ selfRegistered: true }), createdBy: { isSystem: true } };
     prisma.member.findFirst.mockResolvedValue(unclaimed);
-    prisma.member.update.mockResolvedValue(makeMember({ selfRegistered: true, createdById: "fe-1" }));
+    prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ selfRegistered: true, createdById: "fe-1" }));
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
     await service.claim("member-1", user);
 
-    expect(prisma.member.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "member-1" }, data: { createdById: "fe-1" } }),
+    expect(prisma.member.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "member-1", selfRegistered: true, createdBy: { isSystem: true } },
+        data: { createdById: "fe-1" },
+      }),
     );
+  });
+
+  it("loses a concurrent double-claim race cleanly via the CAS guard", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const unclaimed = { ...makeMember({ selfRegistered: true }), createdBy: { isSystem: true } };
+    prisma.member.findFirst.mockResolvedValue(unclaimed);
+    prisma.member.updateMany.mockResolvedValue({ count: 0 });
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.claim("member-1", user)).rejects.toThrow(ConflictException);
   });
 
   it("refuses to claim a member that was staff-created (not self-registered)", async () => {
@@ -283,7 +335,7 @@ describe("MembersService.claim", () => {
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
     await expect(service.claim("member-1", user)).rejects.toThrow(ConflictException);
-    expect(prisma.member.update).not.toHaveBeenCalled();
+    expect(prisma.member.updateMany).not.toHaveBeenCalled();
   });
 
   it("refuses to claim a self-registration someone else already claimed", async () => {
@@ -297,7 +349,7 @@ describe("MembersService.claim", () => {
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
     await expect(service.claim("member-1", user)).rejects.toThrow(ConflictException);
-    expect(prisma.member.update).not.toHaveBeenCalled();
+    expect(prisma.member.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -307,6 +359,7 @@ describe("MembersService.promoteToExecutive", () => {
     const { service, usersService } = makeService(prisma);
     prisma.member.findFirst.mockResolvedValue(makeMember({ status: "ACTIVE", promotedToUserId: null }));
     usersService.create.mockResolvedValue({ id: "new-user-1", email: "promo@example.com", role: Role.FIELD_EXECUTIVE });
+    prisma.member.updateMany.mockResolvedValue({ count: 1 });
 
     const admin = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
     const result = await service.promoteToExecutive(
@@ -320,10 +373,24 @@ describe("MembersService.promoteToExecutive", () => {
       { email: "promo@example.com", password: "Passw0rd!", role: Role.FIELD_EXECUTIVE },
       admin,
     );
-    expect(prisma.member.update).toHaveBeenCalledWith({
-      where: { id: "member-1" },
+    expect(prisma.member.updateMany).toHaveBeenCalledWith({
+      where: { id: "member-1", status: "ACTIVE", promotedToUserId: null },
       data: { promotedToUserId: "new-user-1" },
     });
+  });
+
+  it("loses a concurrent double-promote race cleanly and cleans up the orphaned user", async () => {
+    const prisma = makeMockPrisma();
+    const { service, usersService } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "ACTIVE", promotedToUserId: null }));
+    usersService.create.mockResolvedValue({ id: "new-user-1", email: "promo@example.com", role: Role.FIELD_EXECUTIVE });
+    prisma.member.updateMany.mockResolvedValue({ count: 0 });
+
+    const admin = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await expect(
+      service.promoteToExecutive("member-1", { email: "promo@example.com", password: "Passw0rd!" }, admin),
+    ).rejects.toThrow(ConflictException);
+    expect(usersService.create).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to promote a member that isn't ACTIVE", async () => {
@@ -403,5 +470,37 @@ describe("MembersService.dedupeCheck", () => {
     const matches = await service.dedupeCheck("9800000000", undefined, "Ramesh Kumar", "org-1");
 
     expect(matches).toEqual([{ id: "member-1", fullName: "Ramesh Kumar", status: "ACTIVE", matchedOn: "mobile" }]);
+  });
+});
+
+describe("MembersService.getMe", () => {
+  it("returns the member's own record with no jurisdiction or role scoping", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ id: "member-1", fullName: "Self Member" }));
+
+    const result = await service.getMe("member-1");
+
+    expect(prisma.member.findUniqueOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "member-1" } }),
+    );
+    expect(result.fullName).toBe("Self Member");
+  });
+});
+
+describe("MembersService.updateMe", () => {
+  it("only writes the curated self-editable field set", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.update.mockResolvedValue(makeMember({ id: "member-1", fullName: "Updated Name" }));
+
+    const result = await service.updateMe("member-1", { fullName: "Updated Name", whatsappNumber: "9811111111" });
+
+    expect(prisma.member.update).toHaveBeenCalledWith({
+      where: { id: "member-1" },
+      data: { fullName: "Updated Name", whatsappNumber: "9811111111" },
+      include: expect.anything(),
+    });
+    expect(result.fullName).toBe("Updated Name");
   });
 });

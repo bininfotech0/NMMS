@@ -35,6 +35,7 @@ import { MemberWallet } from "@/pages/member/MemberWallet";
 import { MemberRewards } from "@/pages/member/MemberRewards";
 import { MemberEvents } from "@/pages/member/MemberEvents";
 import { MemberKyc } from "@/pages/member/MemberKyc";
+import { MyProfile } from "@/pages/member/MyProfile";
 import { initializeAuth } from "@/lib/auth";
 import { initializeMemberAuth } from "@/lib/member-auth";
 
@@ -109,6 +110,7 @@ function App() {
           <Route path="rewards" element={<MemberRewards />} />
           <Route path="events" element={<MemberEvents />} />
           <Route path="kyc" element={<MemberKyc />} />
+          <Route path="profile" element={<MyProfile />} />
         </Route>
 
         <Route path="/admin" element={<AdminLayout />}>

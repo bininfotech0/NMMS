@@ -59,6 +59,14 @@ export class ReferralsService {
       return;
     }
 
+    // A SUSPENDED/DECEASED/REJECTED referrer is not an eligible referrer — the
+    // membership lifecycle treats these states as no longer (or never)
+    // entitled to earn referral rewards. ACTIVE/EXPIRED members still earn:
+    // an EXPIRED referrer remains entitled to points already due.
+    if (referrer.status === "SUSPENDED" || referrer.status === "DECEASED" || referrer.status === "REJECTED") {
+      return;
+    }
+
     if (settings.referralRequireActiveReferrerPlan && referrer.plan?.isActive !== true) {
       return;
     }

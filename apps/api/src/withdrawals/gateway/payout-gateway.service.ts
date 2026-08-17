@@ -63,6 +63,10 @@ export class PayoutGatewayService {
     if (request.status !== "APPROVED" && request.status !== "PAYOUT_FAILED") {
       throw new ConflictException("Only an approved (or failed-payout) request can have a payout initiated");
     }
+    // Must run before any RazorpayX call below — markPayoutProcessing() also
+    // re-checks this, but only after the transfer has already been created,
+    // which is too late to actually stop the money from moving.
+    await this.withdrawalsService.assertMemberPayoutEligible(request.memberId);
 
     const member = request.member;
     const { contactId } = await this.razorpayx.ensureContact({
@@ -75,9 +79,16 @@ export class PayoutGatewayService {
       contactId,
       payoutMethod: request.payoutMethod,
       bankAccountName: request.payoutBankAccountName,
-      bankAccountNumber: member.bankAccountNumberEncrypted
-        ? this.crypto.decrypt(member.bankAccountNumberEncrypted)
-        : null,
+      // Use the account number snapshotted at request time, never the
+      // member's current KYC record — the destination must not change after
+      // approval (see the encrypted field on WithdrawalRequest). Fall back to
+      // the member's current KYC record only for requests created before the
+      // snapshot column existed (no backfill migration was written for them).
+      bankAccountNumber: request.payoutBankAccountNumberEncrypted
+        ? this.crypto.decrypt(request.payoutBankAccountNumberEncrypted)
+        : member.bankAccountNumberEncrypted
+          ? this.crypto.decrypt(member.bankAccountNumberEncrypted)
+          : null,
       bankIfscCode: request.payoutBankIfscCode,
       upiId: request.payoutUpiId,
     });

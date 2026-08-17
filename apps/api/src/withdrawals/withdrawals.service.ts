@@ -9,9 +9,17 @@ import type {
 } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { KycService } from "../kyc/kyc.service";
+import { CryptoService } from "../common/crypto.service";
 import { toWithdrawalResponse } from "./withdrawal.mapper";
 
+// Statuses whose points may be rejected back to the member (a payout has not
+// been initiated yet). Once PAYOUT_PROCESSING the funds are in-flight and the
+// request can only resolve to PAID or PAYOUT_FAILED.
 const OPEN_STATUSES = ["PENDING", "APPROVED"] as const;
+// Statuses that lock points against new requests. PAYOUT_PROCESSING is
+// included so a member can't create a second request on top of an in-flight
+// payout and double-spend the same points if both succeed.
+const LOCKED_STATUSES = ["PENDING", "APPROVED", "PAYOUT_PROCESSING"] as const;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 type WithdrawalSettings = {
@@ -32,9 +40,13 @@ export class WithdrawalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kyc: KycService,
+    private readonly crypto: CryptoService,
   ) {}
 
   private computeGrossAmount(points: number, settings: WithdrawalSettings): Prisma.Decimal {
+    if (!settings.pointsToMoneyRatioPoints || settings.pointsToMoneyRatioPoints <= 0) {
+      throw new ConflictException("Withdrawal conversion ratio is not configured correctly");
+    }
     return settings.pointsToMoneyRatioAmount.mul(points).div(settings.pointsToMoneyRatioPoints);
   }
 
@@ -57,21 +69,22 @@ export class WithdrawalsService {
   private async getLockedPoints(
     tx: Prisma.TransactionClient,
     memberId: string,
-  ): Promise<{ pending: number; approved: number }> {
+  ): Promise<{ pending: number; approved: number; processing: number }> {
     const rows = await tx.withdrawalRequest.groupBy({
       by: ["status"],
-      where: { memberId, status: { in: [...OPEN_STATUSES] } },
+      where: { memberId, status: { in: [...LOCKED_STATUSES] } },
       _sum: { pointsRequested: true },
     });
     const pending = rows.find((r) => r.status === "PENDING")?._sum.pointsRequested ?? 0;
     const approved = rows.find((r) => r.status === "APPROVED")?._sum.pointsRequested ?? 0;
-    return { pending, approved };
+    const processing = rows.find((r) => r.status === "PAYOUT_PROCESSING")?._sum.pointsRequested ?? 0;
+    return { pending, approved, processing };
   }
 
   async getWalletSummary(memberId: string): Promise<WalletSummaryResponse> {
     const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
     const settings = await this.getSettings(member.organizationId);
-    const { pending, approved } = await this.getLockedPoints(this.prisma, memberId);
+    const { pending, approved, processing } = await this.getLockedPoints(this.prisma, memberId);
     const { _sum } = await this.prisma.referralPointsLedger.aggregate({
       where: { memberId, status: "PENDING" },
       _sum: { points: true },
@@ -80,7 +93,7 @@ export class WithdrawalsService {
 
     const earnedPoints = member.referralPointsBalance;
     const convertedPoints = member.pointsConverted;
-    const availableBalancePoints = earnedPoints - convertedPoints - pending - approved;
+    const availableBalancePoints = earnedPoints - convertedPoints - pending - approved - processing;
     const availableBalanceAmount = this.computeGrossAmount(Math.max(availableBalancePoints, 0), settings).toNumber();
 
     return {
@@ -140,8 +153,8 @@ export class WithdrawalsService {
         }
       }
 
-      const { pending, approved } = await this.getLockedPoints(tx, memberId);
-      const availableBalance = member.referralPointsBalance - member.pointsConverted - pending - approved;
+      const { pending, approved, processing } = await this.getLockedPoints(tx, memberId);
+      const availableBalance = member.referralPointsBalance - member.pointsConverted - pending - approved - processing;
       if (dto.pointsRequested > availableBalance) {
         throw new ConflictException("Insufficient available balance");
       }
@@ -159,6 +172,7 @@ export class WithdrawalsService {
           netAmount,
           payoutMethod: member.payoutMethod!,
           payoutBankAccountName: member.bankAccountName,
+          payoutBankAccountNumberEncrypted: member.bankAccountNumberEncrypted,
           payoutBankAccountNumberLast4: member.bankAccountNumberLast4,
           payoutBankIfscCode: member.bankIfscCode,
           payoutBankName: member.bankName,
@@ -186,7 +200,8 @@ export class WithdrawalsService {
   }
 
   async approve(id: string, organizationId: string, reviewerId: string): Promise<WithdrawalRequestResponse> {
-    await this.findScoped(id, organizationId);
+    const request = await this.findScoped(id, organizationId);
+    await this.assertMemberPayoutEligible(request.memberId);
     const cas = await this.prisma.withdrawalRequest.updateMany({
       where: { id, organizationId, status: "PENDING" },
       data: { status: "APPROVED", reviewedById: reviewerId, reviewedAt: new Date(), reviewNote: null },
@@ -220,7 +235,8 @@ export class WithdrawalsService {
     actingUserId: string,
     paymentReference?: string | null,
   ): Promise<WithdrawalRequestResponse> {
-    await this.findScoped(id, organizationId);
+    const request = await this.findScoped(id, organizationId);
+    await this.assertMemberPayoutEligible(request.memberId);
     const updated = await this.prisma.$transaction(async (tx) => {
       // APPROVED is the normal path; PAYOUT_FAILED lets an admin fall back
       // to a manual payout when the automated RazorpayX transfer failed,
@@ -255,6 +271,9 @@ export class WithdrawalsService {
       payoutGatewayPayoutId: string;
     },
   ): Promise<WithdrawalRequestResponse> {
+    await this.assertMemberPayoutEligible(
+      (await this.findScoped(id, organizationId)).memberId,
+    );
     const cas = await this.prisma.withdrawalRequest.updateMany({
       where: { id, organizationId, status: { in: ["APPROVED", "PAYOUT_FAILED"] } },
       data: {
@@ -350,6 +369,41 @@ export class WithdrawalsService {
       throw new NotFoundException("Withdrawal request not found");
     }
     return row;
+  }
+
+  // Guard against paying out a member whose membership has since been
+  // suspended or marked deceased — a request created while they were ACTIVE
+  // must not be settled into a fraudulent/terminal account state. Public so
+  // PayoutGatewayService can check this *before* it creates the RazorpayX
+  // transfer — checking only inside markPayoutProcessing() is too late, since
+  // that runs after the external payout has already been created there.
+  async assertMemberPayoutEligible(memberId: string): Promise<void> {
+    const member = await this.prisma.member.findUnique({
+      where: { id: memberId },
+      select: { status: true },
+    });
+    if (!member || member.status === "SUSPENDED" || member.status === "DECEASED" || member.status === "REJECTED") {
+      throw new ConflictException("This member is not eligible to receive a withdrawal payout right now");
+    }
+  }
+
+  // Reveals the bank account number snapshotted on the withdrawal request at
+  // creation time — the authoritative destination for any manual payout. This
+  // is distinct from KycService.revealBankAccountNumber, which reads the
+  // member's *current* KYC record and must not be used to pay an approved
+  // request (the account may have changed since).
+  async revealPayoutBankAccount(id: string, organizationId: string): Promise<{ bankAccountNumber: string }> {
+    const row = await this.prisma.withdrawalRequest.findFirst({
+      where: { id, organizationId },
+      select: { payoutBankAccountNumberEncrypted: true },
+    });
+    if (!row) {
+      throw new NotFoundException("Withdrawal request not found");
+    }
+    if (!row.payoutBankAccountNumberEncrypted) {
+      throw new NotFoundException("No bank account on file for this withdrawal");
+    }
+    return { bankAccountNumber: this.crypto.decrypt(row.payoutBankAccountNumberEncrypted) };
   }
 
   private async getSettings(
