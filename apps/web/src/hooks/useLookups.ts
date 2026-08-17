@@ -22,6 +22,16 @@ export function useMyLookups(category: LookupCategory) {
   });
 }
 
+// Fetches every category in a single request (category omitted) — use this
+// instead of several useMyLookups() calls when a page needs multiple
+// categories, e.g. the self-service profile page's six lookup dropdowns.
+export function useMyAllLookups() {
+  return useQuery({
+    queryKey: ["lookups", "me", "all"],
+    queryFn: () => memberApiFetch<LookupResponse[]>("/masters/lookups/me"),
+  });
+}
+
 export function useCreateLookup() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -307,6 +307,19 @@ function ReferralProgramSettings() {
     e.preventDefault();
     setFormError(null);
     setSaved(false);
+    if (
+      [
+        form.pointsPerApprovedReferral,
+        form.volunteerBatchSilverMinPoints,
+        form.volunteerBatchGoldMinPoints,
+        form.volunteerBatchPlatinumMinPoints,
+        form.pointsToMoneyRatioPoints,
+        form.pointsToMoneyRatioAmount,
+      ].some((v) => v.trim() === "")
+    ) {
+      setFormError("Please fill in all required fields — they can't be left blank.");
+      return;
+    }
     try {
       await updateOrg.mutateAsync({
         referralProgramEnabled: form.referralProgramEnabled,
@@ -646,6 +659,10 @@ function WithdrawalKycSettings() {
     e.preventDefault();
     setFormError(null);
     setSaved(false);
+    if ([form.withdrawalMinAmount, form.withdrawalChargeValue].some((v) => v.trim() === "")) {
+      setFormError("Please fill in all required fields — they can't be left blank.");
+      return;
+    }
     try {
       await updateOrg.mutateAsync({
         kycRequireAadhaar: form.kycRequireAadhaar,

@@ -7,8 +7,21 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { AddressFields } from "@/pages/admin/members/AddressFields";
 import { ApiError } from "@/lib/api-client";
 import { useMyProfile, useUpdateMyProfile } from "@/hooks/useMyProfile";
-import { useMyLookups } from "@/hooks/useLookups";
-import type { MemberResponse, MemberSelfUpdateInput } from "@nmms/shared";
+import { useMyAllLookups } from "@/hooks/useLookups";
+import type { LookupResponse, MemberResponse, MemberSelfUpdateInput } from "@nmms/shared";
+
+// Active values are shown as normal choices; if the member's current selection
+// was since deactivated, it's kept in the list (appended, so it doesn't shift
+// active options' order) so the <select> doesn't silently blank it out.
+function selectableOptions(lookups: LookupResponse[], selectedId: string) {
+  const active = lookups.filter((l) => l.isActive);
+  const options = active.map((l) => ({ value: l.id, label: l.value }));
+  if (selectedId && !active.some((l) => l.id === selectedId)) {
+    const selected = lookups.find((l) => l.id === selectedId);
+    if (selected) options.push({ value: selected.id, label: selected.value });
+  }
+  return options;
+}
 
 const GENDER_OPTIONS = [
   { value: "MALE", label: "Male" },
@@ -229,12 +242,13 @@ function formToDto(form: ProfileFormState): MemberSelfUpdateInput {
 export function MyProfile() {
   const { data: profile, isLoading } = useMyProfile();
   const updateProfile = useUpdateMyProfile();
-  const { data: religions = [] } = useMyLookups("RELIGION");
-  const { data: casteCategories = [] } = useMyLookups("CASTE_CATEGORY");
-  const { data: familyTypes = [] } = useMyLookups("FAMILY_TYPE");
-  const { data: educationLevels = [] } = useMyLookups("EDUCATION");
-  const { data: occupations = [] } = useMyLookups("OCCUPATION");
-  const { data: businessTypes = [] } = useMyLookups("BUSINESS_TYPE");
+  const { data: allLookups = [] } = useMyAllLookups();
+  const religions = allLookups.filter((l) => l.category === "RELIGION");
+  const casteCategories = allLookups.filter((l) => l.category === "CASTE_CATEGORY");
+  const familyTypes = allLookups.filter((l) => l.category === "FAMILY_TYPE");
+  const educationLevels = allLookups.filter((l) => l.category === "EDUCATION");
+  const occupations = allLookups.filter((l) => l.category === "OCCUPATION");
+  const businessTypes = allLookups.filter((l) => l.category === "BUSINESS_TYPE");
 
   const [form, setForm] = useState<ProfileFormState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -386,7 +400,7 @@ export function MyProfile() {
             placeholder="Select religion"
             value={form.religionId}
             onChange={(e) => setForm((f) => (f ? { ...f, religionId: e.target.value } : f))}
-            options={religions.filter((r) => r.isActive).map((r) => ({ value: r.id, label: r.value }))}
+            options={selectableOptions(religions, form.religionId)}
           />
           <NativeSelect
             id="casteCategoryId"
@@ -394,7 +408,7 @@ export function MyProfile() {
             placeholder="Select caste category"
             value={form.casteCategoryId}
             onChange={(e) => setForm((f) => (f ? { ...f, casteCategoryId: e.target.value } : f))}
-            options={casteCategories.filter((c) => c.isActive).map((c) => ({ value: c.id, label: c.value }))}
+            options={selectableOptions(casteCategories, form.casteCategoryId)}
           />
         </CardContent>
       </Card>
@@ -435,7 +449,7 @@ export function MyProfile() {
               placeholder="Select family type"
               value={form.familyTypeId}
               onChange={(e) => setForm((f) => (f ? { ...f, familyTypeId: e.target.value } : f))}
-              options={familyTypes.filter((t) => t.isActive).map((t) => ({ value: t.id, label: t.value }))}
+              options={selectableOptions(familyTypes, form.familyTypeId)}
             />
             <div className="space-y-1.5">
               <Label htmlFor="familyMembersCount">Family members count</Label>
@@ -614,7 +628,7 @@ export function MyProfile() {
             placeholder="Select education level"
             value={form.educationId}
             onChange={(e) => setForm((f) => (f ? { ...f, educationId: e.target.value } : f))}
-            options={educationLevels.filter((e) => e.isActive).map((e) => ({ value: e.id, label: e.value }))}
+            options={selectableOptions(educationLevels, form.educationId)}
           />
           <div className="space-y-1.5">
             <Label htmlFor="qualificationDetail">Qualification detail</Label>
@@ -631,7 +645,7 @@ export function MyProfile() {
             placeholder="Select occupation"
             value={form.occupationId}
             onChange={(e) => setForm((f) => (f ? { ...f, occupationId: e.target.value } : f))}
-            options={occupations.filter((o) => o.isActive).map((o) => ({ value: o.id, label: o.value }))}
+            options={selectableOptions(occupations, form.occupationId)}
           />
           <NativeSelect
             id="businessTypeId"
@@ -639,7 +653,7 @@ export function MyProfile() {
             placeholder="Select business type"
             value={form.businessTypeId}
             onChange={(e) => setForm((f) => (f ? { ...f, businessTypeId: e.target.value } : f))}
-            options={businessTypes.filter((b) => b.isActive).map((b) => ({ value: b.id, label: b.value }))}
+            options={selectableOptions(businessTypes, form.businessTypeId)}
           />
           <div className="space-y-1.5">
             <Label htmlFor="languagesKnown">Languages known</Label>

@@ -34,8 +34,15 @@ export class LookupsService {
     if (!existing) {
       throw new NotFoundException("Lookup value not found");
     }
-    const lookup = await this.prisma.lookup.update({ where: { id }, data: dto });
-    return this.toResponse(lookup);
+    try {
+      const lookup = await this.prisma.lookup.update({ where: { id }, data: dto });
+      return this.toResponse(lookup);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException("This value already exists in this category");
+      }
+      throw err;
+    }
   }
 
   async remove(id: string, organizationId: string): Promise<void> {
@@ -43,7 +50,14 @@ export class LookupsService {
     if (!existing) {
       throw new NotFoundException("Lookup value not found");
     }
-    await this.prisma.lookup.delete({ where: { id } });
+    try {
+      await this.prisma.lookup.delete({ where: { id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+        throw new ConflictException("This value is still in use and cannot be deleted");
+      }
+      throw err;
+    }
   }
 
   private toResponse(lookup: {

@@ -151,7 +151,7 @@ export function DataGrid<T extends Record<string, unknown>>({
   }
 
   const renderSearch = () => {
-    if (!searchable) return null;
+    if (!searchable || !searchKeys || searchKeys.length === 0) return null;
     return (
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

@@ -56,8 +56,11 @@ export class MemberEventsController {
           quantityAchieved = String(part.value);
         }
       }
-    } catch {
-      throw new BadRequestException("File exceeds the upload limit");
+    } catch (err) {
+      if (err instanceof Error && "code" in err && err.code === "FST_REQ_FILE_TOO_LARGE") {
+        throw new BadRequestException("File exceeds the upload limit");
+      }
+      throw new BadRequestException("Could not process the uploaded file");
     }
 
     return this.eventsService.submitEvidence(

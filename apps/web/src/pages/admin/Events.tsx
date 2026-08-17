@@ -435,7 +435,12 @@ function RegistrationsSheet({
     () => members.filter((m) => !registeredIds.has(m.id)),
     [members, registeredIds],
   );
-  const hasTarget = !!event && (!!event.targetDescription || event.pointsReward > 0);
+  const hasTarget =
+    !!event &&
+    (!!event.targetDescription ||
+      !!event.targetQuantity ||
+      event.pointsReward > 0 ||
+      Object.keys(event.tierRewardOverrides ?? {}).length > 0);
 
   async function handleRegister() {
     if (!selectedMemberId) return;
