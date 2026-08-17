@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { FeatureFlagKey } from "@prisma/client";
 import type { DocumentType, Prisma, Member } from "@prisma/client";
+import * as argon2 from "argon2";
 import type {
   AuthUser,
   CreateMemberInput,
@@ -34,19 +35,18 @@ const NAME_MATCH_THRESHOLD = 0.88;
 // still actively filling it in.
 const EDITABLE_STATUSES = ["DRAFT", "PAYMENT_COLLECTED"] as const;
 // ACTIVE/SUSPENDED/EXPIRED/RENEWED members can still have their profile
-// corrected by staff (e.g. a typo'd address or phone number) — but only by
-// ADMIN/SUPER_ADMIN, not the field executive who created them, since the
-// record is now lifecycle-locked and out of that field executive's
-// day-to-day workflow. EXPIRED/RENEWED are just as much "the member is
-// already active in the org, just needs an occasional correction" as ACTIVE
-// itself — a lapsed or renewed membership is not a reason to lock the member
-// out of having their own address/phone corrected.
+// corrected by staff (e.g. a typo'd address or phone number) — by
+// ADMIN/SUPER_ADMIN, or by the field executive who created them (see
+// findOwned/findEditable — a non-owner FIELD_EXECUTIVE still can't reach a
+// record they didn't create, this only lifts the extra lock that used to
+// apply on top of ownership once the record left DRAFT/PAYMENT_COLLECTED).
+// EXPIRED/RENEWED are just as much "the member is already active in the org,
+// just needs an occasional correction" as ACTIVE itself — a lapsed or
+// renewed membership is not a reason to lock the member out of having their
+// own address/phone corrected.
 // SUBMITTED/APPROVED are included too — an admin reviewing an application
 // who spots an obvious typo can fix it without a full reject-and-resubmit
-// cycle. This doesn't reopen the original "no altering mid-review" concern:
-// that was about the *submitting field executive* changing facts after
-// submission, and field executives were never in this staff-only list to
-// begin with — only the reviewer themselves gains anything here.
+// cycle.
 const STAFF_ONLY_EDITABLE_STATUSES = [
   "ACTIVE",
   "SUSPENDED",
@@ -55,7 +55,7 @@ const STAFF_ONLY_EDITABLE_STATUSES = [
   "SUBMITTED",
   "APPROVED",
 ] as const;
-const CAN_EDIT_ACTIVE_MEMBER: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
+const CAN_EDIT_ACTIVE_MEMBER: Role[] = [Role.ADMIN, Role.SUPER_ADMIN, Role.FIELD_EXECUTIVE];
 
 const MEMBER_INCLUDE = {
   nominee: true,
@@ -237,6 +237,21 @@ export class MembersService {
       include: MEMBER_INCLUDE,
     });
     return toMemberResponse(member);
+  }
+
+  // Staff-initiated reset of a member's own member-portal login password —
+  // same findEditable() authorization as update() (owner-or-admin, correct
+  // status), since being trusted to correct a member's profile implies being
+  // trusted to help them back into their own account. Also doubles as
+  // "set an initial password" for a staff-created member who never
+  // self-registered, unconditionally overwriting whatever passwordHash (or
+  // lack of one) is already on the row.
+  async resetPassword(id: string, newPassword: string, user: AuthUser): Promise<void> {
+    const existing = await this.findEditable(id, user);
+    await this.prisma.member.update({
+      where: { id: existing.id },
+      data: { passwordHash: await argon2.hash(newPassword) },
+    });
   }
 
   async submit(id: string, user: AuthUser): Promise<MemberResponse> {
@@ -522,10 +537,11 @@ export class MembersService {
   }
 
   // Editable by its creator or by an org admin, pre-submission (DRAFT or
-  // PAYMENT_COLLECTED — see EDITABLE_STATUSES). ACTIVE/SUSPENDED members are
-  // also editable, but only by an ADMIN/SUPER_ADMIN (see
-  // STAFF_ONLY_EDITABLE_STATUSES) — not by the field executive who created
-  // them, since the record is lifecycle-locked at that point.
+  // PAYMENT_COLLECTED — see EDITABLE_STATUSES). ACTIVE/SUSPENDED (and the
+  // other STAFF_ONLY_EDITABLE_STATUSES) members are also editable by an
+  // ADMIN/SUPER_ADMIN/FIELD_EXECUTIVE (see CAN_EDIT_ACTIVE_MEMBER) — findOwned
+  // above already confines a FIELD_EXECUTIVE to records they created, so this
+  // doesn't grant access to any member org-wide.
   private async findEditable(id: string, user: AuthUser): Promise<Member> {
     const member = await this.findOwned(id, user);
     const preSubmissionEditable = EDITABLE_STATUSES.includes(

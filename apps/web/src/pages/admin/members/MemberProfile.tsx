@@ -4,7 +4,7 @@ import {
   ChevronLeft, IdCard, Pencil, Printer, Phone, Mail,
   MapPin, Calendar, User, Users, Award, Shield, Activity,
   FileText, CreditCard, Clock, MapPinned, Share2, Copy,
-  Ban, RotateCcw, HeartCrack, UserCog, Trash2, TrendingUp,
+  Ban, RotateCcw, HeartCrack, UserCog, Trash2, TrendingUp, KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ import {
   useMemberPayments,
   useMemberStatusHistory,
   usePromoteToExecutive,
+  useResetMemberPassword,
   useUpgradeMemberPlan,
 } from "@/hooks/useMembers";
 import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
@@ -360,6 +361,78 @@ function UpgradePlanSheet({
   );
 }
 
+function ResetMemberPasswordSheet({
+  member,
+  open,
+  onOpenChange,
+}: {
+  member: MemberResponse;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const resetPassword = useResetMemberPassword();
+  const [newPassword, setNewPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await resetPassword.mutateAsync({ id: member.id, newPassword });
+      setSuccess(true);
+      setNewPassword("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setSuccess(false);
+          setError(null);
+          setNewPassword("");
+        }
+        onOpenChange(next);
+      }}
+    >
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Reset Password</SheetTitle>
+          <SheetDescription>Setting a new member-portal password for {member.fullName}.</SheetDescription>
+        </SheetHeader>
+        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="newPassword">New password</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={8}
+              required
+            />
+          </div>
+          {success && <p className="text-sm text-brand-green">Password updated successfully.</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <SheetFooter className="px-0">
+            <Button
+              type="submit"
+              disabled={resetPassword.isPending}
+              className="bg-brand-green hover:bg-brand-green/90"
+            >
+              {resetPassword.isPending ? "Saving…" : "Set New Password"}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function formatDate(d: Date | string | null, fmt?: string): string {
   if (!d) return "";
   const date = typeof d === "string" ? new Date(d) : d;
@@ -556,6 +629,7 @@ export function MemberProfile() {
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [upgradePlanOpen, setUpgradePlanOpen] = useState(false);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
 
   const { data: member, isLoading } = useMember(id ?? null);
   const { data: documents = [] } = useMemberDocuments(id ?? null);
@@ -615,7 +689,7 @@ export function MemberProfile() {
             member.status === "SUBMITTED" ||
             member.status === "APPROVED") &&
             user &&
-            CAN_MANAGE_LIFECYCLE.includes(user.role) && (
+            (CAN_MANAGE_LIFECYCLE.includes(user.role) || member.createdById === user.id) && (
               <Button variant="outline" asChild>
                 <Link to={`/admin/members/${id}/edit`}>
                   <Pencil className="size-4" />
@@ -623,6 +697,12 @@ export function MemberProfile() {
                 </Link>
               </Button>
             )}
+          {user && (CAN_MANAGE_LIFECYCLE.includes(user.role) || member.createdById === user.id) && (
+            <Button variant="outline" onClick={() => setResetPasswordOpen(true)}>
+              <KeyRound className="size-4" />
+              Reset Password
+            </Button>
+          )}
           {member.membershipNumber && (
             <Button variant="outline" asChild>
               <Link to={`/admin/members/${id}/card`}>
@@ -934,6 +1014,7 @@ export function MemberProfile() {
       />
       <PromoteToExecutiveSheet member={member} open={promoteOpen} onOpenChange={setPromoteOpen} />
       <UpgradePlanSheet member={member} open={upgradePlanOpen} onOpenChange={setUpgradePlanOpen} />
+      <ResetMemberPasswordSheet member={member} open={resetPasswordOpen} onOpenChange={setResetPasswordOpen} />
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

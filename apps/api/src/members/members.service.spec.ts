@@ -119,13 +119,13 @@ describe("MembersService.update", () => {
     expect(prisma.member.update).toHaveBeenCalled();
   });
 
-  it("refuses to edit a member that's already been submitted", async () => {
+  it("a FIELD_EXECUTIVE cannot edit a SUBMITTED member created by someone else", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "SUBMITTED", createdById: "fe-1" }));
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "SUBMITTED", createdById: "someone-else" }));
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.update("member-1", { fullName: "New Name" }, user)).rejects.toThrow(ConflictException);
+    await expect(service.update("member-1", { fullName: "New Name" }, user)).rejects.toThrow(NotFoundException);
   });
 
   it("a FIELD_EXECUTIVE cannot edit another field executive's draft (404, not 403 — no existence leak)", async () => {
@@ -221,23 +221,37 @@ describe("MembersService.update", () => {
     expect(prisma.member.update).toHaveBeenCalled();
   });
 
-  it("a FIELD_EXECUTIVE cannot edit a SUBMITTED member — only the reviewer, not the submitter, gains edit access", async () => {
+  it("a FIELD_EXECUTIVE can edit a SUBMITTED member they created", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "SUBMITTED", createdById: "fe-1" }));
+    const existing = makeMember({ status: "SUBMITTED", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.update("member-1", { fullName: "New Name" }, user)).rejects.toThrow(ConflictException);
-    expect(prisma.member.update).not.toHaveBeenCalled();
+    await service.update("member-1", { fullName: "New Name" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
   });
 
-  it("a FIELD_EXECUTIVE cannot edit an ACTIVE member, even one they created", async () => {
+  it("a FIELD_EXECUTIVE can edit an ACTIVE member they created", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "ACTIVE", createdById: "fe-1" }));
+    const existing = makeMember({ status: "ACTIVE", createdById: "fe-1" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.update("member-1", { fullName: "New Name" }, user)).rejects.toThrow(ConflictException);
+    await service.update("member-1", { fullName: "New Name" }, user);
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("a FIELD_EXECUTIVE still cannot edit an ACTIVE member created by someone else — ownership is unaffected by the staff-only-status widening", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "ACTIVE", createdById: "fe-2" }));
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.update("member-1", { fullName: "New Name" }, user)).rejects.toThrow(NotFoundException);
     expect(prisma.member.update).not.toHaveBeenCalled();
   });
 
@@ -573,5 +587,44 @@ describe("MembersService.updateMe", () => {
       include: expect.anything(),
     });
     expect(result.fullName).toBe("Updated Name");
+  });
+});
+
+describe("MembersService.resetPassword", () => {
+  it("lets an ADMIN reset any member's password, hashed", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ id: "member-1", status: "ACTIVE", createdById: "fe-1" }));
+
+    const user = makeAuthUser({ id: "admin-1", role: Role.ADMIN });
+    await service.resetPassword("member-1", "NewPassw0rd!", user);
+
+    expect(prisma.member.update).toHaveBeenCalledWith({
+      where: { id: "member-1" },
+      data: { passwordHash: expect.any(String) },
+    });
+    const written = prisma.member.update.mock.calls[0][0].data.passwordHash;
+    expect(written).not.toBe("NewPassw0rd!");
+  });
+
+  it("lets a FIELD_EXECUTIVE reset the password of an ACTIVE member they created", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ id: "member-1", status: "ACTIVE", createdById: "fe-1" }));
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await service.resetPassword("member-1", "NewPassw0rd!", user);
+
+    expect(prisma.member.update).toHaveBeenCalled();
+  });
+
+  it("blocks a FIELD_EXECUTIVE from resetting the password of a member they didn't create", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ id: "member-1", status: "ACTIVE", createdById: "fe-2" }));
+
+    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+    await expect(service.resetPassword("member-1", "NewPassw0rd!", user)).rejects.toThrow(NotFoundException);
+    expect(prisma.member.update).not.toHaveBeenCalled();
   });
 });

@@ -87,6 +87,18 @@ export function useDeleteMember() {
   });
 }
 
+export function useResetMemberPassword() {
+  return useMutation({
+    mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
+      apiFetch<{ success: boolean }>(`/members/${id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ newPassword }),
+      }),
+    onSuccess: () => toast.success("Password reset"),
+    onError: (err) => toast.error(errorMessage(err, "Failed to reset password")),
+  });
+}
+
 export function useSubmitMember() {
   const queryClient = useQueryClient();
   return useMutation({

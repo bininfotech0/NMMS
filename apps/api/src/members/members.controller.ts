@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { Role, type AuthUser } from "@nmms/shared";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -7,6 +7,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { CreateMemberDto } from "./dto/create-member.dto";
 import { DedupeCheckDto } from "./dto/dedupe-check.dto";
+import { MemberResetPasswordDto } from "./dto/member-reset-password.dto";
 import { PromoteToExecutiveDto } from "./dto/promote-to-executive.dto";
 import { UpdateMemberDto } from "./dto/update-member.dto";
 import { MembersService } from "./members.service";
@@ -68,6 +69,19 @@ export class MembersController {
   @Post(":id/submit")
   submit(@Param("id") id: string, @CurrentUser() user: AuthUser) {
     return this.membersService.submit(id, user);
+  }
+
+  @Post(":id/reset-password")
+  @UseGuards(RolesGuard)
+  @Roles(...CAN_CLAIM)
+  @HttpCode(200)
+  async resetPassword(
+    @Param("id") id: string,
+    @Body() dto: MemberResetPasswordDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.membersService.resetPassword(id, dto.newPassword, user);
+    return { success: true };
   }
 
   @Post(":id/claim")
