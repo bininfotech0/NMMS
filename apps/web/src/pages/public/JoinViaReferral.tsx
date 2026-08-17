@@ -98,6 +98,8 @@ export function JoinViaReferral() {
               placeholder="12-digit number"
               value={aadhaarNumber}
               onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, ""))}
+              pattern="\d{12}"
+              title="Aadhaar number must be exactly 12 digits"
               maxLength={12}
               required
             />

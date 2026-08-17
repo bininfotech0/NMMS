@@ -30,7 +30,7 @@ test.describe("settings — admin", () => {
     await expect(page.getByLabel("Account number")).toHaveValue("123456789012");
   });
 
-  test("Referral Program tab: toggle, points, and thresholds save (including an inverted-threshold known gap)", async ({
+  test("Referral Program tab: toggle, points, and thresholds save (rejecting inverted thresholds)", async ({
     page,
   }) => {
     await page.goto("/admin/settings");
@@ -48,20 +48,18 @@ test.describe("settings — admin", () => {
     await page.getByRole("button", { name: "Save Changes" }).click();
     await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
 
-    // Known gap (documented, not fixed): no ordering validation between
-    // tiers — saving Gold below Silver is accepted without error.
-    await page.getByLabel("Silver rank — minimum points").fill("1000");
-    await page.getByLabel("Gold rank — minimum points").fill("100");
+    // Thresholds must be non-decreasing (Silver <= Gold <= Platinum) —
+    // saving Gold below Silver is rejected with an inline error, not saved.
+    await page.getByLabel("Silver batch — minimum points").fill("1000");
+    await page.getByLabel("Gold batch — minimum points").fill("100");
     await page.getByRole("button", { name: "Save Changes" }).click();
-    await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
-    await expect(page.getByText(/error|invalid/i)).toHaveCount(0);
+    await expect(page.getByRole("main").getByText(/non-decreasing/i)).toBeVisible();
 
-    // Restore sane defaults so other specs (and future runs) aren't affected
-    // by this test's deliberately-inverted thresholds.
+    // Restore sane, valid values.
     await page.getByLabel("Points per approved referral").fill("10");
-    await page.getByLabel("Silver rank — minimum points").fill("0");
-    await page.getByLabel("Gold rank — minimum points").fill("500");
-    await page.getByLabel("Platinum rank — minimum points").fill("2000");
+    await page.getByLabel("Silver batch — minimum points").fill("0");
+    await page.getByLabel("Gold batch — minimum points").fill("500");
+    await page.getByLabel("Platinum batch — minimum points").fill("2000");
     await page.getByRole("button", { name: "Save Changes" }).click();
     await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   });
@@ -70,10 +68,17 @@ test.describe("settings — admin", () => {
     await page.goto("/admin/settings");
     await page.getByRole("button", { name: "Integrations" }).click();
 
+    // Configure only ever appears for the flags in Settings.tsx's own
+    // CONFIGURABLE_INTEGRATION_KEYS (Payment Gateway/Payouts, SMS, WhatsApp,
+    // Email) — and unconditionally so, regardless of enabled/disabled state.
+    // AI Duplicate Detection/AI Document Verification never show it at all.
+    const NEVER_CONFIGURABLE = new Set(["AI Duplicate Detection", "AI Document Verification"]);
+
     for (const label of ["WhatsApp Notifications", "AI Duplicate Detection", "AI Document Verification", "SMS Notifications", "Email Notifications"]) {
       const row = page.locator('div.rounded-xl.border.border-border.bg-card.p-4').filter({ hasText: label });
-      await expect(row.getByRole("button", { name: "Configure" })).toHaveCount(0);
       const flagToggle = row.getByRole("button", { name: /^(Enabled|Disabled)$/ });
+      const configureCount = NEVER_CONFIGURABLE.has(label) ? 0 : 1;
+      await expect(row.getByRole("button", { name: "Configure" })).toHaveCount(configureCount);
       const before = await flagToggle.textContent();
       await flagToggle.click();
       await expect(flagToggle).not.toHaveText(before ?? "");

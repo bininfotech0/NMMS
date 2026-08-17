@@ -110,18 +110,28 @@ export async function ensureStaffUser(
   throw new Error(`ensureStaffUser failed (${res.status()}): ${await res.text()}`);
 }
 
+// Fixed fee this suite's fixtures rely on when recording a matching payment
+// (PaymentsService.assertManualAmountMatchesFee requires an exact match) —
+// centralized here so every caller pays exactly what this plan actually
+// costs instead of a number that happens to match today.
+export const E2E_BASELINE_PLAN_FEE = 100;
+
 export async function ensureActivePlan(
   ctx: APIRequestContext,
   staffToken: string,
 ): Promise<string> {
+  // Matched by name, not just "any active plan" — the org can accumulate
+  // other active plans (seeded data, other tests, manual exploration) whose
+  // fee has nothing to do with E2E_BASELINE_PLAN_FEE, which would break every
+  // fixture that pays that fixed amount against whatever plan comes back.
   const listRes = await ctx.get("/api/v1/plans", { headers: authHeaders(staffToken) });
-  const plans = await unwrap<Array<{ id: string; isActive: boolean }>>(listRes);
-  const active = plans.find((p) => p.isActive);
-  if (active) return active.id;
+  const plans = await unwrap<Array<{ id: string; name: string; isActive: boolean }>>(listRes);
+  const existing = plans.find((p) => p.isActive && p.name === "E2E Baseline Plan");
+  if (existing) return existing.id;
 
   const createRes = await ctx.post("/api/v1/plans", {
     headers: authHeaders(staffToken),
-    data: { name: "E2E Baseline Plan", fee: 100, validityType: "LIFETIME" },
+    data: { name: "E2E Baseline Plan", fee: E2E_BASELINE_PLAN_FEE, validityType: "LIFETIME" },
   });
   const created = await unwrap<{ id: string }>(createRes);
   return created.id;
@@ -144,6 +154,22 @@ export async function createDraftMemberApi(
  * `actorToken` must belong to whoever currently owns/can-edit the member
  * (its creator, or an ADMIN/SUPER_ADMIN).
  */
+const PHOTO_FIXTURE = path.join(__dirname, "..", "..", "fixtures", "photo.jpg");
+
+// MembersService.submit() requires at least one PHOTO and one ID-proof
+// document on file — upload the same fixture image under both slots rather
+// than duplicating multipart-request boilerplate at every call site that
+// needs a member past SUBMITTED.
+async function uploadRequiredDocumentsApi(ctx: APIRequestContext, actorToken: string, memberId: string): Promise<void> {
+  const buffer = await readFile(PHOTO_FIXTURE);
+  for (const type of ["PHOTO", "AADHAAR_FRONT"]) {
+    await ctx.post(`/api/v1/members/${memberId}/documents`, {
+      headers: authHeaders(actorToken),
+      multipart: { type, file: { name: "photo.jpg", mimeType: "image/jpeg", buffer } },
+    });
+  }
+}
+
 export async function bringMemberToSubmittedApi(
   ctx: APIRequestContext,
   actorToken: string,
@@ -164,8 +190,9 @@ export async function bringMemberToSubmittedApi(
   });
   await ctx.post(`/api/v1/members/${memberId}/payments`, {
     headers: authHeaders(actorToken),
-    data: { amount: 100, mode: "CASH" },
+    data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
   });
+  await uploadRequiredDocumentsApi(ctx, actorToken, memberId);
   await ctx.post(`/api/v1/members/${memberId}/submit`, { headers: authHeaders(actorToken) });
 }
 

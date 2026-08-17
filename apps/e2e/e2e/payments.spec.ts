@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createDraftMemberApi, ensureActivePlan, newApiContext, staffLoginApi } from "./support/api";
+import { createDraftMemberApi, E2E_BASELINE_PLAN_FEE, ensureActivePlan, newApiContext, staffLoginApi } from "./support/api";
 import { AUTH_STATE, E2E_ADMIN, uniqueMobile, uniqueSuffix } from "./support/constants";
 
 function authHeaders(token: string) {
@@ -46,9 +46,7 @@ test.describe("payments — admin", () => {
     await expect(page.getByRole("row", { name: new RegExp(name) })).toHaveCount(0);
 
     await page.getByRole("button", { name: "History" }).click();
-    // History's search filters on raw receiptNumber/memberId fields, not the
-    // rendered member name — search by the member's id instead.
-    await page.getByPlaceholder("Search by receipt, member...").fill(memberId);
+    await page.getByPlaceholder("Search by receipt, member...").fill(name);
     await expect(page.getByRole("row", { name: new RegExp(name) })).toBeVisible();
   });
 
@@ -61,15 +59,13 @@ test.describe("payments — admin", () => {
     await apiCtx.patch(`/api/v1/members/${memberId}`, { headers: authHeaders(admin.accessToken), data: { planId } });
     await apiCtx.post(`/api/v1/members/${memberId}/payments`, {
       headers: authHeaders(admin.accessToken),
-      data: { amount: 123, mode: "CASH" },
+      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
     });
     await apiCtx.dispose();
 
     await page.goto("/admin/payments");
     await page.getByRole("button", { name: "History" }).click();
-    // History's search filters on raw receiptNumber/memberId fields, not the
-    // rendered member name — search by the member's id instead.
-    await page.getByPlaceholder("Search by receipt, member...").fill(memberId);
+    await page.getByPlaceholder("Search by receipt, member...").fill(name);
     const row = page.getByRole("row", { name: new RegExp(name) });
     await expect(row).toBeVisible();
 

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { newApiContext } from "./support/api";
-import { SEED_SUPER_ADMIN, uniqueMobile } from "./support/constants";
+import { SEED_SUPER_ADMIN, uniqueAadhaar, uniqueMobile } from "./support/constants";
 
 // The default project has no storageState, so every test here starts from a
 // clean, unauthenticated browser context.
@@ -54,6 +54,7 @@ test.describe("member login", () => {
     await page.goto("/join");
     await page.getByLabel("Full name").fill("Auth Spec Login Member");
     await page.getByLabel("Mobile number").fill(mobile);
+    await page.getByLabel("Aadhaar number").fill(uniqueAadhaar(mobile));
     await page.getByLabel("Create a password").fill(password);
     await page.getByRole("button", { name: "Join now" }).click();
     await page.waitForURL("**/member");
@@ -75,6 +76,7 @@ test.describe("self-registration", () => {
     await expect(page.getByText("Referral link")).toHaveCount(0);
     await page.getByLabel("Full name").fill("Plain Self Registration");
     await page.getByLabel("Mobile number").fill(mobile);
+    await page.getByLabel("Aadhaar number").fill(uniqueAadhaar(mobile));
     await page.getByLabel("Create a password").fill("PlainJoin123pw");
     await page.getByRole("button", { name: "Join now" }).click();
     await page.waitForURL("**/member");
@@ -105,6 +107,7 @@ test.describe("self-registration", () => {
     await expect(page.getByText(/joining via/i)).toBeVisible();
     await page.getByLabel("Full name").fill("Referred Join Member");
     await page.getByLabel("Mobile number").fill(mobile);
+    await page.getByLabel("Aadhaar number").fill(uniqueAadhaar(mobile));
     await page.getByLabel("Create a password").fill("ReferredJoin123pw");
     await page.getByRole("button", { name: "Join now" }).click();
     await page.waitForURL("**/member");

@@ -20,7 +20,7 @@ test.describe("member portal — read-only views (shared ACTIVE member)", () => 
 
   test("Wallet: points balance and ledger render", async ({ page }) => {
     await page.goto("/member/wallet");
-    await expect(page.getByText("Points balance", { exact: true })).toBeVisible();
+    await expect(page.getByText("Available Balance (pts)", { exact: true })).toBeVisible();
     await expect(page.getByText("Points history", { exact: true })).toBeVisible();
   });
 

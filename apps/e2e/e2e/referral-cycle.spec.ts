@@ -5,7 +5,7 @@ import {
   newApiContext,
   staffLoginApi,
 } from "./support/api";
-import { AUTH_STATE, E2E_ADMIN, E2E_FIELD_EXECUTIVE, uniqueMobile, uniqueSuffix } from "./support/constants";
+import { AUTH_STATE, E2E_ADMIN, E2E_FIELD_EXECUTIVE, uniqueAadhaar, uniqueMobile, uniqueSuffix } from "./support/constants";
 
 function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -21,6 +21,16 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   const apiCtx = await newApiContext();
   const admin = await staffLoginApi(apiCtx, E2E_ADMIN.email, E2E_ADMIN.password);
   const fe = await staffLoginApi(apiCtx, E2E_FIELD_EXECUTIVE.email, E2E_FIELD_EXECUTIVE.password);
+
+  // Org settings are real, shared DB state another test/run can leave
+  // changed (e.g. settings-org.spec.ts's own points-per-referral coverage) —
+  // pin the value this test's "+10" assertion depends on rather than
+  // assuming whatever's ambient.
+  await apiCtx.patch("/api/v1/org", {
+    headers: authHeaders(admin.accessToken),
+    data: { pointsPerApprovedReferral: 10 },
+  });
+
   const referrerId = await createActiveMemberApi(
     apiCtx,
     { fullName: referrerName, mobile: referrerMobile, password: referrerPassword },
@@ -60,6 +70,7 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   await expect(joinPage.getByText(new RegExp(referrerName))).toBeVisible();
   await joinPage.getByLabel("Full name").fill(refereeName);
   await joinPage.getByLabel("Mobile number").fill(refereeMobile);
+  await joinPage.getByLabel("Aadhaar number").fill(uniqueAadhaar(refereeMobile));
   await joinPage.getByLabel("Create a password").fill("RefereeB123pw");
   await joinPage.getByRole("button", { name: "Join now" }).click();
   await joinPage.waitForURL("**/member");

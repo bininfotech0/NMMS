@@ -24,7 +24,16 @@ const DOCUMENT_SLOTS = [
 
 async function selectFirstOptionIfAvailable(page: Page, id: string) {
   const select = page.locator(`#${id}`);
-  const count = await select.locator("option").count();
+  // The lookup/plan options populate from an async fetch that starts on
+  // mount, so a synchronous one-shot count right after navigation can catch
+  // it mid-load (still just the placeholder) and skip selecting anything.
+  // Poll briefly rather than assuming the first read is final.
+  let count = await select.locator("option").count();
+  const deadline = Date.now() + 5000;
+  while (count <= 1 && Date.now() < deadline) {
+    await select.page().waitForTimeout(100);
+    count = await select.locator("option").count();
+  }
   if (count > 1) {
     await select.selectOption({ index: 1 });
   }
@@ -63,6 +72,8 @@ test.describe("member registration wizard", () => {
     // currentStep is local component state (not URL-derived), so a reload
     // always lands back on step 1 — advance to step 2 first, save from
     // there, then reload and navigate back to step 2 to check persistence.
+    // Step 1 requires a plan selected before it'll advance.
+    await selectFirstOptionIfAvailable(page, "planId");
     await page.getByRole("button", { name: "Save & Continue" }).click();
     await expect(page.getByText("Step 2 of 10")).toBeVisible();
     await page.getByLabel("First name").fill("SaveDraftFirstName");
@@ -80,6 +91,8 @@ test.describe("member registration wizard", () => {
     await expect(page.getByText("Step 1 of 10")).toBeVisible();
     await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
 
+    // Step 1 requires a plan selected before it'll advance.
+    await selectFirstOptionIfAvailable(page, "planId");
     await page.getByRole("button", { name: "Save & Continue" }).click();
     await expect(page.getByText("Step 2 of 10")).toBeVisible();
 

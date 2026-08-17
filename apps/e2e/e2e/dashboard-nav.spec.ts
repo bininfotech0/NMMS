@@ -4,10 +4,16 @@ import { AUTH_STATE } from "./support/constants";
 // Same suite of checks run once per staff role (super-admin/admin/field-executive)
 // via a describe-block factory — each block pins its own storageState with
 // test.use(), so this works correctly regardless of how the suite is invoked.
-const ROLES: Array<{ label: string; storageState: string; canManageUsers: boolean; isSuperAdmin: boolean }> = [
-  { label: "super-admin", storageState: AUTH_STATE.superAdmin, canManageUsers: true, isSuperAdmin: true },
-  { label: "admin", storageState: AUTH_STATE.admin, canManageUsers: true, isSuperAdmin: false },
-  { label: "field-executive", storageState: AUTH_STATE.fieldExecutive, canManageUsers: false, isSuperAdmin: false },
+const ROLES: Array<{
+  label: string;
+  storageState: string;
+  canManageUsers: boolean;
+  isSuperAdmin: boolean;
+  canViewAuditLogs: boolean;
+}> = [
+  { label: "super-admin", storageState: AUTH_STATE.superAdmin, canManageUsers: true, isSuperAdmin: true, canViewAuditLogs: true },
+  { label: "admin", storageState: AUTH_STATE.admin, canManageUsers: true, isSuperAdmin: false, canViewAuditLogs: true },
+  { label: "field-executive", storageState: AUTH_STATE.fieldExecutive, canManageUsers: false, isSuperAdmin: false, canViewAuditLogs: false },
 ];
 
 for (const role of ROLES) {
@@ -119,10 +125,10 @@ for (const role of ROLES) {
         }
       });
 
-      test("Audit Logs link visibility matches role (SUPER_ADMIN only)", async ({ page }) => {
+      test("Audit Logs link visibility matches role (ADMIN and SUPER_ADMIN)", async ({ page }) => {
         await page.goto("/admin");
         const auditLink = page.getByRole("link", { name: "Audit Logs", exact: true });
-        if (role.isSuperAdmin) {
+        if (role.canViewAuditLogs) {
           await expect(auditLink).toBeVisible();
         } else {
           await expect(auditLink).toHaveCount(0);

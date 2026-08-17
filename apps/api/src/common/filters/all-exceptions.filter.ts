@@ -38,6 +38,22 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
         if (Array.isArray(r.message)) {
           message = (r.message as string[]).join("; ");
         }
+        // nestjs-zod's ZodValidationException always sets message to the
+        // literal string "Validation failed" — the actual per-field reason
+        // (e.g. "Aadhaar number must be 12 digits") only exists in this
+        // `errors` array (ZodIssue[]), which every caller of this filter was
+        // otherwise silently losing.
+        if (message === "Validation failed" && Array.isArray(r.errors)) {
+          const details = (r.errors as Array<{ path?: unknown[]; message?: string }>)
+            .map((issue) => {
+              const field = Array.isArray(issue.path) && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+              return `${field}${issue.message ?? ""}`;
+            })
+            .filter(Boolean);
+          if (details.length > 0) {
+            message = details.join("; ");
+          }
+        }
         error = (r.error as string) ?? exception.name;
       }
     } else if (exception instanceof Error) {

@@ -38,3 +38,10 @@ export function uniqueMobile(): string {
   const suffix = `${Date.now()}`.slice(-6);
   return `70${suffix}${String(mobileCounter).padStart(2, "0")}`.slice(0, 10);
 }
+
+// memberRegisterSchema requires a 12-digit Aadhaar number — derive one
+// deterministically from an already-unique mobile so callers don't need to
+// track a second counter, matching support/api.ts's memberRegisterApi.
+export function uniqueAadhaar(mobile: string): string {
+  return `20${mobile.replace(/\D/g, "").slice(-10).padStart(10, "0")}`;
+}

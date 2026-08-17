@@ -3,6 +3,7 @@ import {
   bringMemberToSubmittedApi,
   createActiveMemberApi,
   createDraftMemberApi,
+  memberRegisterApi,
   newApiContext,
   staffLoginApi,
 } from "./support/api";
@@ -131,11 +132,8 @@ test.describe("applications lifecycle — field executive", () => {
     const apiCtx = await newApiContext();
     const fe = await staffLoginApi(apiCtx, E2E_FIELD_EXECUTIVE.email, E2E_FIELD_EXECUTIVE.password);
     const mobile = uniqueMobile();
-    const registerRes = await apiCtx.post("/api/v1/public/member-auth/register", {
-      data: { fullName: name, mobile, password: "FeClaimed123pw" },
-    });
-    const registered = (await registerRes.json()).data as { member: { id: string } };
-    const memberId = registered.member.id;
+    const registered = await memberRegisterApi(apiCtx, { fullName: name, mobile, password: "FeClaimed123pw" });
+    const memberId = registered!.memberId;
     await apiCtx.post(`/api/v1/members/${memberId}/claim`, {
       headers: { Authorization: `Bearer ${fe.accessToken}` },
     });

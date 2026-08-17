@@ -118,6 +118,8 @@ export function StepDocuments({ form, setForm, memberId }: StepProps) {
           <Input
             id="aadhaarNumber"
             placeholder="12-digit number"
+            pattern="\d{12}"
+            title="Aadhaar number must be exactly 12 digits"
             maxLength={12}
             value={form.aadhaarNumber}
             onChange={(e) => setForm((f) => ({ ...f, aadhaarNumber: e.target.value.replace(/\D/g, "") }))}

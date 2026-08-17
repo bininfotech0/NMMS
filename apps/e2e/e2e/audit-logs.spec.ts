@@ -36,11 +36,11 @@ test.describe("audit logs — super admin", () => {
 test.describe("audit logs — admin", () => {
   test.use({ storageState: AUTH_STATE.admin });
 
-  test("nav link is hidden, but the backend actually allows ADMIN — direct navigation loads the table (known gap: stricter frontend nav gate than the API)", async ({
+  test("nav link is visible for ADMIN, matching the backend's own role gate", async ({
     page,
   }) => {
     await page.goto("/admin/audit-logs");
-    await expect(page.getByRole("link", { name: "Audit Logs", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Audit Logs", exact: true })).toBeVisible();
     await expect(page.locator("table tbody tr").first()).toBeVisible();
   });
 });
