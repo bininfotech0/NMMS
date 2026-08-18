@@ -7,12 +7,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nmms}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nmms}
       POSTGRES_DB: ${POSTGRES_DB:-nmms}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nmms}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-nmms} -d ${POSTGRES_DB:-nmms}"
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -20,63 +22,42 @@ services:
   api:
     container_name: nmms-api
     build:
-      context: ..
+      context: .
       dockerfile: apps/api/Dockerfile
-      target: dev
+      target: prod
     restart: unless-stopped
     environment:
-      # Always points at the in-network "postgres" service; a host-side DATABASE_URL
-      # in .env (e.g. localhost, for running the API natively) must not leak in here.
+      NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-nmms}:${POSTGRES_PASSWORD:-nmms}@postgres:5432/${POSTGRES_DB:-nmms}?schema=public
       PORT: 3000
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh}
-      MEMBER_JWT_ACCESS_SECRET: ${MEMBER_JWT_ACCESS_SECRET:-change-me-member-access}
-      MEMBER_JWT_REFRESH_SECRET: ${MEMBER_JWT_REFRESH_SECRET:-change-me-member-refresh}
-      FEATURE_FLAG_ENCRYPTION_KEY: ${FEATURE_FLAG_ENCRYPTION_KEY:-change-me-feature-flag-encryption-key}
-      AADHAAR_HASH_SECRET: ${AADHAAR_HASH_SECRET:-change-me-aadhaar-hash-secret}
-      CARD_QR_SECRET: ${CARD_QR_SECRET:-change-me-card-qr-secret}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-change-me-anthropic-api-key}
+
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      MEMBER_JWT_ACCESS_SECRET: ${MEMBER_JWT_ACCESS_SECRET}
+      MEMBER_JWT_REFRESH_SECRET: ${MEMBER_JWT_REFRESH_SECRET}
+      FEATURE_FLAG_ENCRYPTION_KEY: ${FEATURE_FLAG_ENCRYPTION_KEY}
+      AADHAAR_HASH_SECRET: ${AADHAAR_HASH_SECRET}
+      CARD_QR_SECRET: ${CARD_QR_SECRET}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+
       STORAGE_ROOT: /repo/storage
-    ports:
-      - "3000:3000"
+
     depends_on:
       postgres:
         condition: service_healthy
+
     volumes:
-      - ../apps/api:/repo/apps/api
-      - ../packages:/repo/packages
-      - ../prisma:/repo/prisma
       - documents_storage:/repo/storage
-      - api_node_modules:/repo/apps/api/node_modules
-      # Shadow packages/*/node_modules too — they're inside the bind-mounted
-      # ../packages tree, so without this the container inherits whatever the
-      # host's own (differently-linked) pnpm install put there, e.g. missing
-      # transitive deps like zod that the host resolves via hoisting.
-      - api_shared_node_modules:/repo/packages/shared/node_modules
-      - api_config_node_modules:/repo/packages/config/node_modules
 
   web:
     container_name: nmms-web
     build:
-      context: ..
+      context: .
       dockerfile: apps/web/Dockerfile
-      target: dev
+      target: prod
     restart: unless-stopped
-    environment:
-      VITE_API_URL: /api
-      USE_POLLING: "true"
-      API_PROXY_TARGET: http://api:3000
-    ports:
-      - "5173:5173"
     depends_on:
       - api
-    volumes:
-      - ../apps/web:/repo/apps/web
-      - ../packages:/repo/packages
-      - web_node_modules:/repo/apps/web/node_modules
-      - web_shared_node_modules:/repo/packages/shared/node_modules
-      - web_config_node_modules:/repo/packages/config/node_modules
 
   nginx:
     container_name: nmms-nginx
@@ -84,7 +65,8 @@ services:
       context: ./nginx
     restart: unless-stopped
     environment:
-      WEB_UPSTREAM: web:5173
+      WEB_UPSTREAM: web:80
+      API_UPSTREAM: api:3000
     ports:
       - "80:80"
     depends_on:
@@ -94,9 +76,3 @@ services:
 volumes:
   postgres_data:
   documents_storage:
-  api_node_modules:
-  web_node_modules:
-  api_shared_node_modules:
-  api_config_node_modules:
-  web_shared_node_modules:
-  web_config_node_modules:
