@@ -1,5 +1,5 @@
 upstream api_upstream {
-    server api:3000;
+    server ${API_UPSTREAM};
 }
 
 upstream web_upstream {

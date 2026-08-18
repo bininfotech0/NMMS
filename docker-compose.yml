@@ -44,6 +44,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     volumes:
       - documents_storage:/repo/storage
 
@@ -66,8 +78,10 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - api
-      - web
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
 
 volumes:
   postgres_data:
