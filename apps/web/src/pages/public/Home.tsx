@@ -109,19 +109,7 @@ export function Home() {
         </div>
       </section>
 
-      <section className="border-t border-border bg-brand-green-dark">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 py-12 text-center sm:px-6">
-          <h2 className="font-heading text-2xl font-bold text-white sm:text-3xl">
-            Part of our team? Sign in to manage members and programs.
-          </h2>
-          <Button asChild size="lg" className="bg-brand-gold text-brand-green-dark hover:bg-brand-gold/90">
-            <Link to="/admin/login">
-              Staff Login
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
-        </div>
-      </section>
+      
     </div>
   );
 }
