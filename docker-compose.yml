@@ -1,0 +1,78 @@
+name: nmms
+
+services:
+  postgres:
+    container_name: nmms-postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nmms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nmms}
+      POSTGRES_DB: ${POSTGRES_DB:-nmms}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-nmms} -d ${POSTGRES_DB:-nmms}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    container_name: nmms-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nmms}:${POSTGRES_PASSWORD:-nmms}@postgres:5432/${POSTGRES_DB:-nmms}?schema=public
+      PORT: 3000
+
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      MEMBER_JWT_ACCESS_SECRET: ${MEMBER_JWT_ACCESS_SECRET}
+      MEMBER_JWT_REFRESH_SECRET: ${MEMBER_JWT_REFRESH_SECRET}
+      FEATURE_FLAG_ENCRYPTION_KEY: ${FEATURE_FLAG_ENCRYPTION_KEY}
+      AADHAAR_HASH_SECRET: ${AADHAAR_HASH_SECRET}
+      CARD_QR_SECRET: ${CARD_QR_SECRET}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+
+      STORAGE_ROOT: /repo/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - documents_storage:/repo/storage
+
+  web:
+    container_name: nmms-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: prod
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  nginx:
+    container_name: nmms-nginx
+    build:
+      context: ./docker/nginx
+    restart: unless-stopped
+    environment:
+      WEB_UPSTREAM: web:80
+      API_UPSTREAM: api:3000
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+      - web
+
+volumes:
+  postgres_data:
+  documents_storage:
