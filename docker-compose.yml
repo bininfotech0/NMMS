@@ -75,14 +75,40 @@ services:
     environment:
       WEB_UPSTREAM: web:80
       API_UPSTREAM: api:3000
-    ports:
-      - "80:80"
     depends_on:
       api:
         condition: service_healthy
       web:
         condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nmms.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.nmms.entrypoints=websecure
+      - traefik.http.routers.nmms.tls.certresolver=letsencrypt
+      - traefik.http.services.nmms.loadbalancer.server.port=80
+
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
 
 volumes:
   postgres_data:
   documents_storage:
+  traefik_certs:
