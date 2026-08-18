@@ -22,7 +22,7 @@ services:
   api:
     container_name: nmms-api
     build:
-      context: .
+      context: ..
       dockerfile: apps/api/Dockerfile
       target: prod
     restart: unless-stopped
@@ -52,7 +52,7 @@ services:
   web:
     container_name: nmms-web
     build:
-      context: .
+      context: ..
       dockerfile: apps/web/Dockerfile
       target: prod
     restart: unless-stopped
