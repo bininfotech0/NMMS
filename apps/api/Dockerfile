@@ -28,9 +28,14 @@ ENV NODE_ENV=production
 COPY --from=build /repo/apps/api/dist /repo/apps/api/dist
 COPY --from=build /repo/apps/api/node_modules /repo/apps/api/node_modules
 COPY --from=build /repo/node_modules /repo/node_modules
+# pnpm links this workspace package from the API's node_modules directory.
+# Keep the link target (and its production dependency links) in the runtime image.
+COPY --from=build /repo/packages/shared /repo/packages/shared
+COPY --from=build /repo/prisma/schema.prisma /repo/prisma/schema.prisma
+COPY --from=build /repo/prisma/migrations /repo/prisma/migrations
 
 WORKDIR /repo/apps/api
 
 EXPOSE 3000
 
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema /repo/prisma/schema.prisma && exec node dist/main.js"]
