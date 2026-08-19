@@ -9,6 +9,7 @@ import { logoutMember } from "@/lib/member-auth";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { getInitials, cn } from "@/lib/utils";
+import { computeVolunteerBatch } from "@/lib/volunteer-batch";
 
 const SECTIONS: ShellNavSection[] = [
   {
@@ -32,8 +33,8 @@ export function MemberPortalLayout() {
   // change made by staff is reflected without waiting for a token refresh —
   // see MemberDashboard for the same pattern.
   const { data: profile } = useMyProfile();
-  // Fetched once here (not per-page) so the header's volunteer batch badge
-  // and the wallet pill stay in sync everywhere in the portal, not just on Dashboard.
+  // Fetched once here (not per-page) so the wallet pill's points balance
+  // stays in sync everywhere in the portal, not just on Dashboard.
   const { data: summary } = useMyReferralSummary();
 
   async function handleLogout() {
@@ -44,6 +45,10 @@ export function MemberPortalLayout() {
   if (!storeMember) return null;
   const member = profile ?? storeMember;
   const isActive = member.status === "ACTIVE";
+  // Derived from planTier (same field the dashboard's "Your plan" card
+  // reads) rather than summary.batch, so the header badge can't disagree
+  // with the plan shown elsewhere in the portal — see MemberDashboard.
+  const batch = computeVolunteerBatch(member.planTier);
 
   return (
     <Shell
@@ -57,8 +62,8 @@ export function MemberPortalLayout() {
       sections={SECTIONS}
       userLabel={member.fullName}
       userSubtitle={
-        isActive && summary?.batch ? (
-          <VolunteerBatchBadge batch={summary.batch} className="mt-0.5" />
+        isActive && batch ? (
+          <VolunteerBatchBadge batch={batch} className="mt-0.5" />
         ) : (
           <p className="text-xs text-muted-foreground">{member.status}</p>
         )

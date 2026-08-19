@@ -1,13 +1,19 @@
-import { Award, Gift } from "lucide-react";
+import { Gift } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
-import { useMyReferralRewards, useMyReferralSummary } from "@/hooks/useReferrals";
+import { VolunteerBatchBadge, VolunteerBatchIcon } from "@/components/shared/VolunteerBatchBadge";
+import { useMyReferralRewards } from "@/hooks/useReferrals";
+import { useMyProfile } from "@/hooks/useMyProfile";
 import { titleCase } from "@/lib/utils";
+import { computeNextVolunteerBatch, computeVolunteerBatch } from "@/lib/volunteer-batch";
 
 export function MemberRewards() {
-  const { data: summary } = useMyReferralSummary();
+  const { data: profile } = useMyProfile();
   const { data: rewards, isLoading } = useMyReferralRewards();
+  // Derived from planTier (same source the dashboard's "Your plan" card
+  // reads) rather than a separate referral-summary field — see MemberDashboard.
+  const batch = computeVolunteerBatch(profile?.planTier ?? null);
+  const nextBatch = computeNextVolunteerBatch(profile?.planTier ?? null);
 
   return (
     <div className="space-y-4">
@@ -15,16 +21,14 @@ export function MemberRewards() {
         <CardContent className="flex items-center justify-between px-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Your progress</p>
-            <VolunteerBatchBadge batch={summary?.batch ?? null} />
-            {summary?.nextBatch && (
+            <VolunteerBatchBadge batch={batch} />
+            {nextBatch && (
               <p className="text-xs text-muted-foreground">
-                Upgrade to {titleCase(summary.nextBatch)} membership to reach the next batch
+                Upgrade to {titleCase(nextBatch)} membership to reach the next batch
               </p>
             )}
           </div>
-          <div className="flex size-10 items-center justify-center rounded-lg bg-brand-gold/15 text-brand-gold">
-            <Award className="size-5" />
-          </div>
+          <VolunteerBatchIcon batch={batch} />
         </CardContent>
       </Card>
 

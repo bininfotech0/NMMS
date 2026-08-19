@@ -1,13 +1,14 @@
-import { Award, Copy, CreditCard, Share2, Users, Wallet } from "lucide-react";
+import { Copy, CreditCard, Share2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
+import { VolunteerBatchBadge, VolunteerBatchIcon } from "@/components/shared/VolunteerBatchBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useMemberAuthStore } from "@/stores/member-auth";
 import { titleCase } from "@/lib/utils";
+import { computeNextVolunteerBatch, computeVolunteerBatch } from "@/lib/volunteer-batch";
 
 const SHARE_MESSAGE = "Join our membership program using my referral link:";
 
@@ -20,6 +21,11 @@ export function MemberDashboard() {
   const { data: profile } = useMyProfile();
   const member = profile ?? storeMember;
   const { data: summary, isLoading } = useMyReferralSummary();
+  // Derived from the same planTier shown in the "Your plan" card above
+  // (rather than summary.batch/nextBatch from a separate request) so the two
+  // can never show a stale/inconsistent pairing after a plan upgrade.
+  const batch = computeVolunteerBatch(member?.planTier ?? null);
+  const nextBatch = computeNextVolunteerBatch(member?.planTier ?? null);
 
   const referralLink = summary?.referralCode
     ? `${window.location.origin}/join?ref=${summary.referralCode}`
@@ -135,16 +141,14 @@ export function MemberDashboard() {
           <CardContent className="flex items-center justify-between px-4">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Your volunteer batch</p>
-              <VolunteerBatchBadge batch={summary.batch} />
-              {summary.nextBatch && (
+              <VolunteerBatchBadge batch={batch} />
+              {nextBatch && (
                 <p className="text-xs text-muted-foreground">
-                  Upgrade to {titleCase(summary.nextBatch)} membership to reach the next batch
+                  Upgrade to {titleCase(nextBatch)} membership to reach the next batch
                 </p>
               )}
             </div>
-            <div className="flex size-10 items-center justify-center rounded-lg bg-brand-gold/15 text-brand-gold">
-              <Award className="size-5" />
-            </div>
+            <VolunteerBatchIcon batch={batch} />
           </CardContent>
         </Card>
       </div>
