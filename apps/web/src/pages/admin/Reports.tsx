@@ -122,7 +122,7 @@ export function Reports() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <Card className="h-full">
+            <Card className="h-full transition-shadow hover:shadow-md">
               <CardHeader>
                 <CardTitle className="text-base">Member Growth (12 months)</CardTitle>
               </CardHeader>
@@ -146,7 +146,7 @@ export function Reports() {
               </CardContent>
             </Card>
 
-            <Card className="h-full">
+            <Card className="h-full transition-shadow hover:shadow-md">
               <CardHeader>
                 <CardTitle className="text-base">Collections (12 months)</CardTitle>
               </CardHeader>
@@ -426,7 +426,7 @@ function SummaryCard({
     muted: "bg-muted text-muted-foreground",
   };
   return (
-    <Card className="gap-3 py-4">
+    <Card className="gap-3 py-4 transition-shadow hover:shadow-md">
       <CardContent className="flex items-center justify-between px-4">
         <div>
           <p className="text-sm text-muted-foreground">{label}</p>
@@ -453,7 +453,7 @@ function BreakdownList({
 }) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
   return (
-    <Card className={cn("h-full", className)}>
+    <Card className={cn("h-full transition-shadow hover:shadow-md", className)}>
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>

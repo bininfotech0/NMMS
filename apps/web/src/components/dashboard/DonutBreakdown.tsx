@@ -10,10 +10,12 @@ interface DonutBreakdownProps {
 export function DonutBreakdown({ title, data, labelKey }: DonutBreakdownProps) {
   const total = data.reduce((sum, entry) => sum + entry.value, 0);
   return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
+    <Card className="h-full transition-shadow hover:shadow-md">
+      {title && (
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">{title}</CardTitle>
+        </CardHeader>
+      )}
       <CardContent className="flex h-56 items-center gap-4">
         <div className="h-full min-w-0 flex-1">
           <ResponsiveContainer width="100%" height="100%">

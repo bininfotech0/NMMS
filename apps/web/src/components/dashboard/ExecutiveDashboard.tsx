@@ -74,11 +74,12 @@ export function ExecutiveDashboard({
 
   const statCards = useMemo(() => {
     if (!summary) return [];
+    const activePct = (summary.activeMembers / Math.max(summary.totalMembers, 1)) * 100;
     return [
-      { label: "Total Members", value: summary.totalMembers.toLocaleString(), trend: `+${summary.monthlyRegistrations} this month`, trendUp: true },
-      { label: "Active Members", value: summary.activeMembers.toLocaleString(), trend: `${((summary.activeMembers / Math.max(summary.totalMembers, 1)) * 100).toFixed(1)}% active`, trendUp: true },
+      { label: "Total Members", value: summary.totalMembers.toLocaleString(), trend: `+${summary.monthlyRegistrations} this month`, trendUp: summary.monthlyRegistrations > 0 },
+      { label: "Active Members", value: summary.activeMembers.toLocaleString(), trend: `${activePct.toFixed(1)}% active`, trendUp: activePct >= 50 },
       { label: "Pending Approval", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
-      { label: "Total Collections", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: true },
+      { label: "Total Collections", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: summary.monthlyCollection > 0 },
     ];
   }, [summary]);
 
@@ -143,27 +144,25 @@ export function ExecutiveDashboard({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">Membership Growth</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={summary.monthlyGrowth} margin={{ left: -20 }}>
-                <CartesianGrid vertical={false} stroke="var(--border)" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis tickLine={false} axisLine={false} fontSize={12} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, borderColor: "var(--border)", fontSize: 12 }} />
-                <Line type="monotone" dataKey="members" stroke="var(--brand-green)" strokeWidth={2.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="transition-shadow hover:shadow-md">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Membership Growth</CardTitle>
+        </CardHeader>
+        <CardContent className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={summary.monthlyGrowth} margin={{ left: -20 }}>
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
+              <YAxis tickLine={false} axisLine={false} fontSize={12} allowDecimals={false} />
+              <Tooltip contentStyle={{ borderRadius: 8, borderColor: "var(--border)", fontSize: 12 }} />
+              <Line type="monotone" dataKey="members" stroke="var(--brand-green)" strokeWidth={2.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
+        <Card className="transition-shadow hover:shadow-md">
           <CardHeader>
             <CardTitle className="text-base font-semibold">Membership Status</CardTitle>
           </CardHeader>
@@ -185,26 +184,19 @@ export function ExecutiveDashboard({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">Plan Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DonutBreakdown
-              title=""
-              data={Object.entries(summary.planBreakdown).map(([key, value]) => ({
-                type: key,
-                value,
-                color: ["var(--brand-green)", "var(--brand-gold)", "var(--brand-brown)", "var(--brand-gray)"][
-                  Object.keys(summary.planBreakdown).indexOf(key) % 4
-                ],
-              }))}
-              labelKey="type"
-            />
-          </CardContent>
-        </Card>
+        <DonutBreakdown
+          title="Plan Distribution"
+          data={Object.entries(summary.planBreakdown).map(([key, value]) => ({
+            type: key,
+            value,
+            color: ["var(--brand-green)", "var(--brand-gold)", "var(--brand-brown)", "var(--brand-gray)"][
+              Object.keys(summary.planBreakdown).indexOf(key) % 4
+            ],
+          }))}
+          labelKey="type"
+        />
 
-        <Card className="sm:col-span-2 lg:col-span-1">
+        <Card className="sm:col-span-2 lg:col-span-1 transition-shadow hover:shadow-md">
           <CardHeader>
             <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
           </CardHeader>

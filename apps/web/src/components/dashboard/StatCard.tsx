@@ -21,7 +21,7 @@ const ACCENTS = {
 
 export function StatCard({ label, value, trend, trendUp = true, icon: Icon, accent = "green" }: StatCardProps) {
   return (
-    <Card className="gap-3 py-4">
+    <Card className="gap-3 py-4 transition-shadow hover:shadow-md">
       <CardContent className="flex items-start justify-between px-4">
         <div>
           <p className="text-sm text-muted-foreground">{label}</p>
