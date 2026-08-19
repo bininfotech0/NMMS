@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { FeatureFlagKey } from "@prisma/client";
-import type { AuthUser, GatewayOrderResponse, PaymentResponse } from "@nmms/shared";
+import type { AuthUser, GatewayOrderResponse, PaymentLinkResponse, PaymentResponse } from "@nmms/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import { IntegrationsService } from "../../integrations/integrations.service";
 import { buildJurisdictionWhere } from "../../common/scope.util";
@@ -42,9 +42,10 @@ export class PaymentGatewayService {
     return { keyId: config.keyId, keySecret: config.keySecret, webhookSecret: config.webhookSecret };
   }
 
-  async createOrder(memberId: string, user: AuthUser): Promise<GatewayOrderResponse> {
-    const credentials = await this.getCredentials(user.organizationId);
-
+  // Shared by createOrder (embedded checkout) and createPaymentLink (hosted
+  // link shared with the member) — same eligibility rule and fee amount for
+  // both, since they're two ways of collecting the same due.
+  private async getPayableMember(memberId: string, user: AuthUser) {
     const member = await this.prisma.member.findFirst({
       where: { id: memberId, organizationId: user.organizationId, ...buildJurisdictionWhere(user) },
       include: { plan: true },
@@ -62,7 +63,12 @@ export class PaymentGatewayService {
     }
 
     const amount = member.feeOverride?.toNumber() ?? member.plan.fee.toNumber();
-    const amountPaise = Math.round(amount * 100);
+    return { member, amountPaise: Math.round(amount * 100) };
+  }
+
+  async createOrder(memberId: string, user: AuthUser): Promise<GatewayOrderResponse> {
+    const credentials = await this.getCredentials(user.organizationId);
+    const { member, amountPaise } = await this.getPayableMember(memberId, user);
 
     const order = await this.razorpay.createOrder({
       ...credentials,
@@ -80,6 +86,23 @@ export class PaymentGatewayService {
       name: "Membership Fee",
       description: `Registration/renewal fee for ${member.fullName}`,
     };
+  }
+
+  async createPaymentLink(memberId: string, user: AuthUser): Promise<PaymentLinkResponse> {
+    const credentials = await this.getCredentials(user.organizationId);
+    const { member, amountPaise } = await this.getPayableMember(memberId, user);
+
+    const link = await this.razorpay.createPaymentLink({
+      ...credentials,
+      amountPaise,
+      currency: "INR",
+      description: `Registration/renewal fee for ${member.fullName}`,
+      referenceId: `member-${member.id}-${Date.now()}`,
+      customer: { name: member.fullName, contact: member.mobile, email: member.email ?? undefined },
+      notes: { memberId: member.id, organizationId: user.organizationId },
+    });
+
+    return { shortUrl: link.shortUrl };
   }
 
   async verifyAndRecord(

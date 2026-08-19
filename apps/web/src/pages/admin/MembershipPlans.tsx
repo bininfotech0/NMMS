@@ -1,17 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -22,7 +14,9 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
+import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { useCreatePlan, usePlans, useUpdatePlan } from "@/hooks/usePlans";
 import { useAuthStore } from "@/stores/auth";
 import { Role, type PlanResponse, type PlanTier, type PlanValidityType } from "@nmms/shared";
@@ -58,6 +52,66 @@ export function MembershipPlans() {
     setSheetOpen(true);
   }
 
+  const columns: DataGridColumn<PlanResponse>[] = useMemo(
+    () => [
+      { key: "name", header: "Plan", sortable: true, cellClass: "font-medium" },
+      {
+        key: "tier",
+        header: "Tier",
+        sortable: true,
+        render: (plan) =>
+          plan.tier ? (
+            <Badge variant="outline">{plan.tier.charAt(0) + plan.tier.slice(1).toLowerCase()}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      { key: "volunteerBatch", header: "Volunteer Batch", render: (plan) => <VolunteerBatchBadge batch={plan.tier} /> },
+      {
+        key: "fee",
+        header: "Fee",
+        sortable: true,
+        render: (plan) => <span className="text-muted-foreground">{formatFee(plan.fee)}</span>,
+      },
+      {
+        key: "validityType",
+        header: "Validity",
+        render: (plan) => <span className="text-muted-foreground">{formatValidity(plan)}</span>,
+      },
+      {
+        key: "isActive",
+        header: "Status",
+        sortable: true,
+        render: (plan) => (
+          <Badge
+            variant="outline"
+            className={cn(
+              "font-medium",
+              plan.isActive
+                ? "border-transparent bg-brand-green/10 text-brand-green"
+                : "border-transparent bg-muted text-muted-foreground",
+            )}
+          >
+            {plan.isActive ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      plans.map((plan) => ({
+        name: plan.name,
+        tier: plan.tier ?? "",
+        fee: plan.fee,
+        validity: formatValidity(plan),
+        status: plan.isActive ? "Active" : "Inactive",
+      })),
+    [plans],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -65,96 +119,48 @@ export function MembershipPlans() {
           <h1 className="font-heading text-2xl font-bold">Membership Plans</h1>
           <p className="text-sm text-muted-foreground">{plans.length} plans configured</p>
         </div>
-        {canManage && (
-          <Button className="bg-brand-green hover:bg-brand-green/90" onClick={openCreate}>
-            <Plus />
-            Add Plan
-          </Button>
-        )}
+        <div className="flex gap-2">
+          <ExportCsvButton filename="membership-plans.csv" rows={exportRows} />
+          {canManage && (
+            <Button className="bg-brand-green hover:bg-brand-green/90" onClick={openCreate}>
+              <Plus />
+              Add Plan
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Plan</TableHead>
-              <TableHead>Tier</TableHead>
-              <TableHead>Fee</TableHead>
-              <TableHead>Validity</TableHead>
-              <TableHead>Status</TableHead>
-              {canManage && <TableHead className="text-right">Actions</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={6} />}
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-destructive">
-                  Failed to load plans.
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              plans.map((plan) => (
-                <TableRow key={plan.id}>
-                  <TableCell className="font-medium">{plan.name}</TableCell>
-                  <TableCell>
-                    {plan.tier ? (
-                      <Badge variant="outline">
-                        {plan.tier.charAt(0) + plan.tier.slice(1).toLowerCase()}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{formatFee(plan.fee)}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatValidity(plan)}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "font-medium",
-                        plan.isActive
-                          ? "border-transparent bg-brand-green/10 text-brand-green"
-                          : "border-transparent bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {plan.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  {canManage && (
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(plan)}>
-                          <Pencil className="size-4" />
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={updatePlan.isPending}
-                          onClick={() =>
-                            updatePlan.mutate({ id: plan.id, dto: { isActive: !plan.isActive } })
-                          }
-                        >
-                          {plan.isActive ? "Deactivate" : "Activate"}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            {!isLoading && !isError && plans.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  No membership plans yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataGrid
+        columns={columns}
+        data={plans}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="Failed to load plans."
+        emptyMessage="No membership plans yet."
+        rowKey={(plan) => plan.id}
+        searchable={false}
+        pageSize={25}
+        quickActions={
+          canManage
+            ? (plan) => (
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => openEdit(plan)}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={updatePlan.isPending}
+                    onClick={() => updatePlan.mutate({ id: plan.id, dto: { isActive: !plan.isActive } })}
+                  >
+                    {plan.isActive ? "Deactivate" : "Activate"}
+                  </Button>
+                </div>
+              )
+            : undefined
+        }
+      />
 
       <PlanSheet
         key={editing?.id ?? "new"}
@@ -263,7 +269,8 @@ function PlanSheet({
               <option value="PLATINUM">Platinum</option>
             </select>
             <p className="text-xs text-muted-foreground">
-              Drives per-tier reward points and referral point rules. Leave as None for a custom plan.
+              Drives per-tier reward points, referral point rules, and the member's volunteer batch. Leave as
+              None for a custom plan.
             </p>
           </div>
           <div className="space-y-1.5">

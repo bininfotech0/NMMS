@@ -1,18 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -23,7 +15,8 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { useCreateUser, useResetPassword, useUpdateUser, useUsers } from "@/hooks/useUsers";
 import { Role, type UserResponse } from "@nmms/shared";
 
@@ -49,6 +42,61 @@ export function Users() {
 
   const forbidden = isError && error instanceof ApiError && error.status === 403;
 
+  const columns: DataGridColumn<UserResponse>[] = useMemo(
+    () => [
+      {
+        key: "email",
+        header: "User",
+        sortable: true,
+        render: (u) => (
+          <div className="flex items-center gap-3">
+            <Avatar className="size-8">
+              <AvatarFallback className="bg-brand-bg-soft text-xs font-semibold text-brand-green">
+                {initials(u.email)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="font-medium">{u.email}</span>
+          </div>
+        ),
+      },
+      {
+        key: "role",
+        header: "Role",
+        sortable: true,
+        render: (u) => <span className="text-muted-foreground">{ROLE_LABELS[u.role]}</span>,
+      },
+      {
+        key: "isActive",
+        header: "Status",
+        sortable: true,
+        render: (u) => (
+          <Badge
+            variant="outline"
+            className={cn(
+              "font-medium",
+              u.isActive
+                ? "border-transparent bg-brand-green/10 text-brand-green"
+                : "border-transparent bg-destructive/10 text-destructive",
+            )}
+          >
+            {u.isActive ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      users.map((u) => ({
+        email: u.email,
+        role: ROLE_LABELS[u.role],
+        status: u.isActive ? "Active" : "Inactive",
+      })),
+    [users],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -56,104 +104,54 @@ export function Users() {
           <h1 className="font-heading text-2xl font-bold">Users</h1>
           <p className="text-sm text-muted-foreground">{users.length} users</p>
         </div>
-        <Button className="bg-brand-green hover:bg-brand-green/90" onClick={() => setAddOpen(true)}>
-          <Plus />
-          Add User
-        </Button>
+        <div className="flex gap-2">
+          <ExportCsvButton filename="users.csv" rows={exportRows} />
+          <Button className="bg-brand-green hover:bg-brand-green/90" onClick={() => setAddOpen(true)}>
+            <Plus />
+            Add User
+          </Button>
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={4} />}
-            {forbidden && (
-              <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
-                  You don't have permission to manage users.
-                </TableCell>
-              </TableRow>
-            )}
-            {isError && !forbidden && (
-              <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-destructive">
-                  Failed to load users.
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="size-8">
-                        <AvatarFallback className="bg-brand-bg-soft text-xs font-semibold text-brand-green">
-                          {initials(u.email)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{u.email}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{ROLE_LABELS[u.role]}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "font-medium",
-                        u.isActive
-                          ? "border-transparent bg-brand-green/10 text-brand-green"
-                          : "border-transparent bg-destructive/10 text-destructive",
-                      )}
-                    >
-                      {u.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditing(u);
-                          setEditOpen(true);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setResetTarget(u)}>
-                        <KeyRound className="size-4" />
-                        Reset Password
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={updateUser.isPending}
-                        onClick={() => updateUser.mutate({ id: u.id, dto: { isActive: !u.isActive } })}
-                      >
-                        {u.isActive ? "Deactivate" : "Activate"}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            {!isLoading && !isError && users.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
-                  No users yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataGrid
+        columns={columns}
+        data={users}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage={forbidden ? "You don't have permission to manage users." : "Failed to load users."}
+        emptyMessage="No users yet."
+        rowKey={(u) => u.id}
+        searchable
+        searchPlaceholder="Search by email..."
+        searchKeys={["email"]}
+        pageSize={25}
+        quickActions={(u) => (
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditing(u);
+                setEditOpen(true);
+              }}
+            >
+              Edit
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setResetTarget(u)}>
+              <KeyRound className="size-4" />
+              Reset Password
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={updateUser.isPending}
+              onClick={() => updateUser.mutate({ id: u.id, dto: { isActive: !u.isActive } })}
+            >
+              {u.isActive ? "Deactivate" : "Activate"}
+            </Button>
+          </div>
+        )}
+      />
 
       <AddUserSheet open={addOpen} onOpenChange={setAddOpen} />
       <EditUserSheet

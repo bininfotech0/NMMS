@@ -70,7 +70,7 @@ export function PayOnlineButton({ memberId, className, onError, onSuccess }: Pay
       className={className ?? "bg-brand-green hover:bg-brand-green/90"}
     >
       <CreditCard className="size-4" />
-      {processing ? "Opening payment…" : "Pay Online (Card/UPI)"}
+      {processing ? "Opening payment…" : "Pay Amount (Card/UPI)"}
     </Button>
   );
 }

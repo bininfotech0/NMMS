@@ -17,6 +17,7 @@ import { addMonths } from "../common/date.util";
 import { MembersService } from "../members/members.service";
 import { toMemberResponse } from "../members/member.mapper";
 import { NotificationService } from "../notifications/notification.service";
+import { ReferralsService } from "../referrals/referrals.service";
 
 interface PaymentInput {
   amount: number;
@@ -36,6 +37,7 @@ export class PaymentsService {
     private readonly numbering: NumberingService,
     private readonly membersService: MembersService,
     private readonly notifications: NotificationService,
+    private readonly referrals: ReferralsService,
   ) {}
 
   // A payment can be recorded in two contexts:
@@ -172,6 +174,14 @@ export class PaymentsService {
           actorId: user.id,
         },
       });
+
+      await this.referrals.awardBatchRewardForTier(
+        tx,
+        user.organizationId,
+        member.id,
+        newTier,
+        member.referralPointsBalance,
+      );
     });
 
     await this.notifications.notify({

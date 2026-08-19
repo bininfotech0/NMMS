@@ -7,7 +7,10 @@ function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
   const numbering = { nextMembershipNumber: jest.fn().mockResolvedValue("MEM-2026-00001") };
   const membersService = { findOne: jest.fn() };
   const notifications = { notify: jest.fn().mockResolvedValue(undefined) };
-  const referrals = { awardPointsForApproval: jest.fn().mockResolvedValue(undefined) };
+  const referrals = {
+    awardPointsForApproval: jest.fn().mockResolvedValue(undefined),
+    awardBatchRewardForTier: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new ApplicationsService(
     prisma as never,
     numbering as never,

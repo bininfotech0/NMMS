@@ -18,7 +18,7 @@ async function createMemberSession(browser: import("@playwright/test").Browser, 
 
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto("/member/login");
+  await page.goto("/login");
   await page.getByLabel("Mobile number").fill(mobile);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();

@@ -5,12 +5,20 @@ import { Button } from "@/components/ui/button";
 import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
+import { useMyProfile } from "@/hooks/useMyProfile";
 import { useMemberAuthStore } from "@/stores/member-auth";
+import { titleCase } from "@/lib/utils";
 
 const SHARE_MESSAGE = "Join our membership program using my referral link:";
 
 export function MemberDashboard() {
-  const member = useMemberAuthStore((state) => state.member);
+  // The store only holds the login-time snapshot, refreshed at most every 15
+  // minutes (access-token expiry) — falling back to it just avoids a flash
+  // of empty content before this query resolves. Prefer `profile` (always
+  // refetched on mount) so a plan change made by staff shows up here.
+  const storeMember = useMemberAuthStore((state) => state.member);
+  const { data: profile } = useMyProfile();
+  const member = profile ?? storeMember;
   const { data: summary, isLoading } = useMyReferralSummary();
 
   const referralLink = summary?.referralCode
@@ -130,7 +138,7 @@ export function MemberDashboard() {
               <VolunteerBatchBadge batch={summary.batch} />
               {summary.nextBatch && (
                 <p className="text-xs text-muted-foreground">
-                  {summary.pointsToNextBatch} points to {summary.nextBatch}
+                  Upgrade to {titleCase(summary.nextBatch)} membership to reach the next batch
                 </p>
               )}
             </div>

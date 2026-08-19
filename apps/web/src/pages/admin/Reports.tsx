@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Users, Wallet, CalendarClock, UserCheck, Download } from "lucide-react";
+import { Users, Wallet, CalendarClock, UserCheck } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -12,11 +12,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { cn } from "@/lib/utils";
-import { downloadCsv } from "@/lib/csv";
 import { ApiError } from "@/lib/api-client";
 import {
   useBranchWiseReport,
@@ -83,7 +83,7 @@ export function Reports() {
         </p>
       </div>
 
-      {isLoading && <p className="py-10 text-center text-sm text-muted-foreground">Loading reports...</p>}
+      {isLoading && <ReportsSummarySkeleton />}
 
       {forbidden && (
         <p className="py-10 text-center text-sm text-muted-foreground">
@@ -167,7 +167,7 @@ export function Reports() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <BreakdownList
               title="Member Status"
               data={data.memberStatusBreakdown}
@@ -178,12 +178,49 @@ export function Reports() {
               data={data.applicationFunnel}
               formatName={titleCase}
             />
-            <BreakdownList title="Membership Plans" data={Object.entries(data.planBreakdown ?? {}).map(([name, count]) => ({ name, count }))} formatName={(s) => s} />
+            <BreakdownList
+              className="sm:col-span-2 lg:col-span-1"
+              title="Membership Plans"
+              data={Object.entries(data.planBreakdown ?? {}).map(([name, count]) => ({ name, count }))}
+              formatName={(s) => s}
+            />
           </div>
         </>
       )}
 
       <DetailedReports />
+    </div>
+  );
+}
+
+function ReportsSummarySkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i} className="gap-3 py-4">
+            <CardContent className="flex items-center justify-between px-4">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-7 w-20" />
+              </div>
+              <Skeleton className="size-10 rounded-lg" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i} className="h-full">
+            <CardHeader>
+              <Skeleton className="h-5 w-40" />
+            </CardHeader>
+            <CardContent className="h-64">
+              <Skeleton className="h-full w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -240,17 +277,6 @@ function DetailedReports() {
   );
 }
 
-function ExportButton({ filename, rows }: { filename: string; rows: Record<string, unknown>[] }) {
-  return (
-    <div className="flex justify-end">
-      <Button size="sm" variant="outline" disabled={rows.length === 0} onClick={() => downloadCsv(filename, rows)}>
-        <Download className="size-4" />
-        Export CSV
-      </Button>
-    </div>
-  );
-}
-
 function ReportTable({ report }: { report: ReportKey }) {
   switch (report) {
     case "member-register":
@@ -291,7 +317,7 @@ function MemberRegisterTable({
   ];
   return (
     <div className="space-y-3">
-      <ExportButton filename={filename} rows={data} />
+      <div className="flex justify-end"><ExportCsvButton filename={filename} rows={data} /></div>
       <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.id} emptyMessage="No records." />
     </div>
   );
@@ -309,7 +335,7 @@ function PaymentCollectionTable() {
   ];
   return (
     <div className="space-y-3">
-      <ExportButton filename="payment-collection.csv" rows={data} />
+      <div className="flex justify-end"><ExportCsvButton filename="payment-collection.csv" rows={data} /></div>
       <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.id} emptyMessage="No payments." />
     </div>
   );
@@ -326,7 +352,7 @@ function RenewalsTable() {
   ];
   return (
     <div className="space-y-3">
-      <ExportButton filename="renewals.csv" rows={data} />
+      <div className="flex justify-end"><ExportCsvButton filename="renewals.csv" rows={data} /></div>
       <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.id} emptyMessage="No renewals due." />
     </div>
   );
@@ -346,7 +372,7 @@ function NamedCountTable({
   ];
   return (
     <div className="space-y-3">
-      <ExportButton filename={filename} rows={data} />
+      <div className="flex justify-end"><ExportCsvButton filename={filename} rows={data} /></div>
       <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.name} emptyMessage="No data." />
     </div>
   );
@@ -362,7 +388,7 @@ function FieldExecutivePerformanceTable() {
   ];
   return (
     <div className="space-y-3">
-      <ExportButton filename="field-executive-performance.csv" rows={data} />
+      <div className="flex justify-end"><ExportCsvButton filename="field-executive-performance.csv" rows={data} /></div>
       <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.userId} emptyMessage="No field executives yet." />
     </div>
   );
@@ -376,7 +402,7 @@ function RevenueCollectionTable() {
   ];
   return (
     <div className="space-y-3">
-      <ExportButton filename="revenue-collection.csv" rows={data} />
+      <div className="flex justify-end"><ExportCsvButton filename="revenue-collection.csv" rows={data} /></div>
       <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.month} emptyMessage="No revenue yet." />
     </div>
   );
@@ -418,14 +444,16 @@ function BreakdownList({
   title,
   data,
   formatName,
+  className,
 }: {
   title: string;
   data: NamedCount[];
   formatName: (name: string) => string;
+  className?: string;
 }) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
   return (
-    <Card className="h-full">
+    <Card className={cn("h-full", className)}>
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>

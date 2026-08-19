@@ -92,7 +92,7 @@ describe("ReferralsService", () => {
       });
     });
 
-    it("creates a PENDING reward the first time a volunteer batch threshold is crossed", async () => {
+    it("no longer touches ReferralReward — points only affect the wallet, not the batch", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.member.findUnique
@@ -101,29 +101,13 @@ describe("ReferralsService", () => {
         )
         .mockResolvedValueOnce(makeMember({ id: "referrer-1" }));
       prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
-      // Referrer crosses from 10 -> 20 points, which is exactly the GOLD threshold.
       prisma.member.update.mockResolvedValue(
         makeMember({ id: "referrer-1", referralPointsBalance: 20 }),
       );
 
       await service.awardPointsForApproval("member-1");
 
-      // SILVER (min 0) and GOLD (min 20) both qualify at 20 points; PLATINUM (min 50) does not.
-      expect(prisma.referralReward.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { memberId_batch: { memberId: "referrer-1", batch: "SILVER" } },
-        }),
-      );
-      expect(prisma.referralReward.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { memberId_batch: { memberId: "referrer-1", batch: "GOLD" } },
-        }),
-      );
-      expect(prisma.referralReward.upsert).not.toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { memberId_batch: { memberId: "referrer-1", batch: "PLATINUM" } },
-        }),
-      );
+      expect(prisma.referralReward.upsert).not.toHaveBeenCalled();
     });
 
     it("resolves matrix points from PlanRewardsService using both members' plan tiers", async () => {
@@ -384,20 +368,68 @@ describe("ReferralsService", () => {
       expect(prisma.member.update).not.toHaveBeenCalled();
     });
 
-    it("computes the volunteer batch and progress to the next batch from the points balance", async () => {
+    it("derives the volunteer batch from the member's plan tier, not their points balance", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.member.findUniqueOrThrow.mockResolvedValue(
-        makeMember({ status: "ACTIVE", referralCode: "ABCD1234", referralPointsBalance: 25 }),
+        makeMember({
+          status: "ACTIVE",
+          referralCode: "ABCD1234",
+          referralPointsBalance: 0,
+          plan: { tier: "GOLD" },
+        }),
       );
-      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
       prisma.member.findMany.mockResolvedValue([]);
 
       const summary = await service.getMySummary("member-1");
 
       expect(summary.batch).toBe("GOLD");
       expect(summary.nextBatch).toBe("PLATINUM");
-      expect(summary.pointsToNextBatch).toBe(25);
+      expect(summary.pointsToNextBatch).toBeNull();
+    });
+
+    it("has no batch and next-batch SILVER when the member has no plan", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      prisma.member.findUniqueOrThrow.mockResolvedValue(
+        makeMember({ status: "ACTIVE", referralCode: "ABCD1234", plan: null }),
+      );
+      prisma.member.findMany.mockResolvedValue([]);
+
+      const summary = await service.getMySummary("member-1");
+
+      expect(summary.batch).toBeNull();
+      expect(summary.nextBatch).toBe("SILVER");
+    });
+  });
+
+  describe("awardBatchRewardForTier", () => {
+    it("upserts a PENDING reward for the given tier and every lower tier", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      const tx = prisma as unknown as Parameters<typeof service.awardBatchRewardForTier>[0];
+
+      await service.awardBatchRewardForTier(tx, "org-1", "member-1", "GOLD", 0);
+
+      expect(prisma.referralReward.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { memberId_batch: { memberId: "member-1", batch: "SILVER" } } }),
+      );
+      expect(prisma.referralReward.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { memberId_batch: { memberId: "member-1", batch: "GOLD" } } }),
+      );
+      expect(prisma.referralReward.upsert).not.toHaveBeenCalledWith(
+        expect.objectContaining({ where: { memberId_batch: { memberId: "member-1", batch: "PLATINUM" } } }),
+      );
+    });
+
+    it("does nothing when the tier is null (no plan)", async () => {
+      const prisma = makeMockPrisma();
+      const service = makeService(prisma);
+      const tx = prisma as unknown as Parameters<typeof service.awardBatchRewardForTier>[0];
+
+      await service.awardBatchRewardForTier(tx, "org-1", "member-1", null, 0);
+
+      expect(prisma.referralReward.upsert).not.toHaveBeenCalled();
     });
   });
 

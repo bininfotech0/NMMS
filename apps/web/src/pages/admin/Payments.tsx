@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { PayOnlineButton } from "@/components/payments/PayOnlineButton";
+import { SharePaymentLinkButton } from "@/components/payments/SharePaymentLinkButton";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { useOutstandingMembers, usePayments, useRecordPayment } from "@/hooks/usePayments";
@@ -250,12 +251,15 @@ function RecordPaymentSheet({
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-4 px-4">
           {member && (
-            <PayOnlineButton
-              memberId={member.id}
-              onError={setError}
-              onSuccess={() => onOpenChange(false)}
-              className="w-full bg-brand-green hover:bg-brand-green/90"
-            />
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <PayOnlineButton
+                memberId={member.id}
+                onError={setError}
+                onSuccess={() => onOpenChange(false)}
+                className="flex-1 bg-brand-green hover:bg-brand-green/90"
+              />
+              <SharePaymentLinkButton memberId={member.id} memberName={member.fullName} className="flex-1" />
+            </div>
           )}
 
           {onlineAvailable && !showManualForm ? (

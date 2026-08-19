@@ -7,6 +7,7 @@ import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { useMemberAuthStore } from "@/stores/member-auth";
 import { logoutMember } from "@/lib/member-auth";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
+import { useMyProfile } from "@/hooks/useMyProfile";
 import { getInitials, cn } from "@/lib/utils";
 
 const SECTIONS: ShellNavSection[] = [
@@ -26,18 +27,23 @@ const SECTIONS: ShellNavSection[] = [
 
 export function MemberPortalLayout() {
   const navigate = useNavigate();
-  const member = useMemberAuthStore((state) => state.member);
+  const storeMember = useMemberAuthStore((state) => state.member);
+  // Prefer the live profile over the login-time store snapshot so a plan/status
+  // change made by staff is reflected without waiting for a token refresh —
+  // see MemberDashboard for the same pattern.
+  const { data: profile } = useMyProfile();
   // Fetched once here (not per-page) so the header's volunteer batch badge
   // and the wallet pill stay in sync everywhere in the portal, not just on Dashboard.
   const { data: summary } = useMyReferralSummary();
-  const isActive = member?.status === "ACTIVE";
 
   async function handleLogout() {
     await logoutMember();
     navigate("/login");
   }
 
-  if (!member) return null;
+  if (!storeMember) return null;
+  const member = profile ?? storeMember;
+  const isActive = member.status === "ACTIVE";
 
   return (
     <Shell

@@ -171,7 +171,10 @@ function HeaderExtras() {
                     <button
                       key={notice.id}
                       className="w-full border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-accent"
-                      onClick={() => setShowNotifications(false)}
+                      onClick={() => {
+                        setShowNotifications(false);
+                        navigate(`/admin/notices?noticeId=${notice.id}`);
+                      }}
                     >
                       <p className="truncate text-sm font-medium">{notice.title}</p>
                       <p className="line-clamp-1 text-xs text-muted-foreground">{notice.body}</p>

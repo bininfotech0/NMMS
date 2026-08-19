@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { useMyReferralRewards, useMyReferralSummary } from "@/hooks/useReferrals";
+import { titleCase } from "@/lib/utils";
 
 export function MemberRewards() {
   const { data: summary } = useMyReferralSummary();
@@ -17,7 +18,7 @@ export function MemberRewards() {
             <VolunteerBatchBadge batch={summary?.batch ?? null} />
             {summary?.nextBatch && (
               <p className="text-xs text-muted-foreground">
-                {summary.pointsToNextBatch} more points to reach {summary.nextBatch}
+                Upgrade to {titleCase(summary.nextBatch)} membership to reach the next batch
               </p>
             )}
           </div>
@@ -47,7 +48,6 @@ export function MemberRewards() {
                 <li key={reward.id} className="flex items-center justify-between py-3 text-sm">
                   <div className="flex items-center gap-2">
                     <VolunteerBatchBadge batch={reward.batch} />
-                    <span className="text-muted-foreground">at {reward.pointsAtEarn} points</span>
                   </div>
                   <Badge variant={reward.status === "FULFILLED" ? "secondary" : "outline"}>
                     {reward.status === "FULFILLED" ? "Received" : "Pending"}

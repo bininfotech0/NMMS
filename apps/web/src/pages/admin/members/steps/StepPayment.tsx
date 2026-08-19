@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { PayOnlineButton } from "@/components/payments/PayOnlineButton";
+import { SharePaymentLinkButton } from "@/components/payments/SharePaymentLinkButton";
 import { ApiError } from "@/lib/api-client";
 import { useMember, useMemberPayments } from "@/hooks/useMembers";
 import { useRecordPayment } from "@/hooks/usePayments";
@@ -95,7 +96,14 @@ export function StepPayment({ form, memberId }: StepProps) {
 
   return (
     <div className="max-w-sm space-y-4">
-      <PayOnlineButton memberId={memberId} onError={setError} className="w-full bg-brand-green hover:bg-brand-green/90" />
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <PayOnlineButton
+          memberId={memberId}
+          onError={setError}
+          className="flex-1 bg-brand-green hover:bg-brand-green/90"
+        />
+        <SharePaymentLinkButton memberId={memberId} memberName={member?.fullName} className="flex-1" />
+      </div>
 
       {onlineAvailable && !showManualForm ? (
         <button

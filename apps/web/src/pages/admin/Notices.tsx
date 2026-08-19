@@ -1,16 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Megaphone, Bell, Plus, Eye, Pencil, Trash2, Send, Calendar, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -30,7 +23,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { useNotices, useCreateNotice, useUpdateNotice, usePublishNotice, useDeleteNotice } from "@/hooks/useNotices";
@@ -57,6 +51,70 @@ export function Notices() {
   const [viewTarget, setViewTarget] = useState<NoticeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const noticeId = searchParams.get("noticeId");
+  useEffect(() => {
+    if (!noticeId) return;
+    const notice = notices.find((n) => n.id === noticeId);
+    if (notice) setViewTarget(notice);
+  }, [noticeId, notices]);
+
+  const columns: DataGridColumn<NoticeResponse>[] = useMemo(
+    () => [
+      {
+        key: "title",
+        header: "Title",
+        sortable: true,
+        cellClass: "font-medium max-w-xs",
+        render: (notice) => <div className="truncate">{notice.title}</div>,
+      },
+      {
+        key: "audienceRole",
+        header: "Audience",
+        render: (notice) => (
+          <span className="text-muted-foreground">
+            {notice.audienceRole ? notice.audienceRole.replace(/_/g, " ") : "All Members"}
+          </span>
+        ),
+      },
+      {
+        key: "publishedAt",
+        header: "Status",
+        sortable: true,
+        render: (notice) => (
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+              notice.publishedAt ? "bg-brand-bg-soft text-brand-green-dark" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {notice.publishedAt ? "Published" : "Draft"}
+          </span>
+        ),
+      },
+      {
+        key: "createdAt",
+        header: "Created",
+        sortable: true,
+        render: (notice) => (
+          <span className="text-muted-foreground">{new Date(notice.createdAt).toLocaleDateString()}</span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      notices.map((notice) => ({
+        title: notice.title,
+        audience: notice.audienceRole ? notice.audienceRole.replace(/_/g, " ") : "All Members",
+        status: notice.publishedAt ? "Published" : "Draft",
+        createdAt: new Date(notice.createdAt).toLocaleDateString(),
+      })),
+    [notices],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -64,10 +122,13 @@ export function Notices() {
           <h1 className="font-heading text-2xl font-bold">Notices</h1>
           <p className="text-sm text-muted-foreground">{notices.length} notice{notices.length === 1 ? "" : "s"}</p>
         </div>
-        <Button className="bg-brand-green hover:bg-brand-green/90" onClick={() => setCreateOpen(true)}>
-          <Plus />
-          Create Notice
-        </Button>
+        <div className="flex gap-2">
+          <ExportCsvButton filename="notices.csv" rows={exportRows} />
+          <Button className="bg-brand-green hover:bg-brand-green/90" onClick={() => setCreateOpen(true)}>
+            <Plus />
+            Create Notice
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -100,102 +161,44 @@ export function Notices() {
         </Card>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Audience</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={5} />}
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-destructive">
-                  Failed to load notices.
-                </TableCell>
-              </TableRow>
+      <DataGrid
+        columns={columns}
+        data={notices}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="Failed to load notices."
+        emptyMessage="No notices created yet."
+        rowKey={(notice) => notice.id}
+        searchable
+        searchPlaceholder="Search by title..."
+        searchKeys={["title"]}
+        pageSize={25}
+        quickActions={(notice) => (
+          <div className="flex justify-end gap-1">
+            <Button size="sm" variant="ghost" onClick={() => setViewTarget(notice)}>
+              <Eye className="size-4" />
+            </Button>
+            {!notice.publishedAt && (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setEditTarget(notice)}>
+                  <Pencil className="size-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => publishNotice.mutate(notice.id)}>
+                  <Send className="size-4" />
+                </Button>
+              </>
             )}
-            {!isLoading && !isError && notices.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  No notices created yet.
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              notices.map((notice) => (
-                <TableRow key={notice.id} className="hover:bg-accent/50">
-                  <TableCell className="font-medium max-w-xs">
-                    <div className="truncate">{notice.title}</div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {notice.audienceRole
-                      ? notice.audienceRole.replace(/_/g, " ")
-                      : "All Members"}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        notice.publishedAt
-                          ? "bg-brand-bg-soft text-brand-green-dark"
-                          : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {notice.publishedAt ? "Published" : "Draft"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(notice.createdAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setViewTarget(notice)}
-                      >
-                        <Eye className="size-4" />
-                      </Button>
-                      {!notice.publishedAt && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditTarget(notice)}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => publishNotice.mutate(notice.id)}
-                          >
-                            <Send className="size-4" />
-                          </Button>
-                        </>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(notice)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeleteTarget(notice)}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        )}
+      />
 
       <NoticeFormSheet
         open={createOpen}
@@ -255,7 +258,19 @@ export function Notices() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <ViewNoticeDialog notice={viewTarget} onClose={() => setViewTarget(null)} />
+      <ViewNoticeDialog
+        notice={viewTarget}
+        onClose={() => {
+          setViewTarget(null);
+          if (noticeId) {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("noticeId");
+              return next;
+            });
+          }
+        }}
+      />
     </div>
   );
 }

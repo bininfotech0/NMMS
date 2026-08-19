@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import {
   useCreateEvent,
   useEventRegistrations,
@@ -84,6 +86,61 @@ export function Events() {
     setSheetOpen(true);
   }
 
+  const columns: DataGridColumn<EventResponse>[] = useMemo(
+    () => [
+      { key: "title", header: "Event", sortable: true, cellClass: "font-medium" },
+      {
+        key: "location",
+        header: "Location",
+        render: (event) => <span className="text-muted-foreground">{event.location ?? "—"}</span>,
+      },
+      {
+        key: "startAt",
+        header: "Starts",
+        sortable: true,
+        render: (event) => (
+          <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(event.startAt)}</span>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        sortable: true,
+        render: (event) => (
+          <Badge className={cn("border-transparent font-medium", STATUS_STYLES[event.status])}>
+            {event.status[0] + event.status.slice(1).toLowerCase()}
+          </Badge>
+        ),
+      },
+      {
+        key: "registrationCount",
+        header: "Registrations",
+        render: (event) => (
+          <span className="text-muted-foreground">
+            {event.registrationCount}
+            {event.capacity ? ` / ${event.capacity}` : ""}
+            {event.attendedCount > 0 ? ` · ${event.attendedCount} attended` : ""}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      events.map((event) => ({
+        title: event.title,
+        location: event.location ?? "",
+        startsAt: formatDateTime(event.startAt),
+        status: event.status,
+        registrations: event.registrationCount,
+        capacity: event.capacity ?? "",
+        attended: event.attendedCount,
+      })),
+    [events],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -91,80 +148,44 @@ export function Events() {
           <h1 className="font-heading text-2xl font-bold">Events</h1>
           <p className="text-sm text-muted-foreground">{events.length} events scheduled</p>
         </div>
-        {canManage && (
-          <Button className="bg-brand-green hover:bg-brand-green/90" onClick={openCreate}>
-            <Plus />
-            Create Event
-          </Button>
-        )}
+        <div className="flex gap-2">
+          <ExportCsvButton filename="events.csv" rows={exportRows} />
+          {canManage && (
+            <Button className="bg-brand-green hover:bg-brand-green/90" onClick={openCreate}>
+              <Plus />
+              Create Event
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Event</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Starts</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Registrations</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={6} />}
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-destructive">
-                  Failed to load events.
-                </TableCell>
-              </TableRow>
+      <DataGrid
+        columns={columns}
+        data={events}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="Failed to load events."
+        emptyMessage="No events scheduled yet."
+        rowKey={(event) => event.id}
+        searchable
+        searchPlaceholder="Search by title..."
+        searchKeys={["title"]}
+        pageSize={25}
+        quickActions={(event) => (
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setManagingEvent(event)}>
+              <Users2 className="size-4" />
+              Manage
+            </Button>
+            {canManage && (
+              <Button size="sm" variant="outline" onClick={() => openEdit(event)}>
+                <Pencil className="size-4" />
+                Edit
+              </Button>
             )}
-            {!isLoading &&
-              !isError &&
-              events.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="font-medium">{event.title}</TableCell>
-                  <TableCell className="text-muted-foreground">{event.location ?? "—"}</TableCell>
-                  <TableCell className="text-muted-foreground whitespace-nowrap">
-                    {formatDateTime(event.startAt)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={cn("border-transparent font-medium", STATUS_STYLES[event.status])}>
-                      {event.status[0] + event.status.slice(1).toLowerCase()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {event.registrationCount}
-                    {event.capacity ? ` / ${event.capacity}` : ""}
-                    {event.attendedCount > 0 ? ` · ${event.attendedCount} attended` : ""}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setManagingEvent(event)}>
-                        <Users2 className="size-4" />
-                        Manage
-                      </Button>
-                      {canManage && (
-                        <Button size="sm" variant="outline" onClick={() => openEdit(event)}>
-                          <Pencil className="size-4" />
-                          Edit
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            {!isLoading && !isError && events.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  No events scheduled yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+          </div>
+        )}
+      />
 
       {canManage && (
         <EventSheet key={editing?.id ?? "new"} event={editing} open={sheetOpen} onOpenChange={setSheetOpen} />

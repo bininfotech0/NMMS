@@ -39,7 +39,7 @@ test.describe("promotion cycle", () => {
     // The new Field Executive account can log into the staff panel...
     const newFeContext = await page.context().browser()!.newContext();
     const newFePage = await newFeContext.newPage();
-    await newFePage.goto("/login");
+    await newFePage.goto("/admin/login");
     await newFePage.getByLabel("Email").fill(newFeEmail);
     await newFePage.getByLabel("Password").fill(newFePassword);
     await newFePage.getByRole("button", { name: "Sign In" }).click();

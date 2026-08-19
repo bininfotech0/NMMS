@@ -53,6 +53,11 @@ export class MemberPaymentsController {
     return this.paymentGatewayService.createOrder(memberId, user);
   }
 
+  @Post("gateway/payment-link")
+  createPaymentLink(@Param("memberId") memberId: string, @CurrentUser() user: AuthUser) {
+    return this.paymentGatewayService.createPaymentLink(memberId, user);
+  }
+
   @Post("gateway/verify")
   verifyGatewayPayment(
     @Param("memberId") memberId: string,

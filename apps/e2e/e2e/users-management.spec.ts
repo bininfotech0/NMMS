@@ -52,7 +52,7 @@ test.describe("users management — super admin", () => {
 
     const freshContext = await page.context().browser()!.newContext();
     const freshPage = await freshContext.newPage();
-    await freshPage.goto("/login");
+    await freshPage.goto("/admin/login");
     await freshPage.getByLabel("Email").fill(email);
     await freshPage.getByLabel("Password").fill("BrandNewPassword123");
     await freshPage.getByRole("button", { name: "Sign In" }).click();

@@ -1,16 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Eye, EyeOff, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -21,7 +13,8 @@ import {
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { ApiError } from "@/lib/api-client";
 import {
   useAdminKycList,
@@ -52,11 +45,67 @@ export function KycReview() {
   const { data: submissions = [], isLoading, isError } = useAdminKycList(status);
   const [detailTarget, setDetailTarget] = useState<KycResponse | null>(null);
 
+  const columns: DataGridColumn<KycResponse>[] = useMemo(
+    () => [
+      { key: "memberName", header: "Member", sortable: true, cellClass: "font-medium" },
+      {
+        key: "payoutMethod",
+        header: "Payout Method",
+        render: (s) => (
+          <span className="text-muted-foreground">
+            {s.payoutMethod === "BANK"
+              ? `Bank ...${s.bankAccountNumberLast4 ?? ""}`
+              : s.payoutMethod === "UPI"
+                ? s.upiId
+                : "—"}
+          </span>
+        ),
+      },
+      {
+        key: "aadhaarLast4",
+        header: "Aadhaar",
+        render: (s) => <span className="text-muted-foreground">{s.aadhaarLast4 ? `XXXX-${s.aadhaarLast4}` : "—"}</span>,
+      },
+      { key: "pan", header: "PAN", render: (s) => <span className="text-muted-foreground">{s.pan ?? "—"}</span> },
+      {
+        key: "kycStatus",
+        header: "Status",
+        sortable: true,
+        render: (s) => (
+          <Badge className={`border-transparent font-medium ${STATUS_STYLES[s.kycStatus]}`}>
+            {s.kycStatus.replace(/_/g, " ")}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      submissions.map((s) => ({
+        memberName: s.memberName ?? "",
+        payoutMethod:
+          s.payoutMethod === "BANK"
+            ? `Bank ...${s.bankAccountNumberLast4 ?? ""}`
+            : s.payoutMethod === "UPI"
+              ? (s.upiId ?? "")
+              : "",
+        aadhaar: s.aadhaarLast4 ? `XXXX-${s.aadhaarLast4}` : "",
+        pan: s.pan ?? "",
+        status: s.kycStatus,
+      })),
+    [submissions],
+  );
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-bold">KYC Review</h1>
-        <p className="text-sm text-muted-foreground">Verify member identity and payout details</p>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="font-heading text-2xl font-bold">KYC Review</h1>
+          <p className="text-sm text-muted-foreground">Verify member identity and payout details</p>
+        </div>
+        <ExportCsvButton filename="kyc-review.csv" rows={exportRows} />
       </div>
 
       <div className="flex gap-1 border-b border-border">
@@ -75,67 +124,24 @@ export function KycReview() {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Payout Method</TableHead>
-              <TableHead>Aadhaar</TableHead>
-              <TableHead>PAN</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={6} />}
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-destructive">
-                  Failed to load KYC submissions.
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              submissions.map((s) => (
-                <TableRow key={s.memberId}>
-                  <TableCell className="font-medium">{s.memberName}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {s.payoutMethod === "BANK"
-                      ? `Bank ...${s.bankAccountNumberLast4 ?? ""}`
-                      : s.payoutMethod === "UPI"
-                        ? s.upiId
-                        : "—"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {s.aadhaarLast4 ? `XXXX-${s.aadhaarLast4}` : "—"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{s.pan ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge className={`border-transparent font-medium ${STATUS_STYLES[s.kycStatus]}`}>
-                      {s.kycStatus.replace(/_/g, " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end">
-                      <Button size="sm" variant="outline" onClick={() => setDetailTarget(s)}>
-                        Review
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            {!isLoading && !isError && submissions.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  No KYC submissions found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataGrid
+        columns={columns}
+        data={submissions}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="Failed to load KYC submissions."
+        emptyMessage="No KYC submissions found."
+        rowKey={(s) => s.memberId ?? s.memberName ?? ""}
+        searchable
+        searchPlaceholder="Search by member name..."
+        searchKeys={["memberName"]}
+        pageSize={25}
+        quickActions={(s) => (
+          <Button size="sm" variant="outline" onClick={() => setDetailTarget(s)}>
+            Review
+          </Button>
+        )}
+      />
 
       <KycDetailSheet target={detailTarget} onOpenChange={(open) => !open && setDetailTarget(null)} />
     </div>

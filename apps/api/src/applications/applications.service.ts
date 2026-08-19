@@ -4,6 +4,7 @@ import type {
   AuthUser,
   LifecycleActionInput,
   MemberResponse,
+  PlanTier,
   RejectMemberInput,
   StatusHistoryResponse,
 } from "@nmms/shared";
@@ -86,6 +87,13 @@ export class ApplicationsService {
       await tx.statusHistory.create({
         data: { memberId: member.id, fromStatus: "APPROVED", toStatus: "ACTIVE", actorId: user.id },
       });
+      await this.referrals.awardBatchRewardForTier(
+        tx,
+        user.organizationId,
+        member.id,
+        (member.plan?.tier as PlanTier | null) ?? null,
+        member.referralPointsBalance,
+      );
       return tx.member.findUniqueOrThrow({ where: { id: member.id } });
     });
     await this.notifications.notify({

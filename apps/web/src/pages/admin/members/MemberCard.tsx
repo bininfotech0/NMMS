@@ -53,7 +53,7 @@ export function MemberCard() {
     );
   }
 
-  const batch = org ? computeVolunteerBatch(member.referralPointsBalance, org) : null;
+  const batch = computeVolunteerBatch(member.planTier);
 
   const data: CardDisplayData = {
     fullName: member.fullName,

@@ -26,6 +26,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { DonutBreakdown } from "./DonutBreakdown";
+import { DashboardSkeleton } from "./DashboardSkeleton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
 export interface DashboardSummary {
@@ -60,30 +61,40 @@ const QUICK_ACTIONS = [
 
 export function ExecutiveDashboard({
   summary,
+  isLoading,
   fieldExecDashboard,
   role,
 }: {
-  summary: DashboardSummary;
+  summary: DashboardSummary | null;
+  isLoading?: boolean;
   fieldExecDashboard?: boolean;
   role?: string;
 }) {
   const navigate = useNavigate();
 
-  const statCards = useMemo(() => [
-    { label: "Total Members", value: summary.totalMembers.toLocaleString(), trend: `+${summary.monthlyRegistrations} this month`, trendUp: true },
-    { label: "Active Members", value: summary.activeMembers.toLocaleString(), trend: `${((summary.activeMembers / Math.max(summary.totalMembers, 1)) * 100).toFixed(1)}% active`, trendUp: true },
-    { label: "Pending Approval", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
-    { label: "Total Collections", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: true },
-  ], [summary]);
+  const statCards = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Total Members", value: summary.totalMembers.toLocaleString(), trend: `+${summary.monthlyRegistrations} this month`, trendUp: true },
+      { label: "Active Members", value: summary.activeMembers.toLocaleString(), trend: `${((summary.activeMembers / Math.max(summary.totalMembers, 1)) * 100).toFixed(1)}% active`, trendUp: true },
+      { label: "Pending Approval", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
+      { label: "Total Collections", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: true },
+    ];
+  }, [summary]);
 
   const statusStats = useMemo(() => {
+    if (!summary) return [];
     const total = Object.values(summary.statusBreakdown).reduce((a, b) => a + b, 0) || 1;
     return Object.entries(summary.statusBreakdown).map(([key, value]) => ({
       key,
       value,
       percentage: ((value / total) * 100).toFixed(1),
     }));
-  }, [summary.statusBreakdown]);
+  }, [summary]);
+
+  if (isLoading || !summary) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
@@ -113,13 +124,13 @@ export function ExecutiveDashboard({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {QUICK_ACTIONS.map((action) => (
           <button
             key={action.label}
             onClick={() => navigate(action.to)}
             className={cn(
-              "flex items-center justify-between rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:shadow-md",
+              "group flex items-center justify-between rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:shadow-md active:scale-[0.99]",
               action.color,
             )}
           >
@@ -127,7 +138,7 @@ export function ExecutiveDashboard({
               <action.icon className="mb-2 size-6 opacity-90" />
               <p className="text-sm font-medium opacity-90">{action.label}</p>
             </div>
-            <ArrowRight className="size-5 opacity-70" />
+            <ArrowRight className="size-5 opacity-70 transition-transform group-hover:translate-x-0.5" />
           </button>
         ))}
       </div>
@@ -151,7 +162,7 @@ export function ExecutiveDashboard({
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-semibold">Membership Status</CardTitle>
@@ -159,7 +170,7 @@ export function ExecutiveDashboard({
           <CardContent>
             <div className="space-y-3">
               {statusStats.map((s) => (
-                <div key={s.key} className="flex items-center justify-between">
+                <div key={s.key} className="flex items-center justify-between rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-accent/40">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={s.key} />
                     <span className="text-sm text-muted-foreground">{s.key}</span>
@@ -193,17 +204,20 @@ export function ExecutiveDashboard({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="sm:col-span-2 lg:col-span-1">
           <CardHeader>
             <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {summary.recentActivity.length === 0 && (
-                <p className="text-sm text-muted-foreground py-4 text-center">No recent activity</p>
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <Activity className="size-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">No recent activity yet</p>
+                </div>
               )}
               {summary.recentActivity.slice(0, 6).map((activity) => (
-                <div key={activity.id} className="flex items-start gap-3">
+                <div key={activity.id} className="flex items-start gap-3 rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-accent/40">
                   <div className="mt-0.5">
                     <Activity className="size-4 text-muted-foreground" />
                   </div>

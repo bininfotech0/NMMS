@@ -137,6 +137,29 @@ export async function ensureActivePlan(
   return created.id;
 }
 
+// Same idea as ensureActivePlan but with a tier set — needed by any fixture
+// that exercises volunteer-batch behavior (ReferralsService.awardBatchRewardForTier
+// only fires for a tiered plan; the untiered E2E Baseline Plan above never
+// grants a batch reward on activation).
+export async function ensureTieredPlan(
+  ctx: APIRequestContext,
+  staffToken: string,
+  tier: "SILVER" | "GOLD" | "PLATINUM",
+): Promise<string> {
+  const name = `E2E ${tier} Plan`;
+  const listRes = await ctx.get("/api/v1/plans", { headers: authHeaders(staffToken) });
+  const plans = await unwrap<Array<{ id: string; name: string; isActive: boolean }>>(listRes);
+  const existing = plans.find((p) => p.isActive && p.name === name);
+  if (existing) return existing.id;
+
+  const createRes = await ctx.post("/api/v1/plans", {
+    headers: authHeaders(staffToken),
+    data: { name, tier, fee: E2E_BASELINE_PLAN_FEE, validityType: "LIFETIME" },
+  });
+  const created = await unwrap<{ id: string }>(createRes);
+  return created.id;
+}
+
 /** Staff directly registers a member (non-self-registered), left in DRAFT. */
 export async function createDraftMemberApi(
   ctx: APIRequestContext,
@@ -174,8 +197,9 @@ export async function bringMemberToSubmittedApi(
   ctx: APIRequestContext,
   actorToken: string,
   memberId: string,
+  planId?: string,
 ): Promise<void> {
-  const planId = await ensureActivePlan(ctx, actorToken);
+  planId ??= await ensureActivePlan(ctx, actorToken);
   await ctx.patch(`/api/v1/members/${memberId}`, {
     headers: authHeaders(actorToken),
     data: {
@@ -209,6 +233,7 @@ export async function createActiveMemberApi(
   params: { fullName: string; mobile: string; password: string; referralCode?: string },
   claimerToken: string,
   approverToken: string,
+  planId?: string,
 ): Promise<string> {
   const registered = await memberRegisterApi(ctx, params);
   const memberId = registered
@@ -222,7 +247,7 @@ export async function createActiveMemberApi(
   if (existing.status === "ACTIVE") return memberId;
 
   await ctx.post(`/api/v1/members/${memberId}/claim`, { headers: authHeaders(claimerToken) });
-  await bringMemberToSubmittedApi(ctx, approverToken, memberId);
+  await bringMemberToSubmittedApi(ctx, approverToken, memberId, planId);
   await ctx.post(`/api/v1/applications/${memberId}/approve`, { headers: authHeaders(approverToken) });
 
   return memberId;

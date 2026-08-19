@@ -6,14 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -23,7 +15,8 @@ import {
 } from "@/components/ui/sheet";
 import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import {
   useDeleteDocument,
   useDocuments,
@@ -77,6 +70,57 @@ export function Documents() {
     });
   }, [documents, typeFilter, search]);
 
+  const columns: DataGridColumn<MemberDocumentResponse>[] = useMemo(
+    () => [
+      { key: "memberName", header: "Member", sortable: true, cellClass: "font-medium" },
+      {
+        key: "type",
+        header: "Type",
+        render: (d) => (
+          <Badge variant="outline" className="border-transparent bg-muted font-medium">
+            {typeLabel(d.type)}
+          </Badge>
+        ),
+      },
+      { key: "fileName", header: "File", render: (d) => <span className="text-muted-foreground">{d.fileName}</span> },
+      {
+        key: "sizeBytes",
+        header: "Size",
+        sortable: true,
+        render: (d) => <span className="text-muted-foreground">{formatSize(d.sizeBytes)}</span>,
+      },
+      {
+        key: "uploadedByEmail",
+        header: "Uploaded By",
+        render: (d) => <span className="text-muted-foreground">{d.uploadedByEmail}</span>,
+      },
+      {
+        key: "createdAt",
+        header: "Date",
+        sortable: true,
+        render: (d) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {new Date(d.createdAt).toLocaleDateString()}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      filtered.map((d) => ({
+        memberName: d.memberName,
+        type: typeLabel(d.type),
+        fileName: d.fileName,
+        size: formatSize(d.sizeBytes),
+        uploadedByEmail: d.uploadedByEmail,
+        date: new Date(d.createdAt).toLocaleDateString(),
+      })),
+    [filtered],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -92,71 +136,49 @@ export function Documents() {
         </Button>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Input
-          placeholder="Search by member or file name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="sm:max-w-xs"
-        />
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        >
-          <option value={ALL}>All types</option>
-          {DOCUMENT_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {typeLabel(t)}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Input
+            placeholder="Search by member or file name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="sm:max-w-xs"
+          />
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            <option value={ALL}>All types</option>
+            {DOCUMENT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {typeLabel(t)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <ExportCsvButton filename="documents.csv" rows={exportRows} />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>File</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Uploaded By</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={7} />}
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-destructive">
-                  Failed to load documents.
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              filtered.map((d) => <DocumentRow key={d.id} doc={d} />)}
-            {!isLoading && !isError && filtered.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  {documents.length === 0
-                    ? "No documents uploaded yet."
-                    : "No documents match your filters."}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataGrid
+        columns={columns}
+        data={filtered}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="Failed to load documents."
+        emptyMessage={documents.length === 0 ? "No documents uploaded yet." : "No documents match your filters."}
+        rowKey={(d) => d.id}
+        searchable={false}
+        pageSize={25}
+        quickActions={(d) => <DocumentActions doc={d} />}
+      />
 
       <UploadDocumentSheet open={uploadOpen} onOpenChange={setUploadOpen} />
     </div>
   );
 }
 
-function DocumentRow({ doc }: { doc: MemberDocumentResponse }) {
+function DocumentActions({ doc }: { doc: MemberDocumentResponse }) {
   const deleteDocument = useDeleteDocument();
   const [downloading, setDownloading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -178,35 +200,19 @@ function DocumentRow({ doc }: { doc: MemberDocumentResponse }) {
 
   return (
     <>
-      <TableRow>
-        <TableCell className="font-medium">{doc.memberName}</TableCell>
-        <TableCell>
-          <Badge variant="outline" className="border-transparent bg-muted font-medium">
-            {typeLabel(doc.type)}
-          </Badge>
-        </TableCell>
-        <TableCell className="text-muted-foreground">{doc.fileName}</TableCell>
-        <TableCell className="text-muted-foreground">{formatSize(doc.sizeBytes)}</TableCell>
-        <TableCell className="text-muted-foreground">{doc.uploadedByEmail}</TableCell>
-        <TableCell className="text-muted-foreground whitespace-nowrap">
-          {new Date(doc.createdAt).toLocaleDateString()}
-        </TableCell>
-        <TableCell>
-          <div className="flex justify-end gap-2">
-            <Button size="icon" variant="ghost" disabled={downloading} onClick={handleDownload}>
-              <Download className="size-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setConfirmOpen(true)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </div>
-        </TableCell>
-      </TableRow>
+      <div className="flex justify-end gap-2">
+        <Button size="icon" variant="ghost" disabled={downloading} onClick={handleDownload}>
+          <Download className="size-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="text-destructive hover:text-destructive"
+          onClick={() => setConfirmOpen(true)}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}

@@ -9,18 +9,16 @@ import type {
   ReferralRewardResponse,
   ReferralSummaryResponse,
   RewardStatus,
-  VolunteerBatch,
 } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { PlanRewardsService } from "../plans/plan-rewards.service";
 import { generateReferralCode } from "./referral-code.util";
-import { batchMinPoints, computeVolunteerBatch, type VolunteerBatchThresholds } from "./volunteer-batch.util";
+import { computeVolunteerBatchFromTier, tiersUpTo } from "./volunteer-batch.util";
 
-const TIERS: VolunteerBatch[] = ["SILVER", "GOLD", "PLATINUM"];
 const MAX_CODE_ATTEMPTS = 5;
 const MAX_NETWORK_DEPTH = 5;
 
-interface ReferralSettings extends VolunteerBatchThresholds {
+interface ReferralSettings {
   referralProgramEnabled: boolean;
   pointsPerApprovedReferral: number;
   referralPointsCapPerMember: number | null;
@@ -84,16 +82,35 @@ export class ReferralsService {
     }
 
     await this.prisma.$transaction((tx) =>
-      this.creditPoints(
-        tx,
-        approvedMember.organizationId,
-        referrer.id,
-        cappedPoints,
-        "REFERRAL_APPROVED",
-        { relatedMemberId: approvedMember.id },
-        settings,
-      ),
+      this.creditPoints(tx, approvedMember.organizationId, referrer.id, cappedPoints, "REFERRAL_APPROVED", {
+        relatedMemberId: approvedMember.id,
+      }),
     );
+  }
+
+  // Called from PaymentsService.upgradePlan (staff-initiated tier change on
+  // an ACTIVE member) and ApplicationsService.approve (a member's first plan
+  // tier, on activation) — the only two places Member.planId is ever set.
+  // Grants a PENDING ReferralReward for `tier` and every lower tier not
+  // already earned (idempotent via the @@unique([memberId, batch])
+  // constraint), mirroring the old point-threshold semantics but keyed off
+  // the plan tier instead of referralPointsBalance. `pointsAtEarn` is purely
+  // an audit snapshot now — it no longer gates eligibility.
+  async awardBatchRewardForTier(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    memberId: string,
+    tier: PlanTier | null,
+    pointsAtEarn: number,
+  ): Promise<void> {
+    if (!tier) return;
+    for (const t of tiersUpTo(tier)) {
+      await tx.referralReward.upsert({
+        where: { memberId_batch: { memberId, batch: t } },
+        update: {},
+        create: { organizationId, memberId, batch: t, pointsAtEarn, status: "PENDING" },
+      });
+    }
   }
 
   // Clamps `points` so the referrer's lifetime REFERRAL_APPROVED total never
@@ -170,22 +187,21 @@ export class ReferralsService {
       return;
     }
 
-    const settings = await this.getSettings(organizationId);
     await this.prisma.$transaction(async (tx) => {
-      const member = await tx.member.update({
+      await tx.member.update({
         where: { id: memberId },
         data: { referralPointsBalance: { increment: pending.points } },
       });
       await tx.referralPointsLedger.update({ where: { id: pending.id }, data: { status: "APPROVED" } });
-      await this.upsertBatchRewards(tx, organizationId, memberId, member.referralPointsBalance, settings);
     });
   }
 
   // Shared by the referral-approval path and resolveEventEvidence: appends a
   // ledger row (already-credited APPROVED for referrals; PENDING is handled
-  // separately by recordPendingEventPoints), increments the cached balance,
-  // and upserts a PENDING ReferralReward for any newly crossed volunteer
-  // batch (idempotent via the @@unique([memberId, batch]) constraint).
+  // separately by recordPendingEventPoints) and increments the cached
+  // balance. Points no longer drive volunteer batch/rewards — see
+  // awardBatchRewardForTier — so this purely tracks the wallet used for
+  // withdrawals and the leaderboard.
   private async creditPoints(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -193,9 +209,8 @@ export class ReferralsService {
     points: number,
     reason: "REFERRAL_APPROVED" | "EVENT_TARGET_COMPLETED",
     related: { relatedMemberId?: string; relatedEventRegistrationId?: string },
-    thresholds: VolunteerBatchThresholds,
   ): Promise<void> {
-    const member = await tx.member.update({
+    await tx.member.update({
       where: { id: memberId },
       data: { referralPointsBalance: { increment: points } },
     });
@@ -209,32 +224,6 @@ export class ReferralsService {
         relatedEventRegistrationId: related.relatedEventRegistrationId,
       },
     });
-
-    await this.upsertBatchRewards(tx, organizationId, memberId, member.referralPointsBalance, thresholds);
-  }
-
-  private async upsertBatchRewards(
-    tx: Prisma.TransactionClient,
-    organizationId: string,
-    memberId: string,
-    balance: number,
-    thresholds: VolunteerBatchThresholds,
-  ): Promise<void> {
-    for (const tier of TIERS) {
-      if (balance >= batchMinPoints(tier, thresholds)) {
-        await tx.referralReward.upsert({
-          where: { memberId_batch: { memberId, batch: tier } },
-          update: {},
-          create: {
-            organizationId,
-            memberId,
-            batch: tier,
-            pointsAtEarn: balance,
-            status: "PENDING",
-          },
-        });
-      }
-    }
   }
 
   async ensureReferralCode(memberId: string): Promise<string> {
@@ -258,13 +247,15 @@ export class ReferralsService {
   }
 
   async getMySummary(memberId: string): Promise<ReferralSummaryResponse> {
-    const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
+    const member = await this.prisma.member.findUniqueOrThrow({
+      where: { id: memberId },
+      include: { plan: { select: { tier: true } } },
+    });
     // Only members whose own membership is ACTIVE can refer others — a
     // pending/draft self-registration sees no code until staff approve them.
     const referralCode = member.status === "ACTIVE" ? await this.ensureReferralCode(memberId) : null;
 
-    const settings = await this.getSettings(member.organizationId);
-    const { batch, nextBatch, pointsToNextBatch } = computeVolunteerBatch(member.referralPointsBalance, settings);
+    const { batch, nextBatch } = computeVolunteerBatchFromTier((member.plan?.tier as PlanTier | null) ?? null);
 
     const referrals = await this.prisma.member.findMany({
       where: { referralMemberId: memberId },
@@ -277,7 +268,9 @@ export class ReferralsService {
       pointsBalance: member.referralPointsBalance,
       batch,
       nextBatch,
-      pointsToNextBatch,
+      // No longer points-based — a member reaches the next batch by
+      // upgrading their plan, not by earning more points.
+      pointsToNextBatch: null,
       referrals,
     };
   }
@@ -401,17 +394,17 @@ export class ReferralsService {
         id: true,
         fullName: true,
         referralPointsBalance: true,
+        plan: { select: { tier: true } },
         _count: { select: { referrals: true } },
       },
       orderBy: { referralPointsBalance: "desc" },
       take: limit,
     });
-    const settings = await this.getSettings(organizationId);
     return members.map((member) => ({
       memberId: member.id,
       fullName: member.fullName,
       pointsBalance: member.referralPointsBalance,
-      batch: computeVolunteerBatch(member.referralPointsBalance, settings).batch,
+      batch: computeVolunteerBatchFromTier((member.plan?.tier as PlanTier | null) ?? null).batch,
       referralCount: member._count.referrals,
     }));
   }

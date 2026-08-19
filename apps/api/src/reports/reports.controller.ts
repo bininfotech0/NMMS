@@ -8,6 +8,10 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { ReportsService } from "./reports.service";
 
 const REVIEWER_ROLES = [Role.ADMIN, Role.SUPER_ADMIN] as const;
+// summary() scopes by buildJurisdictionWhere, so a field executive gets back
+// only their own members/payments — safe to expose, unlike the detailed
+// reports below which return org-wide listings not meant for their view.
+const SUMMARY_ROLES = [Role.ADMIN, Role.SUPER_ADMIN, Role.FIELD_EXECUTIVE] as const;
 
 @ApiTags("reports")
 @ApiBearerAuth()
@@ -17,7 +21,7 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get("summary")
-  @Roles(...REVIEWER_ROLES)
+  @Roles(...SUMMARY_ROLES)
   summary(@CurrentUser() user: AuthUser) {
     return this.reportsService.summary(user);
   }

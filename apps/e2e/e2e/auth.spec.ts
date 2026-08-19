@@ -7,7 +7,7 @@ import { SEED_SUPER_ADMIN, uniqueAadhaar, uniqueMobile } from "./support/constan
 
 test.describe("staff login", () => {
   test("valid credentials land on the dashboard", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/admin/login");
     await page.getByLabel("Email").fill(SEED_SUPER_ADMIN.email);
     await page.getByLabel("Password").fill(SEED_SUPER_ADMIN.password);
     await page.getByRole("button", { name: "Sign In" }).click();
@@ -15,37 +15,37 @@ test.describe("staff login", () => {
     await expect(page.getByRole("heading", { name: /dashboard/i }).first()).toBeVisible();
   });
 
-  test("invalid password shows an inline error and stays on /login", async ({ page }) => {
-    await page.goto("/login");
+  test("invalid password shows an inline error and stays on /admin/login", async ({ page }) => {
+    await page.goto("/admin/login");
     await page.getByLabel("Email").fill(SEED_SUPER_ADMIN.email);
     await page.getByLabel("Password").fill("definitely-wrong-password");
     await page.getByRole("button", { name: "Sign In" }).click();
     await expect(page.getByText(/invalid|incorrect|unauthorized/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/admin\/login$/);
   });
 
   test("empty fields are blocked by required-field validation", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/admin/login");
     // The email field ships pre-filled with a placeholder admin address —
     // clear it explicitly so both required fields are genuinely empty.
     await page.getByLabel("Email").fill("");
     const passwordInput = page.getByLabel("Password");
     await page.getByRole("button", { name: "Sign In" }).click();
     // Native HTML5 validation keeps us on the page; the browser never fires
-    // the submit handler, so the URL never leaves /login.
-    await expect(page).toHaveURL(/\/login$/);
+    // the submit handler, so the URL never leaves /admin/login.
+    await expect(page).toHaveURL(/\/admin\/login$/);
     await expect(passwordInput).toHaveJSProperty("validity.valid", false);
   });
 });
 
 test.describe("member login", () => {
   test("invalid credentials show an inline error", async ({ page }) => {
-    await page.goto("/member/login");
+    await page.goto("/login");
     await page.getByLabel("Mobile number").fill("9999999999");
     await page.getByLabel("Password").fill("wrong-password");
     await page.getByRole("button", { name: "Sign In" }).click();
     await expect(page.getByText(/invalid|incorrect|unauthorized/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/member\/login$/);
+    await expect(page).toHaveURL(/\/login$/);
   });
 
   test("valid credentials land on the member dashboard", async ({ page }) => {
@@ -59,7 +59,7 @@ test.describe("member login", () => {
     await page.getByRole("button", { name: "Join now" }).click();
     await page.waitForURL("**/member");
     await page.getByRole("button", { name: "Sign out" }).click();
-    await page.waitForURL("**/member/login");
+    await page.waitForURL("**/login");
 
     await page.getByLabel("Mobile number").fill(mobile);
     await page.getByLabel("Password").fill(password);
@@ -116,26 +116,26 @@ test.describe("self-registration", () => {
 });
 
 test.describe("logout", () => {
-  test("staff sidebar logout returns to /login", async ({ page }) => {
-    await page.goto("/login");
+  test("staff sidebar logout returns to /admin/login", async ({ page }) => {
+    await page.goto("/admin/login");
     await page.getByLabel("Email").fill(SEED_SUPER_ADMIN.email);
     await page.getByLabel("Password").fill(SEED_SUPER_ADMIN.password);
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/admin");
     await page.getByRole("button", { name: "Logout" }).click();
-    await page.waitForURL("**/login");
+    await page.waitForURL("**/admin/login");
   });
 });
 
 test.describe("route guards", () => {
-  test("unauthenticated /admin redirects to /login", async ({ page }) => {
+  test("unauthenticated /admin redirects to /admin/login", async ({ page }) => {
     await page.goto("/admin");
-    await page.waitForURL("**/login");
+    await page.waitForURL("**/admin/login");
   });
 
-  test("unauthenticated /member redirects to /member/login", async ({ page }) => {
+  test("unauthenticated /member redirects to /login", async ({ page }) => {
     await page.goto("/member");
-    await page.waitForURL("**/member/login");
+    await page.waitForURL("**/login");
   });
 });
 

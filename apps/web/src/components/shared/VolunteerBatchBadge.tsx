@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, titleCase } from "@/lib/utils";
 import type { VolunteerBatch } from "@nmms/shared";
 
 const BATCH_STYLES: Record<VolunteerBatch, string> = {
@@ -18,7 +18,7 @@ export function VolunteerBatchBadge({ batch, className }: { batch: VolunteerBatc
   }
   return (
     <Badge variant="outline" className={cn(BATCH_STYLES[batch], className)}>
-      {batch.charAt(0) + batch.slice(1).toLowerCase()}
+      {titleCase(batch)}
     </Badge>
   );
 }

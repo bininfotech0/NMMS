@@ -29,6 +29,20 @@ export interface GetOrderResult extends CreateOrderResult {
   notes: Record<string, string>;
 }
 
+export interface CreatePaymentLinkInput extends RazorpayCredentials {
+  amountPaise: number;
+  currency: string;
+  description: string;
+  referenceId: string;
+  customer: { name: string; contact?: string; email?: string };
+  notes: Record<string, string>;
+}
+
+export interface CreatePaymentLinkResult {
+  id: string;
+  shortUrl: string;
+}
+
 // Thin wrapper around Razorpay's REST API — deliberately no SDK dependency,
 // since order creation is one POST and signature verification is plain HMAC.
 @Injectable()
@@ -91,6 +105,42 @@ export class RazorpayProvider {
       status: data.status ?? "",
       notes: data.notes ?? {},
     };
+  }
+
+  // Payment Links are Razorpay-hosted checkout pages (a `short_url`) that need
+  // no client-side integration at all — unlike createOrder(), which requires
+  // the frontend to embed Razorpay Checkout. Used for the "Share for Pay"
+  // flow: the link is handed to the member to complete on their own device.
+  // Same webhook/notes-based attribution as orders (a payment link creates an
+  // underlying order, so payment.captured events carry these notes too).
+  async createPaymentLink(input: CreatePaymentLinkInput): Promise<CreatePaymentLinkResult> {
+    const auth = Buffer.from(`${input.keyId}:${input.keySecret}`).toString("base64");
+    const res = await fetch("https://api.razorpay.com/v1/payment_links", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: input.amountPaise,
+        currency: input.currency,
+        description: input.description,
+        reference_id: input.referenceId,
+        customer: input.customer,
+        notify: { sms: !!input.customer.contact, email: !!input.customer.email },
+        reminder_enable: true,
+        notes: input.notes,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      this.logger.error(`Razorpay payment link creation failed (${res.status}): ${body}`);
+      throw new Error("Payment link creation failed");
+    }
+
+    const data = (await res.json()) as { id: string; short_url: string };
+    return { id: data.id, shortUrl: data.short_url };
   }
 
   // Verifies the checkout-callback signature: HMAC-SHA256("orderId|paymentId", keySecret).

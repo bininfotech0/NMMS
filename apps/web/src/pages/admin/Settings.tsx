@@ -282,9 +282,6 @@ function ReferralProgramSettings() {
   const [form, setForm] = useState({
     referralProgramEnabled: false,
     pointsPerApprovedReferral: "10",
-    volunteerBatchSilverMinPoints: "0",
-    volunteerBatchGoldMinPoints: "500",
-    volunteerBatchPlatinumMinPoints: "2000",
     referralPointsCapPerMember: "",
     referralRequireActiveReferrerPlan: true,
     pointsToMoneyRatioPoints: "100",
@@ -298,9 +295,6 @@ function ReferralProgramSettings() {
     setForm({
       referralProgramEnabled: org.referralProgramEnabled,
       pointsPerApprovedReferral: String(org.pointsPerApprovedReferral),
-      volunteerBatchSilverMinPoints: String(org.volunteerBatchSilverMinPoints),
-      volunteerBatchGoldMinPoints: String(org.volunteerBatchGoldMinPoints),
-      volunteerBatchPlatinumMinPoints: String(org.volunteerBatchPlatinumMinPoints),
       referralPointsCapPerMember:
         org.referralPointsCapPerMember != null ? String(org.referralPointsCapPerMember) : "",
       referralRequireActiveReferrerPlan: org.referralRequireActiveReferrerPlan,
@@ -316,9 +310,6 @@ function ReferralProgramSettings() {
     if (
       hasBlankField([
         form.pointsPerApprovedReferral,
-        form.volunteerBatchSilverMinPoints,
-        form.volunteerBatchGoldMinPoints,
-        form.volunteerBatchPlatinumMinPoints,
         form.pointsToMoneyRatioPoints,
         form.pointsToMoneyRatioAmount,
       ])
@@ -330,9 +321,6 @@ function ReferralProgramSettings() {
       await updateOrg.mutateAsync({
         referralProgramEnabled: form.referralProgramEnabled,
         pointsPerApprovedReferral: Number(form.pointsPerApprovedReferral),
-        volunteerBatchSilverMinPoints: Number(form.volunteerBatchSilverMinPoints),
-        volunteerBatchGoldMinPoints: Number(form.volunteerBatchGoldMinPoints),
-        volunteerBatchPlatinumMinPoints: Number(form.volunteerBatchPlatinumMinPoints),
         referralPointsCapPerMember:
           form.referralPointsCapPerMember === "" ? null : Number(form.referralPointsCapPerMember),
         referralRequireActiveReferrerPlan: form.referralRequireActiveReferrerPlan,
@@ -406,42 +394,10 @@ function ReferralProgramSettings() {
                 Used when the referral point matrix below has no cell for the two members' plan tiers.
               </p>
             </div>
-            <div />
-            <div className="space-y-1.5">
-              <Label htmlFor="volunteerBatchSilverMinPoints">Silver batch — minimum points</Label>
-              <Input
-                id="volunteerBatchSilverMinPoints"
-                type="number"
-                min="0"
-                value={form.volunteerBatchSilverMinPoints}
-                onChange={(e) => setForm((f) => ({ ...f, volunteerBatchSilverMinPoints: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="volunteerBatchGoldMinPoints">Gold batch — minimum points</Label>
-              <Input
-                id="volunteerBatchGoldMinPoints"
-                type="number"
-                min="0"
-                value={form.volunteerBatchGoldMinPoints}
-                onChange={(e) => setForm((f) => ({ ...f, volunteerBatchGoldMinPoints: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="volunteerBatchPlatinumMinPoints">Platinum batch — minimum points</Label>
-              <Input
-                id="volunteerBatchPlatinumMinPoints"
-                type="number"
-                min="0"
-                value={form.volunteerBatchPlatinumMinPoints}
-                onChange={(e) => setForm((f) => ({ ...f, volunteerBatchPlatinumMinPoints: e.target.value }))}
-              />
-            </div>
           </div>
           <p className="mt-4 text-xs text-muted-foreground">
-            A member's volunteer batch is recalculated from these thresholds every time they're viewed —
-            changing a threshold re-batches everyone immediately. This is separate from a member's paid
-            Membership Plan tier.
+            A member's volunteer batch mirrors their paid Membership Plan tier — it's granted automatically
+            when a member is activated or their plan is upgraded, and isn't configurable here.
           </p>
         </section>
 

@@ -69,6 +69,7 @@ export function useUpgradeMemberPlan() {
       queryClient.setQueryData(["members", data.id], data);
       queryClient.invalidateQueries({ queryKey: ["members", data.id, "payments"] });
       queryClient.invalidateQueries({ queryKey: ["members", data.id, "status-history"] });
+      queryClient.invalidateQueries({ queryKey: ["members", data.id, "card-token"] });
       toast.success("Membership plan upgraded");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to upgrade plan")),

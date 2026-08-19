@@ -39,7 +39,6 @@ import {
 } from "@/hooks/useMembers";
 import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
 import { useGenerateReferralCode, useReferralNetwork } from "@/hooks/useReferrals";
-import { useOrgProfile } from "@/hooks/useOrg";
 import { usePlans } from "@/hooks/usePlans";
 import { useAuthStore } from "@/stores/auth";
 import { PLAN_TIER_ORDER, Role, type MemberResponse, type PaymentMode, type PlanTier } from "@nmms/shared";
@@ -510,8 +509,7 @@ const REFERRAL_SHARE_MESSAGE = "Join our membership program using this referral 
 function ReferralsTab({ member }: { member: MemberResponse }) {
   const { data: network, isLoading } = useReferralNetwork(member.status === "ACTIVE" ? member.id : null);
   const { data: referrer } = useMember(member.referralMemberId);
-  const { data: org } = useOrgProfile();
-  const batch = org ? computeVolunteerBatch(member.referralPointsBalance, org) : null;
+  const batch = computeVolunteerBatch(member.planTier);
   const user = useAuthStore((state) => state.user);
   const generateCode = useGenerateReferralCode();
 

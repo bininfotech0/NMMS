@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type {
   GatewayOrderResponse,
   GatewayStatusResponse,
+  PaymentLinkResponse,
   PaymentResponse,
   VerifyGatewayPaymentInput,
 } from "@nmms/shared";
@@ -22,6 +23,14 @@ export function useCreateGatewayOrder() {
     mutationFn: (memberId: string) =>
       apiFetch<GatewayOrderResponse>(`/members/${memberId}/payments/gateway/order`, { method: "POST" }),
     onError: (err) => toast.error(errorMessage(err, "Failed to start online payment")),
+  });
+}
+
+export function useCreatePaymentLink() {
+  return useMutation({
+    mutationFn: (memberId: string) =>
+      apiFetch<PaymentLinkResponse>(`/members/${memberId}/payments/gateway/payment-link`, { method: "POST" }),
+    onError: (err) => toast.error(errorMessage(err, "Failed to create payment link")),
   });
 }
 

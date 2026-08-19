@@ -58,3 +58,11 @@ export const gatewayStatusResponseSchema = z.object({
   enabled: z.boolean(),
 });
 export type GatewayStatusResponse = z.infer<typeof gatewayStatusResponseSchema>;
+
+// Razorpay Payment Link — a hosted checkout page shared with the member
+// (WhatsApp/SMS/copy) so they can pay on their own device, as opposed to
+// gatewayOrderResponseSchema which is embedded checkout completed in-app.
+export const paymentLinkResponseSchema = z.object({
+  shortUrl: z.string(),
+});
+export type PaymentLinkResponse = z.infer<typeof paymentLinkResponseSchema>;

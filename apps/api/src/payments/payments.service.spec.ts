@@ -7,13 +7,15 @@ function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
   const numbering = { nextReceiptNumber: jest.fn().mockResolvedValue("RCPT-2026-00001") };
   const membersService = { findOne: jest.fn() };
   const notifications = { notify: jest.fn().mockResolvedValue(undefined) };
+  const referrals = { awardBatchRewardForTier: jest.fn().mockResolvedValue(undefined) };
   const service = new PaymentsService(
     prisma as never,
     numbering as never,
     membersService as never,
     notifications as never,
+    referrals as never,
   );
-  return { service, numbering, membersService, notifications };
+  return { service, numbering, membersService, notifications, referrals };
 }
 
 const monthsPlan = { validityType: "MONTHS", validityMonths: 12, fee: decimal(500) };

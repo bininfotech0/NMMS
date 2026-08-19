@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   bringMemberToSubmittedApi,
   createActiveMemberApi,
+  ensureTieredPlan,
   newApiContext,
   staffLoginApi,
 } from "./support/api";
@@ -31,11 +32,17 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
     data: { pointsPerApprovedReferral: 10 },
   });
 
+  // A SILVER-tier plan so the referrer's own activation grants their Silver
+  // volunteer-batch reward (ReferralsService.awardBatchRewardForTier) — the
+  // untiered E2E Baseline Plan never does, since batch/rewards are now keyed
+  // off plan tier rather than referral points earned.
+  const silverPlanId = await ensureTieredPlan(apiCtx, admin.accessToken, "SILVER");
   const referrerId = await createActiveMemberApi(
     apiCtx,
     { fullName: referrerName, mobile: referrerMobile, password: referrerPassword },
     admin.accessToken,
     admin.accessToken,
+    silverPlanId,
   );
 
   // The "correct answer" for the referral link — fetched independently via
@@ -52,7 +59,7 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   const memberAContext = await browser.newContext();
   await memberAContext.grantPermissions(["clipboard-read", "clipboard-write"]);
   const memberAPage = await memberAContext.newPage();
-  await memberAPage.goto("/member/login");
+  await memberAPage.goto("/login");
   await memberAPage.getByLabel("Mobile number").fill(referrerMobile);
   await memberAPage.getByLabel("Password").fill(referrerPassword);
   await memberAPage.getByRole("button", { name: "Sign In" }).click();
@@ -95,11 +102,14 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   await bringMemberToSubmittedApi(apiCtx, fe.accessToken, refereeId);
   await apiCtx.post(`/api/v1/applications/${refereeId}/approve`, { headers: authHeaders(fe.accessToken) });
 
-  // 5. Referrer A's Wallet/Rewards reflect the new points and rank.
+  // 5. Referrer A's Wallet reflects the new points from the referee's approval.
   await memberAPage.goto("/member/wallet");
   await expect(memberAPage.getByText(new RegExp(`${refereeName} joined and was approved`))).toBeVisible();
   await expect(memberAPage.getByText("+10", { exact: true })).toBeVisible();
 
+  // Volunteer batch/rewards no longer come from points — Referrer A's Silver
+  // reward was granted back at their own activation (SILVER-tier plan above),
+  // independent of the referral just completed.
   await memberAPage.goto("/member/rewards");
   await expect(memberAPage.getByText("Silver", { exact: true }).first()).toBeVisible();
   await memberAContext.close();

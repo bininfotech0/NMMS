@@ -1,16 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -20,8 +12,8 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { ApiError } from "@/lib/api-client";
 import { useApplicationsQueue, useApproveApplication, useRejectApplication } from "@/hooks/useApplications";
 import { useClaimMember, useUnclaimedReferrals } from "@/hooks/useMembers";
@@ -52,99 +44,92 @@ export function Applications() {
   const forbidden = isError && error instanceof ApiError && error.status === 403;
   const canClaim = !!user && CAN_CLAIM.includes(user.role);
 
+  const columns: DataGridColumn<MemberResponse>[] = useMemo(
+    () => [
+      { key: "fullName", header: "Member", sortable: true, cellClass: "font-medium" },
+      { key: "mobile", header: "Mobile", sortable: true },
+      { key: "status", header: "Status", sortable: true },
+      {
+        key: "createdAt",
+        header: "Last Updated",
+        sortable: true,
+        render: (member) => (
+          <span className="text-muted-foreground">{new Date(member.createdAt).toLocaleDateString()}</span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      queue.map((m) => ({
+        fullName: m.fullName,
+        mobile: m.mobile,
+        status: m.status,
+        lastUpdated: new Date(m.createdAt).toLocaleDateString(),
+      })),
+    [queue],
+  );
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-bold">Applications</h1>
-        <p className="text-sm text-muted-foreground">
-          {queue.length} application{queue.length === 1 ? "" : "s"} awaiting review
-        </p>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="font-heading text-2xl font-bold">Applications</h1>
+          <p className="text-sm text-muted-foreground">
+            {queue.length} application{queue.length === 1 ? "" : "s"} awaiting review
+          </p>
+        </div>
+        <ExportCsvButton filename="applications.csv" rows={exportRows} />
       </div>
 
       {canClaim && <UnclaimedReferralsCard />}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Mobile</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last Updated</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={5} />}
-            {forbidden && (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  You don't have permission to review applications.
-                </TableCell>
-              </TableRow>
-            )}
-            {isError && !forbidden && (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-destructive">
-                  Failed to load applications.
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              queue.map((member) => {
-                const canApprove = member.status === "SUBMITTED" && canReviewMember(user?.role, member);
-                const canReject = canApprove;
-
-                return (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">{member.fullName}</TableCell>
-                    <TableCell className="text-muted-foreground">{member.mobile}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={member.status} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(member.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        {canApprove && (
-                          <Button
-                            size="sm"
-                            className="bg-brand-green hover:bg-brand-green/90"
-                            disabled={approve.isPending}
-                            onClick={() => approve.mutate(member.id)}
-                          >
-                            <Check className="size-4" />
-                            Approve
-                          </Button>
-                        )}
-                        {canReject && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setRejectTarget(member)}
-                          >
-                            <X className="size-4" />
-                            Reject
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            {!isLoading && !isError && queue.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  No applications to review.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataGrid
+        columns={columns}
+        data={queue}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage={forbidden ? "You don't have permission to review applications." : "Failed to load applications."}
+        emptyMessage="No applications to review."
+        rowKey={(m) => m.id}
+        searchable
+        searchPlaceholder="Search by name or mobile..."
+        searchKeys={["fullName", "mobile"]}
+        statusKey="status"
+        pageSize={25}
+        quickActions={(member) => {
+          const canApprove = member.status === "SUBMITTED" && canReviewMember(user?.role, member);
+          const canReject = canApprove;
+          return (
+            <div className="flex justify-end gap-2">
+              {canApprove && (
+                <Button
+                  size="sm"
+                  className="bg-brand-green hover:bg-brand-green/90"
+                  disabled={approve.isPending}
+                  onClick={() => approve.mutate(member.id)}
+                >
+                  <Check className="size-4" />
+                  Approve
+                </Button>
+              )}
+              {canReject && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setRejectTarget(member)}
+                >
+                  <X className="size-4" />
+                  Reject
+                </Button>
+              )}
+            </div>
+          );
+        }}
+      />
 
       <RejectSheet member={rejectTarget} onOpenChange={(open) => !open && setRejectTarget(null)} />
     </div>

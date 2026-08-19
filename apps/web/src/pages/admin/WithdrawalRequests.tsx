@@ -1,17 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, Landmark, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -20,7 +12,8 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
+import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -64,11 +57,79 @@ export function WithdrawalRequests() {
   const [payTarget, setPayTarget] = useState<WithdrawalRequestResponse | null>(null);
   const [approveTarget, setApproveTarget] = useState<WithdrawalRequestResponse | null>(null);
 
+  const columns: DataGridColumn<WithdrawalRequestResponse>[] = useMemo(
+    () => [
+      { key: "memberName", header: "Member", sortable: true, cellClass: "font-medium" },
+      {
+        key: "pointsRequested",
+        header: "Points",
+        sortable: true,
+        render: (r) => <span className="text-muted-foreground">{r.pointsRequested}</span>,
+      },
+      {
+        key: "grossAmount",
+        header: "Gross",
+        sortable: true,
+        render: (r) => <span className="text-muted-foreground">₹{r.grossAmount}</span>,
+      },
+      {
+        key: "chargeAmount",
+        header: "Charge",
+        render: (r) => <span className="text-muted-foreground">₹{r.chargeAmount}</span>,
+      },
+      { key: "netAmount", header: "Net", sortable: true, cellClass: "font-medium", render: (r) => `₹${r.netAmount}` },
+      {
+        key: "payoutMethod",
+        header: "Method",
+        render: (r) => (
+          <span className="text-muted-foreground">
+            {r.payoutMethod === "BANK" ? `Bank ...${r.payoutBankAccountNumberLast4 ?? ""}` : r.payoutUpiId}
+          </span>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        sortable: true,
+        render: (r) => (
+          <Badge className={`border-transparent font-medium ${STATUS_STYLES[r.status]}`}>
+            {r.status[0] + r.status.slice(1).toLowerCase().replace(/_/g, " ")}
+          </Badge>
+        ),
+      },
+      {
+        key: "createdAt",
+        header: "Requested",
+        sortable: true,
+        render: (r) => <span className="text-muted-foreground">{new Date(r.createdAt).toLocaleDateString()}</span>,
+      },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(
+    () =>
+      requests.map((r) => ({
+        memberName: r.memberName ?? "",
+        pointsRequested: r.pointsRequested,
+        grossAmount: r.grossAmount,
+        chargeAmount: r.chargeAmount,
+        netAmount: r.netAmount,
+        payoutMethod: r.payoutMethod === "BANK" ? `Bank ...${r.payoutBankAccountNumberLast4 ?? ""}` : (r.payoutUpiId ?? ""),
+        status: r.status,
+        requestedAt: new Date(r.createdAt).toLocaleDateString(),
+      })),
+    [requests],
+  );
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-bold">Withdrawal Requests</h1>
-        <p className="text-sm text-muted-foreground">Review and process member withdrawal requests</p>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="font-heading text-2xl font-bold">Withdrawal Requests</h1>
+          <p className="text-sm text-muted-foreground">Review and process member withdrawal requests</p>
+        </div>
+        <ExportCsvButton filename="withdrawal-requests.csv" rows={exportRows} />
       </div>
 
       <div className="flex gap-1 border-b border-border">
@@ -87,141 +148,96 @@ export function WithdrawalRequests() {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Points</TableHead>
-              <TableHead>Gross</TableHead>
-              <TableHead>Charge</TableHead>
-              <TableHead>Net</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Requested</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableSkeleton columns={9} />}
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={9} className="py-10 text-center text-destructive">
-                  Failed to load withdrawal requests.
-                </TableCell>
-              </TableRow>
+      <DataGrid
+        columns={columns}
+        data={requests}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="Failed to load withdrawal requests."
+        emptyMessage="No withdrawal requests found."
+        rowKey={(r) => r.id}
+        searchable
+        searchPlaceholder="Search by member name..."
+        searchKeys={["memberName"]}
+        pageSize={25}
+        quickActions={(r) => (
+          <div className="flex justify-end gap-2">
+            {r.status === "PENDING" && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setApproveTarget(r)}>
+                  <Check className="size-4" />
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setRejectTarget(r)}
+                >
+                  Reject
+                </Button>
+              </>
             )}
-            {!isLoading &&
-              !isError &&
-              requests.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.memberName}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.pointsRequested}</TableCell>
-                  <TableCell className="text-muted-foreground">₹{r.grossAmount}</TableCell>
-                  <TableCell className="text-muted-foreground">₹{r.chargeAmount}</TableCell>
-                  <TableCell className="font-medium">₹{r.netAmount}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {r.payoutMethod === "BANK"
-                      ? `Bank ...${r.payoutBankAccountNumberLast4 ?? ""}`
-                      : r.payoutUpiId}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={`border-transparent font-medium ${STATUS_STYLES[r.status]}`}>
-                      {r.status[0] + r.status.slice(1).toLowerCase().replace(/_/g, " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(r.createdAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2">
-                      {r.status === "PENDING" && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => setApproveTarget(r)}>
-                            <Check className="size-4" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setRejectTarget(r)}
-                          >
-                            Reject
-                          </Button>
-                        </>
-                      )}
-                      {r.status === "APPROVED" && (
-                        <>
-                          {gatewayStatus?.enabled && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={initiatePayout.isPending}
-                              onClick={() => initiatePayout.mutate(r.id)}
-                            >
-                              <Send className="size-4" />
-                              Send Payout
-                            </Button>
-                          )}
-                          <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
-                            <Landmark className="size-4" />
-                            Mark Paid
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setRejectTarget(r)}
-                          >
-                            Reject
-                          </Button>
-                        </>
-                      )}
-                      {r.status === "PAYOUT_PROCESSING" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={checkPayoutStatus.isPending}
-                          onClick={() => checkPayoutStatus.mutate(r.id)}
-                        >
-                          <RefreshCw className="size-4" />
-                          Check Status
-                        </Button>
-                      )}
-                      {r.status === "PAYOUT_FAILED" && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
-                            <Landmark className="size-4" />
-                            Mark Paid
-                          </Button>
-                          {gatewayStatus?.enabled && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={initiatePayout.isPending}
-                              onClick={() => initiatePayout.mutate(r.id)}
-                            >
-                              <Send className="size-4" />
-                              Retry Payout
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            {!isLoading && !isError && requests.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
-                  No withdrawal requests found.
-                </TableCell>
-              </TableRow>
+            {r.status === "APPROVED" && (
+              <>
+                {gatewayStatus?.enabled && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={initiatePayout.isPending}
+                    onClick={() => initiatePayout.mutate(r.id)}
+                  >
+                    <Send className="size-4" />
+                    Send Payout
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
+                  <Landmark className="size-4" />
+                  Mark Paid
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setRejectTarget(r)}
+                >
+                  Reject
+                </Button>
+              </>
             )}
-          </TableBody>
-        </Table>
-      </div>
+            {r.status === "PAYOUT_PROCESSING" && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={checkPayoutStatus.isPending}
+                onClick={() => checkPayoutStatus.mutate(r.id)}
+              >
+                <RefreshCw className="size-4" />
+                Check Status
+              </Button>
+            )}
+            {r.status === "PAYOUT_FAILED" && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
+                  <Landmark className="size-4" />
+                  Mark Paid
+                </Button>
+                {gatewayStatus?.enabled && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={initiatePayout.isPending}
+                    onClick={() => initiatePayout.mutate(r.id)}
+                  >
+                    <Send className="size-4" />
+                    Retry Payout
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      />
 
       <ConfirmDialog
         open={approveTarget !== null}

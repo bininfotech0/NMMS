@@ -30,9 +30,7 @@ test.describe("settings — admin", () => {
     await expect(page.getByLabel("Account number")).toHaveValue("123456789012");
   });
 
-  test("Referral Program tab: toggle, points, and thresholds save (rejecting inverted thresholds)", async ({
-    page,
-  }) => {
+  test("Referral Program tab: toggle and points save", async ({ page }) => {
     await page.goto("/admin/settings");
     await page.getByRole("button", { name: "Referral Program" }).click();
 
@@ -44,22 +42,13 @@ test.describe("settings — admin", () => {
     await toggle.click(); // restore
     await expect(toggle).toHaveText(initialState ?? "");
 
+    // Volunteer batch now mirrors the member's plan tier directly (granted on
+    // activation/upgrade) — there's no points-threshold form here anymore.
     await page.getByLabel("Points per approved referral").fill("15");
     await page.getByRole("button", { name: "Save Changes" }).click();
     await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
 
-    // Thresholds must be non-decreasing (Silver <= Gold <= Platinum) —
-    // saving Gold below Silver is rejected with an inline error, not saved.
-    await page.getByLabel("Silver batch — minimum points").fill("1000");
-    await page.getByLabel("Gold batch — minimum points").fill("100");
-    await page.getByRole("button", { name: "Save Changes" }).click();
-    await expect(page.getByRole("main").getByText(/non-decreasing/i)).toBeVisible();
-
-    // Restore sane, valid values.
     await page.getByLabel("Points per approved referral").fill("10");
-    await page.getByLabel("Silver batch — minimum points").fill("0");
-    await page.getByLabel("Gold batch — minimum points").fill("500");
-    await page.getByLabel("Platinum batch — minimum points").fill("2000");
     await page.getByRole("button", { name: "Save Changes" }).click();
     await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   });

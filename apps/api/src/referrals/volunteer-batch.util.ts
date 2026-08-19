@@ -1,47 +1,27 @@
-import type { VolunteerBatch } from "@nmms/shared";
-
-export interface VolunteerBatchThresholds {
-  volunteerBatchSilverMinPoints: number;
-  volunteerBatchGoldMinPoints: number;
-  volunteerBatchPlatinumMinPoints: number;
-}
+import { PLAN_TIER_ORDER, type PlanTier, type VolunteerBatch } from "@nmms/shared";
 
 export interface VolunteerBatchInfo {
   batch: VolunteerBatch | null;
   nextBatch: VolunteerBatch | null;
-  pointsToNextBatch: number | null;
 }
 
-const TIER_ORDER: VolunteerBatch[] = ["SILVER", "GOLD", "PLATINUM"];
-
-export function batchMinPoints(batch: VolunteerBatch, thresholds: VolunteerBatchThresholds): number {
-  switch (batch) {
-    case "SILVER":
-      return thresholds.volunteerBatchSilverMinPoints;
-    case "GOLD":
-      return thresholds.volunteerBatchGoldMinPoints;
-    case "PLATINUM":
-      return thresholds.volunteerBatchPlatinumMinPoints;
+// Volunteer batch mirrors the member's current paid membership plan tier —
+// previously computed from referralPointsBalance against org-configured
+// thresholds, switched so a plan upgrade is what actually changes the badge.
+// See ReferralsService.awardBatchRewardForTier for where rewards are granted
+// (PaymentsService.upgradePlan / ApplicationsService.approve, the two places
+// a member's planId is ever set).
+export function computeVolunteerBatchFromTier(tier: PlanTier | null): VolunteerBatchInfo {
+  if (!tier) {
+    return { batch: null, nextBatch: PLAN_TIER_ORDER[0] };
   }
+  const idx = PLAN_TIER_ORDER.indexOf(tier);
+  const nextBatch = idx < PLAN_TIER_ORDER.length - 1 ? PLAN_TIER_ORDER[idx + 1] : null;
+  return { batch: tier, nextBatch };
 }
 
-// Volunteer batch is always derived from the current points balance against
-// the org's configured thresholds — never stored — so editing a threshold
-// retroactively re-batches everyone.
-export function computeVolunteerBatch(points: number, thresholds: VolunteerBatchThresholds): VolunteerBatchInfo {
-  let batch: VolunteerBatch | null = null;
-  let nextBatch: VolunteerBatch | null = null;
-  let pointsToNextBatch: number | null = null;
-
-  for (const tier of TIER_ORDER) {
-    const min = batchMinPoints(tier, thresholds);
-    if (points >= min) {
-      batch = tier;
-    } else if (nextBatch === null) {
-      nextBatch = tier;
-      pointsToNextBatch = min - points;
-    }
-  }
-
-  return { batch, nextBatch, pointsToNextBatch };
+// Every tier at or below `tier`, lowest first — a member on the Gold plan has
+// necessarily already qualified for the Silver reward too.
+export function tiersUpTo(tier: PlanTier): PlanTier[] {
+  return PLAN_TIER_ORDER.slice(0, PLAN_TIER_ORDER.indexOf(tier) + 1);
 }
