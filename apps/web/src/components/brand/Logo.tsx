@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-const RAY_COUNT = 16;
+const RAY_COUNT = 12;
 
 function LogoMark({ size = 40, className }: { size?: number; className?: string }) {
   const rays = Array.from({ length: RAY_COUNT }, (_, i) => {
@@ -8,7 +8,7 @@ function LogoMark({ size = 40, className }: { size?: number; className?: string 
     return (
       <polygon
         key={i}
-        points="47,21 53,21 56,4 44,4"
+        points="46,20 54,20 58,2 42,2"
         fill="var(--brand-gold)"
         transform={`rotate(${angle} 50 50)`}
       />
@@ -32,17 +32,24 @@ function LogoMark({ size = 40, className }: { size?: number; className?: string 
       />
 
       {/* trunk */}
-      <path d="M50 66 L50 44" stroke="var(--brand-green-dark)" strokeWidth="5" strokeLinecap="round" />
+      <path d="M50 66 L50 42" stroke="var(--brand-green-dark)" strokeWidth="5" strokeLinecap="round" />
 
-      {/* leaf clusters */}
-      <ellipse cx="50" cy="32" rx="13" ry="12" fill="var(--brand-green)" />
-      <ellipse cx="38" cy="45" rx="10" ry="9" fill="var(--brand-green)" />
-      <ellipse cx="62" cy="45" rx="10" ry="9" fill="var(--brand-green)" />
+      {/* three-leaf sapling, fanned from the top of the trunk */}
+      <g fill="var(--brand-green)">
+        <path d="M50,42 Q59,25.5 50,9 Q41,25.5 50,42 Z" />
+        <path d="M50,42 Q43.28,26.72 27,23 Q33.72,38.28 50,42 Z" />
+        <path d="M50,42 Q56.72,26.72 73,23 Q66.28,38.28 50,42 Z" />
+      </g>
+      <g stroke="#f5dfa8" strokeWidth="1" fill="none" opacity="0.85">
+        <path d="M50,40 L50,12" />
+        <path d="M49,40 L29,25" />
+        <path d="M51,40 L71,25" />
+      </g>
 
-      {/* girl, reaching up with one arm */}
+      {/* girl, reaching up to touch the trunk */}
       <circle cx="41" cy="63.5" r="3.4" fill="var(--brand-brown)" />
       <path
-        d="M41 67 L41 74 M41 68 L46 61 M41 70 L37 74"
+        d="M41 67 L41 74 M41 68 L49 58 M41 70 L37 74"
         stroke="var(--brand-brown)"
         strokeWidth="2.6"
         strokeLinecap="round"
@@ -50,10 +57,10 @@ function LogoMark({ size = 40, className }: { size?: number; className?: string 
       />
       <path d="M41 74 L35 85 L47 85 Z" fill="var(--brand-brown)" />
 
-      {/* boy, reaching up with one arm */}
+      {/* boy, reaching up to touch the trunk */}
       <circle cx="60" cy="61" r="3.6" fill="var(--brand-brown)" />
       <path
-        d="M60 64.5 L60 76 M60 66 L54 59 M60 68 L65 72 M60 76 L55 86 M60 76 L65 86"
+        d="M60 64.5 L60 76 M60 66 L51 55 M60 68 L65 72 M60 76 L55 86 M60 76 L65 86"
         stroke="var(--brand-brown)"
         strokeWidth="2.8"
         strokeLinecap="round"
