@@ -118,6 +118,12 @@ export function DataGrid<T extends Record<string, unknown>>({
             : String(aVal).localeCompare(String(bVal));
         return sortDir === "asc" ? cmp : -cmp;
       });
+    } else {
+      // Every list endpoint this feeds from orders createdAt ascending
+      // (oldest first) — with no explicit sort applied, show newest first so
+      // a just-created/edited row lands on page 1 instead of being pushed
+      // onto a later page behind everything already in the table.
+      result.reverse();
     }
 
     return result;
