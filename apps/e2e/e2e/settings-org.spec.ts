@@ -17,7 +17,7 @@ test.describe("settings — admin", () => {
     await page.getByLabel("Bank name").fill("E2E Test Bank");
     await page.getByLabel("Account holder name").fill("E2E Test Org");
     await page.getByLabel("Account number").fill("123456789012");
-    await page.getByLabel("IFSC code").fill("E2EB0001234");
+    await page.getByLabel("IFSC code").fill("TEST0001234");
     await page.getByLabel("Membership number format").fill("{PREFIX}-{YYYY}-{SEQ}");
     await page.getByLabel("Receipt number format").fill("RCPT-{YYYY}-{SEQ}");
     await page.getByRole("button", { name: "Save Changes" }).click();

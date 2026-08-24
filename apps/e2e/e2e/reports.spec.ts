@@ -53,8 +53,18 @@ test.describe("reports — admin", () => {
 test.describe("reports — field executive", () => {
   test.use({ storageState: AUTH_STATE.fieldExecutive });
 
-  test("shows a permission-denied message instead of crashing", async ({ page }) => {
+  // /reports/summary is intentionally open to Field Executive too (scoped by
+  // their own jurisdiction — see ReportsController's SUMMARY_ROLES comment),
+  // unlike the detailed per-report endpoints below which stay ADMIN/SUPER_ADMIN
+  // only (REVIEWER_ROLES).
+  test("sees the summary cards (jurisdiction-scoped) but a detailed report tab degrades instead of crashing", async ({
+    page,
+  }) => {
     await page.goto("/admin/reports");
-    await expect(page.getByText("You don't have permission to view reports.")).toBeVisible();
+    await expect(page.getByText("Total Members", { exact: true })).toBeVisible();
+    await expect(page.getByText("You don't have permission to view reports.")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Member Register", exact: true }).click();
+    await expect(page.getByText("Failed to load data.")).toBeVisible();
   });
 });

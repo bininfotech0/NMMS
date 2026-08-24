@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { planTierSchema } from "./plan";
+import { indianMobileSchema } from "./validators";
 import { MemberRole } from "../enums/member-role";
 
 export const memberRegisterSchema = z.object({
@@ -7,7 +8,7 @@ export const memberRegisterSchema = z.object({
   // Matches createMemberSchema.mobile (the staff-entry equivalent) — the
   // public form must not accept a looser mobile number than the staff one
   // does, since both create the same Member.mobile field.
-  mobile: z.string().min(10).max(15),
+  mobile: indianMobileSchema,
   aadhaarNumber: z.string().regex(/^\d{12}$/, "Aadhaar number must be 12 digits"),
   email: z.string().email().optional(),
   password: z.string().min(8),
@@ -16,7 +17,7 @@ export const memberRegisterSchema = z.object({
 export type MemberRegisterInput = z.infer<typeof memberRegisterSchema>;
 
 export const memberLoginSchema = z.object({
-  mobile: z.string().min(6),
+  mobile: indianMobileSchema,
   password: z.string().min(8),
 });
 export type MemberLoginInput = z.infer<typeof memberLoginSchema>;

@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createActiveMemberApi, newApiContext, staffLoginApi } from "./support/api";
+import { armThrottleRetry } from "./support/throttle-retry";
 import { AUTH_STATE, E2E_ADMIN, E2E_FIELD_EXECUTIVE, uniqueMobile, uniqueSuffix } from "./support/constants";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,7 @@ async function createMemberSession(browser: import("@playwright/test").Browser, 
 
   const context = await browser.newContext();
   const page = await context.newPage();
+  await armThrottleRetry(page);
   await page.goto("/login");
   await page.getByLabel("Mobile number").fill(mobile);
   await page.getByLabel("Password").fill(password);

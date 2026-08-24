@@ -24,6 +24,17 @@ export class CardService {
   async mintToken(memberId: string, user: AuthUser): Promise<CardTokenResponse> {
     // Authorizes (org-scoped) and 404s if the member isn't visible to this user.
     await this.membersService.findOne(memberId, user);
+    return this.sign(memberId);
+  }
+
+  // Member-portal self-service — memberId comes only from the verified
+  // member JWT, so no authorization lookup is needed (a member can only
+  // ever mint a token for themselves).
+  async mintOwnToken(memberId: string): Promise<CardTokenResponse> {
+    return this.sign(memberId);
+  }
+
+  private sign(memberId: string): CardTokenResponse {
     const payload: CardTokenPayload = { sub: memberId, purpose: "card-verify" };
     const token = this.jwtService.sign(payload, {
       secret: this.config.getOrThrow<string>("CARD_QR_SECRET"),

@@ -21,6 +21,11 @@ export class WithdrawalsController {
     return this.withdrawalsService.getWalletSummary(member.id);
   }
 
+  @Get("me/rate")
+  getRate(@CurrentMember() member: AuthMember) {
+    return this.withdrawalsService.getRate(member.id);
+  }
+
   @Get("me")
   listMine(@CurrentMember() member: AuthMember) {
     return this.withdrawalsService.listMine(member.id);

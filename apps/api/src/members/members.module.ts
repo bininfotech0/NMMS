@@ -5,13 +5,14 @@ import { NumberingService } from "../common/numbering.service";
 import { UsersModule } from "../users/users.module";
 import { MemberAuthModule } from "../member-auth/member-auth.module";
 import { IntegrationsModule } from "../integrations/integrations.module";
+import { PlansModule } from "../plans/plans.module";
 import { MembersController } from "./members.controller";
 import { MemberSelfController } from "./member-self.controller";
 import { MembersService } from "./members.service";
 import { MemberExpiryScheduler } from "./member-expiry.scheduler";
 
 @Module({
-  imports: [UsersModule, MemberAuthModule, IntegrationsModule],
+  imports: [UsersModule, MemberAuthModule, IntegrationsModule, PlansModule],
   controllers: [MemberSelfController, MembersController],
   providers: [MembersService, AadhaarHashService, NumberingService, DocumentStorageService, MemberExpiryScheduler],
   exports: [MembersService],

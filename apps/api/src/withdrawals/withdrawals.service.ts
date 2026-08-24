@@ -4,6 +4,7 @@ import type {
   CreateWithdrawalRequestInput,
   WalletSummaryResponse,
   WithdrawalChargeType,
+  WithdrawalRateResponse,
   WithdrawalRequestResponse,
   WithdrawalStatus,
 } from "@nmms/shared";
@@ -108,6 +109,20 @@ export class WithdrawalsService {
       availableBalanceAmount,
       withdrawnAmount: member.totalWithdrawnAmount.toNumber(),
       pendingReviewPoints,
+    };
+  }
+
+  // Narrow, member-safe view of the conversion-rate settings — GET /org
+  // (which has the full settings object) is staff-only, so the member
+  // portal's own withdrawal-preview UI needs this instead.
+  async getRate(memberId: string): Promise<WithdrawalRateResponse> {
+    const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
+    const settings = await this.getSettings(member.organizationId);
+    return {
+      pointsToMoneyRatioPoints: settings.pointsToMoneyRatioPoints,
+      pointsToMoneyRatioAmount: settings.pointsToMoneyRatioAmount.toNumber(),
+      withdrawalChargeType: settings.withdrawalChargeType,
+      withdrawalChargeValue: settings.withdrawalChargeValue.toNumber(),
     };
   }
 

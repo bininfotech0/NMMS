@@ -3,9 +3,11 @@ import {
   bringMemberToSubmittedApi,
   createActiveMemberApi,
   ensureTieredPlan,
+  memberLoginApi,
   newApiContext,
   staffLoginApi,
 } from "./support/api";
+import { armThrottleRetry } from "./support/throttle-retry";
 import { AUTH_STATE, E2E_ADMIN, E2E_FIELD_EXECUTIVE, uniqueAadhaar, uniqueMobile, uniqueSuffix } from "./support/constants";
 
 function authHeaders(token: string) {
@@ -47,10 +49,7 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
 
   // The "correct answer" for the referral link — fetched independently via
   // API so the UI "Copy" assertion below actually validates something.
-  const referrerLoginRes = await apiCtx.post("/api/v1/public/member-auth/login", {
-    data: { mobile: referrerMobile, password: referrerPassword },
-  });
-  const referrerToken = (await referrerLoginRes.json()).data.accessToken as string;
+  const { accessToken: referrerToken } = await memberLoginApi(apiCtx, referrerMobile, referrerPassword);
   const summaryRes = await apiCtx.get("/api/v1/referrals/me", { headers: authHeaders(referrerToken) });
   const referrerSummary = (await summaryRes.json()).data as { referralCode: string };
   const expectedLink = `http://localhost/join?ref=${referrerSummary.referralCode}`;
@@ -59,6 +58,7 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   const memberAContext = await browser.newContext();
   await memberAContext.grantPermissions(["clipboard-read", "clipboard-write"]);
   const memberAPage = await memberAContext.newPage();
+  await armThrottleRetry(memberAPage);
   await memberAPage.goto("/login");
   await memberAPage.getByLabel("Mobile number").fill(referrerMobile);
   await memberAPage.getByLabel("Password").fill(referrerPassword);
@@ -71,6 +71,7 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   // 2. A stranger self-registers via that link (fresh, unauthenticated context).
   const joinContext = await browser.newContext();
   const joinPage = await joinContext.newPage();
+  await armThrottleRetry(joinPage);
   const refereeName = `Referee B ${uniqueSuffix()}`;
   const refereeMobile = uniqueMobile();
   await joinPage.goto(copiedLink);
@@ -114,11 +115,19 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   await expect(memberAPage.getByText("Silver", { exact: true }).first()).toBeVisible();
   await memberAContext.close();
 
-  // 6. Admin sees the pending reward and fulfills it.
+  // 6. Admin sees the pending reward and fulfills it. A Silver-tier
+  // activation cascades (tiersUpTo) and grants the Bronze reward too, so
+  // there are two rows for this referrer here — scope to the Silver one and
+  // separately confirm the cascaded Bronze row is also present.
   const adminContext = await browser.newContext({ storageState: AUTH_STATE.admin });
   const adminPage = await adminContext.newPage();
   await adminPage.goto("/admin/referral-rewards");
-  const rewardRow = adminPage.getByRole("row", { name: new RegExp(referrerName) });
+  const rewardRows = adminPage.getByRole("row", { name: new RegExp(referrerName) });
+  await expect(rewardRows).toHaveCount(2);
+  const bronzeRow = rewardRows.filter({ hasText: "Bronze" });
+  await expect(bronzeRow).toBeVisible();
+  await expect(bronzeRow.getByText("Pending", { exact: true })).toBeVisible();
+  const rewardRow = rewardRows.filter({ hasText: "Silver" });
   await expect(rewardRow).toBeVisible();
   await expect(rewardRow.getByText("Pending", { exact: true })).toBeVisible();
   await rewardRow.getByRole("button", { name: "Mark Fulfilled" }).click();
@@ -127,7 +136,7 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   // tab for the new status instead of expecting the row to stay put.
   await expect(rewardRow).toHaveCount(0);
   await adminPage.getByRole("button", { name: "All" }).click();
-  const rewardRowAll = adminPage.getByRole("row", { name: new RegExp(referrerName) });
+  const rewardRowAll = adminPage.getByRole("row", { name: new RegExp(referrerName) }).filter({ hasText: "Silver" });
   await expect(rewardRowAll.getByText("Fulfilled", { exact: true })).toBeVisible();
   await expect(rewardRowAll.getByRole("button", { name: "Mark Fulfilled" })).toHaveCount(0);
   await adminContext.close();

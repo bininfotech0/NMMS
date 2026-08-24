@@ -1,9 +1,17 @@
 import { test, expect } from "@playwright/test";
-import { newApiContext } from "./support/api";
+import { memberLoginApi, newApiContext } from "./support/api";
+import { armThrottleRetry } from "./support/throttle-retry";
 import { SEED_SUPER_ADMIN, uniqueAadhaar, uniqueMobile } from "./support/constants";
 
 // The default project has no storageState, so every test here starts from a
 // clean, unauthenticated browser context.
+
+// Nearly every test in this file logs in or registers interactively through
+// the real UI form — see armThrottleRetry's own comment for why that needs
+// its own retry path separate from support/api.ts's.
+test.beforeEach(async ({ page }) => {
+  await armThrottleRetry(page);
+});
 
 test.describe("staff login", () => {
   test("valid credentials land on the dashboard", async ({ page }) => {
@@ -65,12 +73,15 @@ test.describe("member login", () => {
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/member");
-    await expect(page.getByText("Registration pending review")).toBeVisible();
+    // A self-registered member starts DRAFT with no plan at all, so the
+    // dashboard hands them straight into the self-service registration flow
+    // (see MemberCompleteRegistration) instead of a generic "pending" message.
+    await expect(page.getByText("Choose your membership plan")).toBeVisible();
   });
 });
 
 test.describe("self-registration", () => {
-  test("plain /join (no referral code) creates an account pending review", async ({ page }) => {
+  test("plain /join (no referral code) creates an account and lands on plan selection", async ({ page }) => {
     const mobile = uniqueMobile();
     await page.goto("/join");
     await expect(page.getByText("Referral link")).toHaveCount(0);
@@ -80,10 +91,11 @@ test.describe("self-registration", () => {
     await page.getByLabel("Create a password").fill("PlainJoin123pw");
     await page.getByRole("button", { name: "Join now" }).click();
     await page.waitForURL("**/member");
-    await expect(page.getByText("Registration pending review")).toBeVisible();
-    // exact + scoped to <main> — the portal header also shows the member's
-    // status text next to their name/avatar, which otherwise collides here.
-    await expect(page.getByRole("main").getByText("DRAFT", { exact: true })).toBeVisible();
+    // A self-registered member starts DRAFT with no plan — the dashboard
+    // guides them through the 3-step self-service flow (plan -> pay ->
+    // finish profile) instead of a generic "pending review" message.
+    await expect(page.getByText("Step 1 of 3")).toBeVisible();
+    await expect(page.getByText("Choose your membership plan")).toBeVisible();
   });
 
   test("/join?ref=<code> shows the referrer's name and registers successfully", async ({ page }) => {
@@ -91,11 +103,7 @@ test.describe("self-registration", () => {
     // once it's ever fetched its own summary — fetch it once via API so this
     // test doesn't depend on UI-side code generation timing.
     const memberCtx = await newApiContext();
-    const memberLogin = await memberCtx.post("/api/v1/public/member-auth/login", {
-      data: { mobile: "9000000001", password: "E2eMember123pw" },
-    });
-    const loginBody = await memberLogin.json();
-    const memberToken = loginBody.data.accessToken as string;
+    const { accessToken: memberToken } = await memberLoginApi(memberCtx, "9000000001", "E2eMember123pw");
     const summaryRes = await memberCtx.get("/api/v1/referrals/me", {
       headers: { Authorization: `Bearer ${memberToken}` },
     });
@@ -111,7 +119,7 @@ test.describe("self-registration", () => {
     await page.getByLabel("Create a password").fill("ReferredJoin123pw");
     await page.getByRole("button", { name: "Join now" }).click();
     await page.waitForURL("**/member");
-    await expect(page.getByText("Registration pending review")).toBeVisible();
+    await expect(page.getByText("Choose your membership plan")).toBeVisible();
   });
 });
 

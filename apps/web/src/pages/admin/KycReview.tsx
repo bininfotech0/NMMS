@@ -435,7 +435,9 @@ function EditPayoutForm({
             <Input
               id="admin-kyc-bankIfscCode"
               value={bankIfscCode}
-              onChange={(e) => setBankIfscCode(e.target.value)}
+              onChange={(e) => setBankIfscCode(e.target.value.toUpperCase())}
+              pattern="[A-Z]{4}0[A-Z0-9]{6}"
+              placeholder="SBIN0001234"
               required
             />
           </div>
@@ -451,6 +453,7 @@ function EditPayoutForm({
             id="admin-kyc-upiId"
             value={upiId}
             onChange={(e) => setUpiId(e.target.value)}
+            pattern="[\w.-]{2,256}@[a-zA-Z]{2,64}"
             placeholder="name@bank"
             required
           />

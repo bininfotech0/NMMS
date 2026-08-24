@@ -4,7 +4,7 @@ import {
   ChevronLeft, IdCard, Pencil, Printer, Phone, Mail,
   MapPin, Calendar, User, Users, Award, Shield, Activity,
   FileText, CreditCard, Clock, MapPinned, Share2, Copy,
-  Ban, RotateCcw, HeartCrack, UserCog, Trash2, TrendingUp, KeyRound,
+  Ban, RotateCcw, HeartCrack, UserCog, Trash2, TrendingUp, KeyRound, HeartHandshake,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ import {
   useResetMemberPassword,
   useUpgradeMemberPlan,
 } from "@/hooks/useMembers";
+import { useMemberDonations } from "@/hooks/useDonations";
 import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
 import { useGenerateReferralCode, useReferralNetwork } from "@/hooks/useReferrals";
 import { usePlans } from "@/hooks/usePlans";
@@ -493,13 +494,14 @@ function StatusTimeline({ history }: { history: Array<{ fromStatus: string; toSt
   );
 }
 
-type Tab = "overview" | "address" | "documents" | "payments" | "referrals" | "history";
+type Tab = "overview" | "address" | "documents" | "payments" | "donations" | "referrals" | "history";
 
 const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "overview", label: "Overview", icon: User },
   { key: "address", label: "Address", icon: MapPin },
   { key: "documents", label: "Documents", icon: FileText },
   { key: "payments", label: "Payments", icon: CreditCard },
+  { key: "donations", label: "Donations", icon: HeartHandshake },
   { key: "referrals", label: "Referrals", icon: Share2 },
   { key: "history", label: "Timeline", icon: Activity },
 ];
@@ -632,6 +634,7 @@ export function MemberProfile() {
   const { data: member, isLoading } = useMember(id ?? null);
   const { data: documents = [] } = useMemberDocuments(id ?? null);
   const { data: payments = [] } = useMemberPayments(id ?? null);
+  const { data: donations = [] } = useMemberDonations(id ?? null);
   const { data: statusHistory = [] } = useMemberStatusHistory(id ?? null);
   const user = useAuthStore((state) => state.user);
   const deleteMember = useDeleteMember();
@@ -979,6 +982,54 @@ export function MemberProfile() {
                           <Printer className="size-4" />
                         </Link>
                       </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "donations" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base font-semibold">Donations ({donations.length})</CardTitle>
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/admin/donations">
+                <HeartHandshake className="size-4" />
+                Record Donation
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {donations.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No donations recorded</p>
+            ) : (
+              <div className="space-y-3">
+                {donations.map((donation) => (
+                  <div key={donation.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                    <div>
+                      <p className="text-sm font-medium">₹{donation.amount.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {donation.mode} · {donation.receiptNumber ?? "No receipt yet"}
+                        {donation.pointsAwarded != null ? ` · ${donation.pointsAwarded} pts` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        className={cn(
+                          "border-transparent font-medium",
+                          donation.status === "APPROVED" && "bg-emerald-100 text-emerald-700",
+                          donation.status === "PENDING" && "bg-amber-100 text-amber-700",
+                          donation.status === "REJECTED" && "bg-red-100 text-red-700",
+                        )}
+                      >
+                        {donation.status[0] + donation.status.slice(1).toLowerCase()}
+                      </Badge>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(donation.createdAt).toLocaleDateString("en-IN")}
+                      </p>
                     </div>
                   </div>
                 ))}

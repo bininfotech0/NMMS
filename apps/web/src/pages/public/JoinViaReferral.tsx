@@ -86,6 +86,9 @@ export function JoinViaReferral() {
             <Input
               id="mobile"
               type="tel"
+              inputMode="numeric"
+              pattern="[6-9][0-9]{9}"
+              maxLength={10}
               value={mobile}
               onChange={(e) => setMobile(e.target.value)}
               required

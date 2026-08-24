@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { FeatureFlagKey } from "@prisma/client";
-import type { AuthUser, GatewayOrderResponse, PaymentLinkResponse, PaymentResponse } from "@nmms/shared";
+import type { AuthMember, AuthUser, GatewayOrderResponse, PaymentLinkResponse, PaymentResponse } from "@nmms/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import { IntegrationsService } from "../../integrations/integrations.service";
 import { buildJurisdictionWhere } from "../../common/scope.util";
@@ -64,6 +64,77 @@ export class PaymentGatewayService {
 
     const amount = member.feeOverride?.toNumber() ?? member.plan.fee.toNumber();
     return { member, amountPaise: Math.round(amount * 100) };
+  }
+
+  // Member-portal self-service variant — memberId comes only from the
+  // verified member JWT, so no jurisdiction check is needed (a member can
+  // only ever pay for themselves). Same eligibility rule as getPayableMember.
+  private async getPayableMemberForSelf(memberId: string) {
+    const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId }, include: { plan: true } });
+    if (member.status !== "DRAFT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
+      throw new ConflictException(
+        "Payments can only be made while your registration is in DRAFT (initial fee) or once ACTIVE/EXPIRED (renewal)",
+      );
+    }
+    if (!member.plan) {
+      throw new ConflictException("Select a membership plan before paying");
+    }
+    const amount = member.feeOverride?.toNumber() ?? member.plan.fee.toNumber();
+    return { member, amountPaise: Math.round(amount * 100) };
+  }
+
+  async createOrderForSelf(member: AuthMember): Promise<GatewayOrderResponse> {
+    const credentials = await this.getCredentials(member.organizationId);
+    const { member: fullMember, amountPaise } = await this.getPayableMemberForSelf(member.id);
+
+    const order = await this.razorpay.createOrder({
+      ...credentials,
+      amountPaise,
+      currency: "INR",
+      receipt: `member-${member.id}-${Date.now()}`,
+      notes: { memberId: member.id, organizationId: member.organizationId },
+    });
+
+    return {
+      orderId: order.orderId,
+      amountPaise: order.amountPaise,
+      currency: order.currency,
+      keyId: credentials.keyId,
+      name: "Membership Fee",
+      description: `Registration/renewal fee for ${fullMember.fullName}`,
+    };
+  }
+
+  // The member-portal analogue of verifyAndRecord — same signature/order-
+  // status/notes checks (never trust the client), but records via
+  // recordGatewayPaymentFromWebhook since there's no staff AuthUser in
+  // context, same as the server-to-server webhook path.
+  async verifyAndRecordForSelf(
+    member: AuthMember,
+    input: { orderId: string; paymentId: string; signature: string },
+  ): Promise<PaymentResponse> {
+    const credentials = await this.getCredentials(member.organizationId);
+    const valid = this.razorpay.verifyPaymentSignature({ ...input, keySecret: credentials.keySecret });
+    if (!valid) {
+      throw new ConflictException("Payment signature verification failed");
+    }
+
+    const order = await this.razorpay.getOrder(input.orderId, credentials);
+    if (order.status !== "paid") {
+      throw new ConflictException("This order has not been captured yet");
+    }
+    if (order.notes.memberId !== member.id) {
+      throw new ConflictException("This order does not belong to you");
+    }
+    if (order.notes.organizationId !== member.organizationId) {
+      throw new ConflictException("This order belongs to a different organization");
+    }
+
+    return this.paymentsService.recordGatewayPaymentFromWebhook(
+      member.id,
+      { orderId: input.orderId, paymentId: input.paymentId, amount: order.amountPaise / 100 },
+      member.organizationId,
+    );
   }
 
   async createOrder(memberId: string, user: AuthUser): Promise<GatewayOrderResponse> {

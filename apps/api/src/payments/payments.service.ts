@@ -407,6 +407,17 @@ export class PaymentsService {
     return payments.map(this.toResponse);
   }
 
+  // Member-portal self-service — memberId comes only from the verified
+  // member JWT, so no authorization lookup is needed (a member can only
+  // ever be themselves).
+  async findMine(memberId: string): Promise<PaymentResponse[]> {
+    const payments = await this.prisma.payment.findMany({
+      where: { memberId },
+      orderBy: { paidAt: "desc" },
+    });
+    return payments.map(this.toResponse);
+  }
+
   async findAll(user: AuthUser): Promise<PaymentResponse[]> {
     const payments = await this.prisma.payment.findMany({
       where: {

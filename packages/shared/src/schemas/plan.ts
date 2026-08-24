@@ -4,15 +4,18 @@ export const planValidityTypeSchema = z.enum(["MONTHS", "LIFETIME"]);
 export type PlanValidityType = z.infer<typeof planValidityTypeSchema>;
 
 // The paid membership tier — canonical definition, imported by referral.ts
-// and event.ts to key the referral matrix / per-tier reward rules. Distinct
-// from VolunteerBatch (a points-threshold badge, unrelated to which plan a
-// member paid for) despite sharing the same three names.
-export const planTierSchema = z.enum(["SILVER", "GOLD", "PLATINUM"]);
+// and event.ts to key the referral matrix / per-tier reward rules, and
+// (as of Bronze) also the literal value VolunteerBatch returns — see
+// volunteerBatchSchema's comment in referral.ts for why the two are no
+// longer independent despite the historical "unrelated" framing.
+export const planTierSchema = z.enum(["BRONZE", "SILVER", "GOLD", "PLATINUM"]);
 export type PlanTier = z.infer<typeof planTierSchema>;
 
-// Ordinal ranking of the three tiers, lowest first — used to validate that a
+// Ordinal ranking of the tiers, lowest first — used to validate that a
 // membership upgrade actually moves a member to a strictly higher tier.
-export const PLAN_TIER_ORDER: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
+// The single source of truth for tier order; Postgres's own enum value
+// order is irrelevant since nothing reads it directly.
+export const PLAN_TIER_ORDER: PlanTier[] = ["BRONZE", "SILVER", "GOLD", "PLATINUM"];
 
 const planValidityRefinement = <T extends { validityType: PlanValidityType; validityMonths?: number | null }>(
   data: T,

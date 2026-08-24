@@ -76,6 +76,9 @@ export function AddressFields({
           value={value.pincode}
           disabled={disabled}
           onChange={(e) => set({ pincode: e.target.value })}
+          inputMode="numeric"
+          pattern="[1-9][0-9]{5}"
+          maxLength={6}
         />
       </div>
 

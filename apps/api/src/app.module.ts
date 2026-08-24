@@ -8,6 +8,7 @@ import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { CardModule } from "./card/card.module";
 import { DocumentsModule } from "./documents/documents.module";
+import { DonationsModule } from "./donations/donations.module";
 import { EventsModule } from "./events/events.module";
 import { HealthModule } from "./health/health.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
@@ -56,6 +57,7 @@ import { WithdrawalsModule } from "./withdrawals/withdrawals.module";
     ReferralsModule,
     KycModule,
     WithdrawalsModule,
+    DonationsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

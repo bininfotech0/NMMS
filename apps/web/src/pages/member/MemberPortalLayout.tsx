@@ -1,5 +1,17 @@
 import { Outlet, useNavigate, NavLink } from "react-router-dom";
-import { Award, CalendarDays, LayoutDashboard, Share2, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import {
+  Award,
+  CalendarDays,
+  CreditCard,
+  FileText,
+  HeartHandshake,
+  LayoutDashboard,
+  Receipt,
+  Share2,
+  ShieldCheck,
+  UserRound,
+  Wallet,
+} from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Shell } from "@/components/layout/shell/Shell";
 import type { ShellNavSection } from "@/components/layout/shell/types";
@@ -8,6 +20,7 @@ import { useMemberAuthStore } from "@/stores/member-auth";
 import { logoutMember } from "@/lib/member-auth";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
 import { useMyProfile } from "@/hooks/useMyProfile";
+import { useMyPhotoUrl } from "@/hooks/useMyDocuments";
 import { getInitials, cn } from "@/lib/utils";
 import { computeVolunteerBatch } from "@/lib/volunteer-batch";
 
@@ -20,6 +33,10 @@ const SECTIONS: ShellNavSection[] = [
       { key: "events", to: "/member/events", label: "Events", icon: CalendarDays },
       { key: "wallet", to: "/member/wallet", label: "Wallet", icon: Wallet },
       { key: "rewards", to: "/member/rewards", label: "Rewards", icon: Award },
+      { key: "donations", to: "/member/donations", label: "Donations", icon: HeartHandshake },
+      { key: "card", to: "/member/card", label: "ID Card", icon: CreditCard },
+      { key: "documents", to: "/member/documents", label: "Documents", icon: FileText },
+      { key: "payments", to: "/member/payments", label: "Payments", icon: Receipt },
       { key: "kyc", to: "/member/kyc", label: "KYC", icon: ShieldCheck },
       { key: "profile", to: "/member/profile", label: "Profile", icon: UserRound },
     ],
@@ -36,6 +53,7 @@ export function MemberPortalLayout() {
   // Fetched once here (not per-page) so the wallet pill's points balance
   // stays in sync everywhere in the portal, not just on Dashboard.
   const { data: summary } = useMyReferralSummary();
+  const photoUrl = useMyPhotoUrl();
 
   async function handleLogout() {
     await logoutMember();
@@ -69,6 +87,7 @@ export function MemberPortalLayout() {
         )
       }
       userInitials={getInitials(member.fullName)}
+      userAvatarUrl={photoUrl}
       onLogout={handleLogout}
       headerExtras={
         isActive && (

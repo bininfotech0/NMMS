@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ifscSchema, upiIdSchema } from "./validators";
 
 export const kycStatusSchema = z.enum(["NOT_SUBMITTED", "PENDING", "VERIFIED", "REJECTED"]);
 export type KycStatus = z.infer<typeof kycStatusSchema>;
@@ -8,15 +9,17 @@ export type PayoutMethod = z.infer<typeof payoutMethodSchema>;
 
 // Member-submitted payout details. BANK requires accountName+accountNumber+
 // ifsc; UPI requires upiId — raw bankAccountNumber is write-only, hashed to
-// last4 + encrypted server-side, never echoed back in full.
+// last4 + encrypted server-side, never echoed back in full. IFSC/UPI are
+// format-checked here since a malformed value would otherwise only surface
+// as a real RazorpayX payout failure much later.
 export const submitKycSchema = z
   .object({
     payoutMethod: payoutMethodSchema,
     bankAccountName: z.string().min(1).nullish(),
     bankAccountNumber: z.string().min(4).nullish(),
-    bankIfscCode: z.string().min(1).nullish(),
+    bankIfscCode: ifscSchema.nullish(),
     bankName: z.string().min(1).nullish(),
-    upiId: z.string().min(1).nullish(),
+    upiId: upiIdSchema.nullish(),
   })
   .superRefine((data, ctx) => {
     if (data.payoutMethod === "BANK") {

@@ -20,6 +20,9 @@ export function StepNominee({ form, setForm }: StepProps) {
             <Label htmlFor="emergencyContactMobile">Mobile</Label>
             <Input
               id="emergencyContactMobile"
+              inputMode="numeric"
+              pattern="[6-9][0-9]{9}"
+              maxLength={10}
               value={form.emergencyContactMobile}
               onChange={(e) => setForm((f) => ({ ...f, emergencyContactMobile: e.target.value }))}
             />

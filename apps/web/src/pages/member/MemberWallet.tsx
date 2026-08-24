@@ -17,8 +17,12 @@ import {
 import { ApiError } from "@/lib/api-client";
 import { useMyReferralLedger } from "@/hooks/useReferrals";
 import { useMyKyc } from "@/hooks/useKyc";
-import { useCreateWithdrawalRequest, useMyWalletSummary, useMyWithdrawals } from "@/hooks/useWithdrawals";
-import { useOrgProfile } from "@/hooks/useOrg";
+import {
+  useCreateWithdrawalRequest,
+  useMyWalletSummary,
+  useMyWithdrawalRate,
+  useMyWithdrawals,
+} from "@/hooks/useWithdrawals";
 import type { ReferralLedgerEntryResponse, WalletSummaryResponse, WithdrawalStatus } from "@nmms/shared";
 
 const STAT_CARDS: { key: keyof WalletSummaryResponse; label: string; isAmount?: boolean }[] = [
@@ -56,6 +60,8 @@ const LEDGER_REASON_LABELS: Record<string, (entry: ReferralLedgerEntryResponse) 
     entry.relatedMemberName ? `${entry.relatedMemberName} joined and was approved` : "Referral approved",
   EVENT_TARGET_COMPLETED: (entry) => (entry.relatedEventTitle ? `Event: ${entry.relatedEventTitle}` : "Event points"),
   WITHDRAWAL_CONVERTED: () => "Withdrawal paid out",
+  DONATION_RECEIVED: (entry) =>
+    entry.relatedDonationReceiptNumber ? `Donation received (receipt ${entry.relatedDonationReceiptNumber})` : "Donation received",
 };
 
 export function MemberWallet() {
@@ -209,18 +215,18 @@ function WithdrawSheet({
   onOpenChange: (open: boolean) => void;
   availablePoints: number;
 }) {
-  const { data: org } = useOrgProfile();
+  const { data: rate } = useMyWithdrawalRate();
   const createRequest = useCreateWithdrawalRequest();
   const [points, setPoints] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const pointsNum = Number(points) || 0;
   const preview = (() => {
-    if (!org || pointsNum <= 0) return null;
-    const gross = (pointsNum / org.pointsToMoneyRatioPoints) * org.pointsToMoneyRatioAmount;
+    if (!rate || pointsNum <= 0) return null;
+    const gross = (pointsNum / rate.pointsToMoneyRatioPoints) * rate.pointsToMoneyRatioAmount;
     let charge = 0;
-    if (org.withdrawalChargeType === "FLAT") charge = Math.min(org.withdrawalChargeValue, gross);
-    else if (org.withdrawalChargeType === "PERCENTAGE") charge = (gross * org.withdrawalChargeValue) / 100;
+    if (rate.withdrawalChargeType === "FLAT") charge = Math.min(rate.withdrawalChargeValue, gross);
+    else if (rate.withdrawalChargeType === "PERCENTAGE") charge = (gross * rate.withdrawalChargeValue) / 100;
     return { gross, charge, net: gross - charge };
   })();
 

@@ -152,7 +152,14 @@ export function MemberKyc() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="bankIfscCode">IFSC code</Label>
-                  <Input id="bankIfscCode" value={bankIfscCode} onChange={(e) => setBankIfscCode(e.target.value)} required />
+                  <Input
+                    id="bankIfscCode"
+                    value={bankIfscCode}
+                    onChange={(e) => setBankIfscCode(e.target.value.toUpperCase())}
+                    pattern="[A-Z]{4}0[A-Z0-9]{6}"
+                    placeholder="SBIN0001234"
+                    required
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="bankName">Bank name (optional)</Label>
@@ -162,7 +169,14 @@ export function MemberKyc() {
             ) : (
               <div className="space-y-1.5">
                 <Label htmlFor="upiId">UPI ID</Label>
-                <Input id="upiId" value={upiId} onChange={(e) => setUpiId(e.target.value)} placeholder="name@bank" required />
+                <Input
+                  id="upiId"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  pattern="[\w.-]{2,256}@[a-zA-Z]{2,64}"
+                  placeholder="name@bank"
+                  required
+                />
               </div>
             )}
 

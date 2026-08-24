@@ -42,6 +42,8 @@ export interface ShellProps {
    */
   userSubtitle?: ReactNode;
   userInitials: string;
+  /** Optional avatar photo — falls back to userInitials when absent/unset. */
+  userAvatarUrl?: string | null;
   onLogout: () => void | Promise<void>;
   /** density="sidebar": search + wallet + bell cluster. density="tabs": wallet-points pill. */
   headerExtras?: ReactNode;

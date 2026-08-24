@@ -1,56 +1,56 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 
+type SeqField = "lastMembershipSeq" | "lastReceiptSeq" | "lastDonationReceiptSeq" | "lastRegistrationSeq";
+type FormatField = "membershipNumberFormat" | "receiptNumberFormat" | "donationReceiptNumberFormat" | "registrationNumberFormat";
+type PrefixField = "membershipNumberPrefix" | "receiptNumberPrefix" | "donationReceiptNumberPrefix" | "registrationNumberPrefix";
+
 @Injectable()
 export class NumberingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Atomically increments the org's sequence counter (row-level lock on the
-  // UPDATE serializes concurrent approvals) and formats it per OrgSettings.
   async nextMembershipNumber(organizationId: string): Promise<string> {
-    const settings = await this.prisma.orgSettings.upsert({
-      where: { organizationId },
-      create: { organizationId, lastMembershipSeq: 1 },
-      update: { lastMembershipSeq: { increment: 1 } },
-    });
-
-    const year = new Date().getFullYear().toString();
-    const seq = String(settings.lastMembershipSeq).padStart(5, "0");
-
-    return settings.membershipNumberFormat
-      .replace("{PREFIX}", settings.membershipNumberPrefix)
-      .replace("{YYYY}", year)
-      .replace("{SEQ}", seq);
+    return this.next(organizationId, "lastMembershipSeq", "membershipNumberFormat", "membershipNumberPrefix");
   }
 
   async nextReceiptNumber(organizationId: string): Promise<string> {
-    const settings = await this.prisma.orgSettings.upsert({
-      where: { organizationId },
-      create: { organizationId, lastReceiptSeq: 1 },
-      update: { lastReceiptSeq: { increment: 1 } },
-    });
+    return this.next(organizationId, "lastReceiptSeq", "receiptNumberFormat", "receiptNumberPrefix");
+  }
 
-    const year = new Date().getFullYear().toString();
-    const seq = String(settings.lastReceiptSeq).padStart(5, "0");
-
-    return settings.receiptNumberFormat
-      .replace("{PREFIX}", settings.receiptNumberPrefix)
-      .replace("{YYYY}", year)
-      .replace("{SEQ}", seq);
+  async nextDonationReceiptNumber(organizationId: string): Promise<string> {
+    return this.next(
+      organizationId,
+      "lastDonationReceiptSeq",
+      "donationReceiptNumberFormat",
+      "donationReceiptNumberPrefix",
+    );
   }
 
   async nextRegistrationNumber(organizationId: string): Promise<string> {
+    return this.next(organizationId, "lastRegistrationSeq", "registrationNumberFormat", "registrationNumberPrefix");
+  }
+
+  // Atomically increments the org's sequence counter (row-level lock on the
+  // UPDATE serializes concurrent approvals) and formats it per OrgSettings —
+  // shared by all four sequence kinds above, which differ only in which
+  // seq/format/prefix column they read.
+  private async next(
+    organizationId: string,
+    seqField: SeqField,
+    formatField: FormatField,
+    prefixField: PrefixField,
+  ): Promise<string> {
     const settings = await this.prisma.orgSettings.upsert({
       where: { organizationId },
-      create: { organizationId, lastRegistrationSeq: 1 },
-      update: { lastRegistrationSeq: { increment: 1 } },
+      create: { organizationId, [seqField]: 1 },
+      update: { [seqField]: { increment: 1 } },
     });
 
     const year = new Date().getFullYear().toString();
-    const seq = String(settings.lastRegistrationSeq).padStart(5, "0");
+    const seq = String(settings[seqField]).padStart(5, "0");
 
-    return settings.registrationNumberFormat
-      .replace("{PREFIX}", settings.registrationNumberPrefix)
+    return (settings[formatField] as string)
+      .replace("{PREFIX}", settings[prefixField] as string)
       .replace("{YYYY}", year)
       .replace("{SEQ}", seq);
   }

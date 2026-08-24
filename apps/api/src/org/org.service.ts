@@ -51,21 +51,6 @@ export class OrgService {
       throw new BadRequestException("Minimum withdrawal amount cannot be greater than the maximum");
     }
 
-    // VolunteerBatchUtil walks tiers in fixed SILVER→GOLD→PLATINUM order and
-    // picks the last threshold cleared — out-of-order thresholds let a member
-    // hold a batch nominally below the "next" one reported to them.
-    const effectiveSilver =
-      settingsFields.volunteerBatchSilverMinPoints ?? existingSettings.volunteerBatchSilverMinPoints;
-    const effectiveGold =
-      settingsFields.volunteerBatchGoldMinPoints ?? existingSettings.volunteerBatchGoldMinPoints;
-    const effectivePlatinum =
-      settingsFields.volunteerBatchPlatinumMinPoints ?? existingSettings.volunteerBatchPlatinumMinPoints;
-    if (effectiveSilver > effectiveGold || effectiveGold > effectivePlatinum) {
-      throw new BadRequestException(
-        "Volunteer batch thresholds must be non-decreasing: Silver <= Gold <= Platinum",
-      );
-    }
-
     const settings = await this.prisma.orgSettings.update({
       where: { organizationId },
       data: settingsFields,
@@ -97,9 +82,6 @@ export class OrgService {
       receiptNumberFormat: string;
       referralProgramEnabled: boolean;
       pointsPerApprovedReferral: number;
-      volunteerBatchSilverMinPoints: number;
-      volunteerBatchGoldMinPoints: number;
-      volunteerBatchPlatinumMinPoints: number;
       referralPointsCapPerMember: number | null;
       referralRequireActiveReferrerPlan: boolean;
       pointsToMoneyRatioPoints: number;
@@ -112,6 +94,7 @@ export class OrgService {
       withdrawalFrequencyDays: number | null;
       withdrawalChargeType: string;
       withdrawalChargeValue: Prisma.Decimal;
+      donationPointsPercent: number;
     },
   ): OrgProfile {
     return {
@@ -129,9 +112,6 @@ export class OrgService {
       receiptNumberFormat: settings.receiptNumberFormat,
       referralProgramEnabled: settings.referralProgramEnabled,
       pointsPerApprovedReferral: settings.pointsPerApprovedReferral,
-      volunteerBatchSilverMinPoints: settings.volunteerBatchSilverMinPoints,
-      volunteerBatchGoldMinPoints: settings.volunteerBatchGoldMinPoints,
-      volunteerBatchPlatinumMinPoints: settings.volunteerBatchPlatinumMinPoints,
       referralPointsCapPerMember: settings.referralPointsCapPerMember,
       referralRequireActiveReferrerPlan: settings.referralRequireActiveReferrerPlan,
       pointsToMoneyRatioPoints: settings.pointsToMoneyRatioPoints,
@@ -144,6 +124,7 @@ export class OrgService {
       withdrawalFrequencyDays: settings.withdrawalFrequencyDays,
       withdrawalChargeType: settings.withdrawalChargeType as OrgProfile["withdrawalChargeType"],
       withdrawalChargeValue: settings.withdrawalChargeValue.toNumber(),
+      donationPointsPercent: settings.donationPointsPercent,
     };
   }
 }

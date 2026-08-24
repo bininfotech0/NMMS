@@ -29,11 +29,19 @@ type EventWithCounts = {
   targetDescription: string | null;
   targetQuantity: number | null;
   pointsReward: number;
+  bannerImagePath: string | null;
+  youtubeUrl: string | null;
   createdById: string;
   createdAt: Date;
   registrations: { attended: boolean }[];
   pointRules: { tier: string; points: number }[];
 };
+
+function bannerImageUrl(eventId: string, bannerImagePath: string | null): string | null {
+  return bannerImagePath ? `/public/events/${eventId}/banner` : null;
+}
+
+const BANNER_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 
 const EVENT_INCLUDE = {
   registrations: { select: { attended: true as const } },
@@ -93,6 +101,7 @@ export class EventsService {
         targetDescription: dto.targetDescription,
         targetQuantity: dto.targetQuantity,
         pointsReward: dto.pointsReward ?? 0,
+        youtubeUrl: dto.youtubeUrl,
         createdById: user.id,
       },
       include: EVENT_INCLUDE,
@@ -117,6 +126,69 @@ export class EventsService {
       return this.toResponse(await this.findScoped(id, user.organizationId));
     }
     return this.toResponse(event);
+  }
+
+  async uploadBanner(
+    id: string,
+    file: { mimeType: string; buffer: Buffer },
+    user: AuthUser,
+  ): Promise<EventResponse> {
+    const existing = await this.findScoped(id, user.organizationId);
+
+    // Image-only, not DocumentStorageService's full allowlist (which also
+    // accepts application/pdf for member documents) — a banner is always
+    // rendered as <img src=...> on the member events page and the admin
+    // edit sheet, so a PDF here would just be a broken image for everyone.
+    if (!BANNER_MIME_TYPES.has(file.mimeType)) {
+      throw new BadRequestException(`Unsupported file type. Allowed: ${[...BANNER_MIME_TYPES].join(", ")}`);
+    }
+    if (!this.documentStorage.matchesDeclaredType(file.mimeType, file.buffer)) {
+      throw new BadRequestException("File content does not match its declared type");
+    }
+
+    const filePath = await this.documentStorage.save(user.organizationId, id, file.mimeType, file.buffer);
+    // DB write first, old-file delete only after it commits — if the update
+    // throws, bannerImagePath still points at the (still-present) old file
+    // instead of a dangling reference to one we already deleted.
+    const event = await this.prisma.event.update({
+      where: { id },
+      data: { bannerImagePath: filePath, bannerImageMimeType: file.mimeType },
+      include: EVENT_INCLUDE,
+    });
+    if (existing.bannerImagePath) {
+      await this.documentStorage.remove(existing.bannerImagePath);
+    }
+    return this.toResponse(event);
+  }
+
+  async removeBanner(id: string, user: AuthUser): Promise<EventResponse> {
+    const existing = await this.findScoped(id, user.organizationId);
+    const event = await this.prisma.event.update({
+      where: { id },
+      data: { bannerImagePath: null, bannerImageMimeType: null },
+      include: EVENT_INCLUDE,
+    });
+    if (existing.bannerImagePath) {
+      await this.documentStorage.remove(existing.bannerImagePath);
+    }
+    return this.toResponse(event);
+  }
+
+  // No org/user scoping by design — called from the unguarded public banner
+  // route (event ids are non-enumerable cuids), same precedent as
+  // CardService.verify.
+  async getBannerFile(id: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: { bannerImagePath: true, bannerImageMimeType: true },
+    });
+    if (!event?.bannerImagePath || !event.bannerImageMimeType) {
+      throw new NotFoundException("No banner image for this event");
+    }
+    return {
+      stream: this.documentStorage.readStream(event.bannerImagePath),
+      mimeType: event.bannerImageMimeType,
+    };
   }
 
   // Upserts the tiers present in `overrides`; a tier omitted from the record
@@ -173,6 +245,8 @@ export class EventsService {
         targetDescription: e.targetDescription,
         targetQuantity: e.targetQuantity,
         pointsReward: e.pointsReward,
+        bannerImageUrl: bannerImageUrl(e.id, e.bannerImagePath),
+        youtubeUrl: e.youtubeUrl,
         status: e.status as MyEventSummary["status"],
         registered: !!reg,
         registrationId: reg?.id ?? null,
@@ -450,6 +524,8 @@ export class EventsService {
       targetQuantity: event.targetQuantity,
       pointsReward: event.pointsReward,
       tierRewardOverrides,
+      bannerImageUrl: bannerImageUrl(event.id, event.bannerImagePath),
+      youtubeUrl: event.youtubeUrl,
       createdById: event.createdById,
       registrationCount: event.registrations.length,
       attendedCount: event.registrations.filter((r) => r.attended).length,

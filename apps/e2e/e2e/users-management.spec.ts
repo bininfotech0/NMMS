@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { armThrottleRetry } from "./support/throttle-retry";
 import { AUTH_STATE, uniqueSuffix } from "./support/constants";
 
 test.describe("users management — super admin", () => {
@@ -52,6 +53,7 @@ test.describe("users management — super admin", () => {
 
     const freshContext = await page.context().browser()!.newContext();
     const freshPage = await freshContext.newPage();
+    await armThrottleRetry(freshPage);
     await freshPage.goto("/admin/login");
     await freshPage.getByLabel("Email").fill(email);
     await freshPage.getByLabel("Password").fill("BrandNewPassword123");

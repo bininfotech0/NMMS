@@ -11,6 +11,9 @@ export function StepAddress({ form, setForm }: StepProps) {
           <Label htmlFor="mobile">Mobile</Label>
           <Input
             id="mobile"
+            inputMode="numeric"
+            pattern="[6-9][0-9]{9}"
+            maxLength={10}
             value={form.mobile}
             onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value }))}
             required
@@ -20,6 +23,9 @@ export function StepAddress({ form, setForm }: StepProps) {
           <Label htmlFor="whatsappNumber">WhatsApp number</Label>
           <Input
             id="whatsappNumber"
+            inputMode="numeric"
+            pattern="[6-9][0-9]{9}"
+            maxLength={10}
             value={form.whatsappNumber}
             onChange={(e) => setForm((f) => ({ ...f, whatsappNumber: e.target.value }))}
           />

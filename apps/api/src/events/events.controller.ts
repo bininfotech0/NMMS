@@ -1,6 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Res, StreamableFile, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req, Res, StreamableFile, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import type { FastifyReply } from "fastify";
+// Side-effect import: pulls in @fastify/multipart's `declare module "fastify"`
+// augmentation (adds request.parts()) into this file's own type-check pass.
+import "@fastify/multipart";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { Role, type AuthUser } from "@nmms/shared";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -44,6 +47,40 @@ export class EventsController {
   @Roles(...REVIEWER_ROLES)
   update(@Param("id") id: string, @Body() dto: UpdateEventDto, @CurrentUser() user: AuthUser) {
     return this.eventsService.update(id, dto, user);
+  }
+
+  @Post(":id/banner")
+  @UseGuards(RolesGuard)
+  @Roles(...REVIEWER_ROLES)
+  async uploadBanner(@Param("id") id: string, @Req() req: FastifyRequest, @CurrentUser() user: AuthUser) {
+    let fileBuffer: Buffer | undefined;
+    let mimeType: string | undefined;
+
+    try {
+      for await (const part of req.parts()) {
+        if (part.type === "file") {
+          fileBuffer = await part.toBuffer();
+          mimeType = part.mimetype;
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && "code" in err && err.code === "FST_REQ_FILE_TOO_LARGE") {
+        throw new BadRequestException("File exceeds the 2 MB upload limit");
+      }
+      throw new BadRequestException("Could not process the uploaded file");
+    }
+
+    if (!fileBuffer || !mimeType) {
+      throw new BadRequestException("A file is required");
+    }
+    return this.eventsService.uploadBanner(id, { mimeType, buffer: fileBuffer }, user);
+  }
+
+  @Delete(":id/banner")
+  @UseGuards(RolesGuard)
+  @Roles(...REVIEWER_ROLES)
+  removeBanner(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.eventsService.removeBanner(id, user);
   }
 
   @Get(":id/registrations")

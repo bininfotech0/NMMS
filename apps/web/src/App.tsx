@@ -26,6 +26,7 @@ import { AuditLogs } from "@/pages/admin/AuditLogs";
 import { ReferralRewards } from "@/pages/admin/ReferralRewards";
 import { WithdrawalRequests } from "@/pages/admin/WithdrawalRequests";
 import { KycReview } from "@/pages/admin/KycReview";
+import { Donations } from "@/pages/admin/Donations";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { MemberProtectedRoute } from "@/components/auth/MemberProtectedRoute";
 import { MemberLogin } from "@/pages/member/MemberLogin";
@@ -37,6 +38,12 @@ import { MemberRewards } from "@/pages/member/MemberRewards";
 import { MemberEvents } from "@/pages/member/MemberEvents";
 import { MemberKyc } from "@/pages/member/MemberKyc";
 import { MyProfile } from "@/pages/member/MyProfile";
+import { MemberIdCard } from "@/pages/member/MemberIdCard";
+import { MemberDocuments } from "@/pages/member/MemberDocuments";
+import { MemberPayments } from "@/pages/member/MemberPayments";
+import { MemberPaymentReceiptPage } from "@/pages/member/MemberPaymentReceiptPage";
+import { MemberDonations } from "@/pages/member/MemberDonations";
+import { MemberDonationReceiptPage } from "@/pages/member/MemberDonationReceiptPage";
 import { initializeAuth } from "@/lib/auth";
 import { initializeMemberAuth } from "@/lib/member-auth";
 
@@ -112,6 +119,12 @@ function App() {
           <Route path="events" element={<MemberEvents />} />
           <Route path="kyc" element={<MemberKyc />} />
           <Route path="profile" element={<MyProfile />} />
+          <Route path="card" element={<MemberIdCard />} />
+          <Route path="documents" element={<MemberDocuments />} />
+          <Route path="payments" element={<MemberPayments />} />
+          <Route path="payments/:paymentId/receipt" element={<MemberPaymentReceiptPage />} />
+          <Route path="donations" element={<MemberDonations />} />
+          <Route path="donations/:id/receipt" element={<MemberDonationReceiptPage />} />
         </Route>
 
         <Route path="/admin" element={<AdminLayout />}>
@@ -135,6 +148,7 @@ function App() {
           <Route path="referral-rewards" element={<ReferralRewards />} />
           <Route path="withdrawals" element={<WithdrawalRequests />} />
           <Route path="kyc" element={<KycReview />} />
+          <Route path="donations" element={<Donations />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />

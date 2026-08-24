@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Plus, Pencil, Users2, Trash2, UserPlus, Check, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Plus, Pencil, Users2, Trash2, UserPlus, Check, X, ImagePlus, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,16 +32,25 @@ import {
   useEvents,
   useEvidenceFileUrl,
   useRegisterMember,
+  useRemoveEventBanner,
   useReviewEvidence,
   useSetAttendance,
   useUnregisterMember,
   useUpdateEvent,
+  useUploadEventBanner,
 } from "@/hooks/useEvents";
 import { useMembers } from "@/hooks/useMembers";
 import { useAuthStore } from "@/stores/auth";
-import { Role, type EventRegistrationResponse, type EventResponse, type EventStatus, type PlanTier } from "@nmms/shared";
+import {
+  PLAN_TIER_ORDER,
+  Role,
+  type EventRegistrationResponse,
+  type EventResponse,
+  type EventStatus,
+  type PlanTier,
+} from "@nmms/shared";
 
-const REWARD_TIERS: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
+const REWARD_TIERS = PLAN_TIER_ORDER;
 
 const CAN_MANAGE = [Role.SUPER_ADMIN, Role.ADMIN];
 const EVENT_STATUSES: EventStatus[] = ["PLANNED", "COMPLETED", "CANCELLED"];
@@ -220,15 +229,22 @@ function EventSheet({
   const [targetDescription, setTargetDescription] = useState(event?.targetDescription ?? "");
   const [targetQuantity, setTargetQuantity] = useState(event?.targetQuantity ? String(event.targetQuantity) : "");
   const [pointsReward, setPointsReward] = useState(event ? String(event.pointsReward) : "0");
-  const [tierOverrides, setTierOverrides] = useState<Record<PlanTier, string>>(() => ({
-    SILVER: event?.tierRewardOverrides.SILVER != null ? String(event.tierRewardOverrides.SILVER) : "",
-    GOLD: event?.tierRewardOverrides.GOLD != null ? String(event.tierRewardOverrides.GOLD) : "",
-    PLATINUM: event?.tierRewardOverrides.PLATINUM != null ? String(event.tierRewardOverrides.PLATINUM) : "",
-  }));
+  const [youtubeUrl, setYoutubeUrl] = useState(event?.youtubeUrl ?? "");
+  const [tierOverrides, setTierOverrides] = useState<Record<PlanTier, string>>(() =>
+    Object.fromEntries(
+      PLAN_TIER_ORDER.map((tier) => [
+        tier,
+        event?.tierRewardOverrides[tier] != null ? String(event.tierRewardOverrides[tier]) : "",
+      ]),
+    ) as Record<PlanTier, string>,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const createEvent = useCreateEvent();
   const updateEvent = useUpdateEvent();
+  const uploadBanner = useUploadEventBanner();
+  const removeBanner = useRemoveEventBanner();
+  const bannerInputRef = useRef<HTMLInputElement>(null);
   const isPending = createEvent.isPending || updateEvent.isPending;
 
   function reset() {
@@ -242,7 +258,8 @@ function EventSheet({
     setTargetDescription("");
     setTargetQuantity("");
     setPointsReward("0");
-    setTierOverrides({ SILVER: "", GOLD: "", PLATINUM: "" });
+    setYoutubeUrl("");
+    setTierOverrides(Object.fromEntries(PLAN_TIER_ORDER.map((tier) => [tier, ""])) as Record<PlanTier, string>);
     setError(null);
   }
 
@@ -263,6 +280,7 @@ function EventSheet({
         targetDescription: targetDescription || null,
         targetQuantity: targetQuantity ? Number(targetQuantity) : null,
         pointsReward: pointsReward ? Number(pointsReward) : 0,
+        youtubeUrl: youtubeUrl.trim() || null,
         // On create, only sent when at least one tier field has a value (no
         // point syncing an empty rule set for a brand-new event). On edit,
         // always sent — the fields are pre-filled from the event's current
@@ -343,6 +361,70 @@ function EventSheet({
               onChange={(e) => setCapacity(e.target.value)}
             />
           </div>
+          <div className="space-y-3 rounded-lg border border-dashed border-border p-3">
+            <p className="text-xs font-medium text-muted-foreground">Media (optional)</p>
+            {isEdit ? (
+              <div className="space-y-1.5">
+                <Label>Banner image</Label>
+                {event.bannerImageUrl && (
+                  <img
+                    src={event.bannerImageUrl}
+                    alt=""
+                    className="h-32 w-full rounded-md border border-border object-cover"
+                  />
+                )}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={uploadBanner.isPending}
+                    onClick={() => bannerInputRef.current?.click()}
+                  >
+                    <ImagePlus className="size-4" />
+                    {event.bannerImageUrl ? "Replace banner" : "Upload banner"}
+                  </Button>
+                  {event.bannerImageUrl && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={removeBanner.isPending}
+                      onClick={() => removeBanner.mutate(event.id)}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadBanner.mutate({ eventId: event.id, file });
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Save the event first to add a banner image.</p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="youtubeUrl">YouTube video link</Label>
+              <div className="relative">
+                <Video className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="youtubeUrl"
+                  className="pl-9"
+                  placeholder="https://youtube.com/watch?v=..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
           <div className="space-y-1.5 rounded-lg border border-dashed border-border p-3">
             <p className="text-xs font-medium text-muted-foreground">
               Completion target (optional) — members can submit evidence toward this and earn points
@@ -383,7 +465,7 @@ function EventSheet({
               <p className="text-xs text-muted-foreground">
                 Leave blank to use the base points reward above for that tier.
               </p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {REWARD_TIERS.map((tier) => (
                   <div key={tier} className="space-y-1.5">
                     <Label htmlFor={`tier-${tier}`} className="text-xs font-normal text-muted-foreground">

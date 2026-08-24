@@ -196,19 +196,19 @@ export class ReferralsService {
     });
   }
 
-  // Shared by the referral-approval path and resolveEventEvidence: appends a
-  // ledger row (already-credited APPROVED for referrals; PENDING is handled
-  // separately by recordPendingEventPoints) and increments the cached
-  // balance. Points no longer drive volunteer batch/rewards — see
-  // awardBatchRewardForTier — so this purely tracks the wallet used for
-  // withdrawals and the leaderboard.
+  // Shared by the referral-approval path, resolveEventEvidence, and
+  // DonationsService: appends a ledger row (already-credited APPROVED — the
+  // PENDING donation/event-evidence window is handled by the caller before
+  // this is invoked) and increments the cached balance. Points no longer
+  // drive volunteer batch/rewards — see awardBatchRewardForTier — so this
+  // purely tracks the wallet used for withdrawals and the leaderboard.
   private async creditPoints(
     tx: Prisma.TransactionClient,
     organizationId: string,
     memberId: string,
     points: number,
-    reason: "REFERRAL_APPROVED" | "EVENT_TARGET_COMPLETED",
-    related: { relatedMemberId?: string; relatedEventRegistrationId?: string },
+    reason: "REFERRAL_APPROVED" | "EVENT_TARGET_COMPLETED" | "DONATION_RECEIVED",
+    related: { relatedMemberId?: string; relatedEventRegistrationId?: string; relatedDonationId?: string },
   ): Promise<void> {
     await tx.member.update({
       where: { id: memberId },
@@ -222,7 +222,89 @@ export class ReferralsService {
         reason,
         relatedMemberId: related.relatedMemberId,
         relatedEventRegistrationId: related.relatedEventRegistrationId,
+        relatedDonationId: related.relatedDonationId,
       },
+    });
+  }
+
+  // Called from DonationsService.recordDirect (staff already vouches for
+  // receipt in person, so there's no PENDING window at all — unlike a member
+  // self-submission, see recordPendingDonationPoints below) — the
+  // donation-channel analogue of awardPointsForApproval's credit. No-ops on
+  // a non-positive amount (a donationPointsPercent of 0 is a valid
+  // "points program disabled" config).
+  async creditDonationPoints(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    memberId: string,
+    points: number,
+    donationId: string,
+  ): Promise<void> {
+    if (points <= 0) {
+      return;
+    }
+    await this.creditPoints(tx, organizationId, memberId, points, "DONATION_RECEIVED", {
+      relatedDonationId: donationId,
+    });
+  }
+
+  // Called from DonationsService.submitMine when a member self-submits a
+  // donation — locks in the points value now (amount * donationPointsPercent
+  // at submission time), same reasoning as recordPendingEventPoints: a later
+  // change to donationPointsPercent must never silently alter an
+  // already-submitted amount. Does NOT touch Member.referralPointsBalance —
+  // see resolveDonation below. Unlike recordPendingEventPoints, a donation
+  // is never resubmitted after rejection (a rejected one is terminal; the
+  // member submits a brand-new donation instead), so this is a plain create,
+  // no existing-row upsert branch needed.
+  async recordPendingDonationPoints(
+    organizationId: string,
+    memberId: string,
+    donationId: string,
+    points: number,
+  ): Promise<void> {
+    if (points <= 0) {
+      return;
+    }
+    await this.prisma.referralPointsLedger.create({
+      data: {
+        organizationId,
+        memberId,
+        points,
+        reason: "DONATION_RECEIVED",
+        relatedDonationId: donationId,
+        status: "PENDING",
+      },
+    });
+  }
+
+  // Called from DonationsService.approve/reject — the donation-channel
+  // analogue of resolveEventEvidence, resolving the PENDING row created by
+  // recordPendingDonationPoints. No-ops if there's no PENDING row (e.g. a
+  // 0-point donation — donationPointsPercent = 0 — never got one).
+  async resolveDonation(
+    organizationId: string,
+    memberId: string,
+    donationId: string,
+    approved: boolean,
+  ): Promise<void> {
+    const pending = await this.prisma.referralPointsLedger.findFirst({
+      where: { relatedDonationId: donationId, reason: "DONATION_RECEIVED", status: "PENDING" },
+    });
+    if (!pending) {
+      return;
+    }
+    if (!approved) {
+      await this.prisma.referralPointsLedger.update({ where: { id: pending.id }, data: { status: "REJECTED" } });
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.member.update({
+        where: { id: memberId },
+        data: { referralPointsBalance: { increment: pending.points } },
+      });
+      await tx.referralPointsLedger.update({ where: { id: pending.id }, data: { status: "APPROVED" } });
     });
   }
 
@@ -281,6 +363,7 @@ export class ReferralsService {
       include: {
         relatedMember: { select: { fullName: true } },
         relatedEventRegistration: { select: { event: { select: { title: true } } } },
+        relatedDonation: { select: { receiptNumber: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -291,6 +374,7 @@ export class ReferralsService {
       status: entry.status as ReferralLedgerEntryResponse["status"],
       relatedMemberName: entry.relatedMember?.fullName ?? null,
       relatedEventTitle: entry.relatedEventRegistration?.event.title ?? null,
+      relatedDonationReceiptNumber: entry.relatedDonation?.receiptNumber ?? null,
       note: entry.note,
       createdAt: entry.createdAt,
     }));

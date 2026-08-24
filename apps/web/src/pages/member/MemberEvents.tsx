@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Calendar, MapPin, Target, Upload } from "lucide-react";
+import { Calendar, MapPin, Target, Upload, Video } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,10 @@ function EventCard({ event }: { event: MyEventSummary }) {
   const hasTarget = !!event.targetDescription || !!event.targetQuantity || event.pointsReward > 0;
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
+      {event.bannerImageUrl && (
+        <img src={event.bannerImageUrl} alt="" className="h-40 w-full object-cover" />
+      )}
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span>{event.title}</span>
@@ -73,6 +76,17 @@ function EventCard({ event }: { event: MyEventSummary }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {event.description && <p className="text-sm text-muted-foreground">{event.description}</p>}
+        {event.youtubeUrl && (
+          <a
+            href={event.youtubeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 hover:underline"
+          >
+            <Video className="size-4" />
+            Watch video
+          </a>
+        )}
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <Calendar className="size-3.5" />

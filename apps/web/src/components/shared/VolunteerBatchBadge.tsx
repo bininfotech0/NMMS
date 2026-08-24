@@ -1,9 +1,10 @@
-import { Award, Medal, Trophy, type LucideIcon } from "lucide-react";
+import { Award, Medal, Star, Trophy, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, titleCase } from "@/lib/utils";
 import type { VolunteerBatch } from "@nmms/shared";
 
 const BATCH_STYLES: Record<VolunteerBatch, string> = {
+  BRONZE: "bg-orange-100 text-orange-800 border-orange-300",
   SILVER: "bg-slate-200 text-slate-700 border-slate-300",
   GOLD: "bg-amber-100 text-amber-800 border-amber-300",
   PLATINUM: "bg-violet-100 text-violet-800 border-violet-300",
@@ -24,9 +25,10 @@ export function VolunteerBatchBadge({ batch, className }: { batch: VolunteerBatc
   );
 }
 
-// Icon + tile color for each batch, lowest to highest tier — same three
-// colors as BATCH_STYLES above, just as a solid tile rather than a badge.
+// Icon + tile color for each batch, lowest to highest tier — same colors
+// as BATCH_STYLES above, just as a solid tile rather than a badge.
 const BATCH_ICONS: Record<VolunteerBatch, { icon: LucideIcon; tileClassName: string }> = {
+  BRONZE: { icon: Star, tileClassName: "bg-orange-100 text-orange-800" },
   SILVER: { icon: Medal, tileClassName: "bg-slate-200 text-slate-700" },
   GOLD: { icon: Award, tileClassName: "bg-amber-100 text-amber-800" },
   PLATINUM: { icon: Trophy, tileClassName: "bg-violet-100 text-violet-800" },

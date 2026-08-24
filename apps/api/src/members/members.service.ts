@@ -141,6 +141,37 @@ export class MembersService {
     return toMemberResponse(member);
   }
 
+  // A self-registered member choosing their plan for the first time —
+  // MemberAuthService.register() creates the row with no planId at all
+  // (unlike the staff wizard, whose Membership step requires one before
+  // Payment Collection is even reachable), so this is the one place a
+  // DRAFT member can set planId themselves. One-shot: only while the member
+  // has never had a plan, same lock-down as this.update()'s "plan is frozen
+  // once PAYMENT_COLLECTED" rule, just applied one status earlier (frozen
+  // from the moment it's first chosen, not just once paid) — changing your
+  // mind before paying still means starting a fresh registration, not a PATCH.
+  async selectMyPlan(memberId: string, planId: string): Promise<MemberResponse> {
+    const existing = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
+    if (existing.status !== "DRAFT") {
+      throw new ConflictException("A plan can only be selected while your registration is still in draft");
+    }
+    if (existing.planId) {
+      throw new ConflictException("A membership plan has already been selected for this registration");
+    }
+    const plan = await this.prisma.membershipPlan.findFirst({
+      where: { id: planId, organizationId: existing.organizationId, isActive: true },
+    });
+    if (!plan) {
+      throw new NotFoundException("Membership plan not found");
+    }
+    const member = await this.prisma.member.update({
+      where: { id: memberId },
+      data: { planId, joiningDate: existing.joiningDate ?? new Date() },
+      include: MEMBER_INCLUDE,
+    });
+    return toMemberResponse(member);
+  }
+
   async create(dto: CreateMemberInput, user: AuthUser): Promise<MemberResponse> {
     const registrationNumber = await this.numbering.nextRegistrationNumber(user.organizationId);
     const member = await this.prisma.member.create({
@@ -256,6 +287,24 @@ export class MembersService {
 
   async submit(id: string, user: AuthUser): Promise<MemberResponse> {
     const existing = await this.findEditable(id, user);
+    return this.submitInternal(existing, user.id);
+  }
+
+  // Self-service equivalent of submit() — a self-registered member finishing
+  // their own registration (selected a plan, paid, filled in their profile,
+  // uploaded documents). No jurisdiction/role check (the memberId comes from
+  // the verified member JWT, so the caller is inherently authorized for their
+  // own record), but the same PAYMENT_COLLECTED/required-fields/documents
+  // gate as staff submit — attributed to the member's own createdById (the
+  // system sentinel user MemberAuthService.register used), same convention
+  // PaymentsService.recordGatewayPaymentFromWebhook uses for a "received by"
+  // with no staff actor in context.
+  async submitMine(memberId: string): Promise<MemberResponse> {
+    const existing = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
+    return this.submitInternal(existing, existing.createdById);
+  }
+
+  private async submitInternal(existing: Member, actorId: string): Promise<MemberResponse> {
     if (existing.status !== "PAYMENT_COLLECTED") {
       throw new ConflictException(
         "Cannot submit: the registration fee must be collected first (see /members/:id/payments)",
@@ -290,7 +339,7 @@ export class MembersService {
       throw new ConflictException("This member's status just changed — please refresh and try again");
     }
     await this.prisma.statusHistory.create({
-      data: { memberId: existing.id, fromStatus: "PAYMENT_COLLECTED", toStatus: "SUBMITTED", actorId: user.id },
+      data: { memberId: existing.id, fromStatus: "PAYMENT_COLLECTED", toStatus: "SUBMITTED", actorId },
     });
     const member = await this.prisma.member.findUniqueOrThrow({
       where: { id: existing.id },

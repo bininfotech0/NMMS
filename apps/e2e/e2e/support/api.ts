@@ -21,10 +21,72 @@ async function unwrap<T>(res: { ok(): boolean; status(): number; json(): Promise
   return body.data;
 }
 
+// Playwright gives each spec FILE its own fresh module graph even within a
+// single worker process (test-isolation by design), so a module-level
+// counter like ThrottleGate below only ever paces calls made from within the
+// same file — it can't see (and so can't wait out) calls another file just
+// made. Only something that reacts to the server's own answer works across
+// that boundary: on a 429, read the real x-ratelimit-reset header (seconds
+// until the IP-keyed window actually clears — see ThrottleGate's comment for
+// which three routes this applies to) and retry once after that, rather than
+// guessing a wait or failing outright.
+async function postWithThrottleRetry(
+  ctx: APIRequestContext,
+  url: string,
+  options: { data: unknown },
+): Promise<Awaited<ReturnType<APIRequestContext["post"]>>> {
+  const res = await ctx.post(url, options);
+  if (res.status() !== 429) return res;
+
+  const resetHeader = res.headers()["x-ratelimit-reset"];
+  const resetSeconds = resetHeader ? Number(resetHeader) : 60;
+  const waitMs = (Number.isFinite(resetSeconds) ? resetSeconds : 60) * 1000 + 1000;
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
+  return ctx.post(url, options);
+}
+
 /** A short-lived APIRequestContext for pure fixture setup (not itself a UI test). */
 export async function newApiContext(): Promise<APIRequestContext> {
   return playwrightRequest.newContext({ baseURL: BASE_URL });
 }
+
+// Mirrors the server's real per-route, IP-keyed throttle (8/60s on
+// /auth/login, /public/member-auth/login, and /public/member-auth/register —
+// see app.module.ts's ThrottlerModule.forRoot default combined with each
+// route's own @Throttle({limit:8, ttl:60_000}) — NestJS's ThrottlerGuard
+// tracks a separate bucket per route handler, so these three never share
+// budget with each other).
+//
+// Only paces calls made from *within the same spec file* (see
+// postWithThrottleRetry's comment above for why it can't do more than that)
+// — cheap insurance that avoids ever needing the 429-retry path for the
+// common case of several calls in one file, leaving headroom (6, not 8)
+// under the server's own limit. The retry path above is what actually
+// covers collisions with other files.
+class ThrottleGate {
+  private timestamps: number[] = [];
+  constructor(
+    private readonly limit: number,
+    private readonly windowMs: number,
+  ) {}
+
+  async acquire(): Promise<void> {
+    for (;;) {
+      const now = Date.now();
+      this.timestamps = this.timestamps.filter((t) => now - t < this.windowMs);
+      if (this.timestamps.length < this.limit) {
+        this.timestamps.push(now);
+        return;
+      }
+      const waitMs = this.windowMs - (now - this.timestamps[0]) + 250;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+}
+
+const staffLoginGate = new ThrottleGate(6, 60_000);
+const memberLoginGate = new ThrottleGate(6, 60_000);
+const memberRegisterGate = new ThrottleGate(6, 60_000);
 
 // POST /auth/login is throttled server-side (8/60s, IP-keyed) — tight enough
 // that letting every spec file's fixture setup log in again reliably
@@ -60,19 +122,24 @@ export async function staffLoginApi(
     return persisted;
   }
 
-  const res = await ctx.post("/api/v1/auth/login", { data: { email, password } });
+  await staffLoginGate.acquire();
+  const res = await postWithThrottleRetry(ctx, "/api/v1/auth/login", { data: { email, password } });
   const data = await unwrap<{ accessToken: string; user: { id: string; role: string } }>(res);
   const result = { accessToken: data.accessToken, userId: data.user.id, role: data.user.role };
   staffTokenCache.set(email, result);
   return result;
 }
 
+// The one sanctioned way to hit /public/member-auth/login — every spec file
+// should call this rather than inlining ctx.post(...) directly, so the
+// throttle gate above actually sees every call.
 export async function memberLoginApi(
   ctx: APIRequestContext,
   mobile: string,
   password: string,
 ): Promise<{ accessToken: string; memberId: string }> {
-  const res = await ctx.post("/api/v1/public/member-auth/login", { data: { mobile, password } });
+  await memberLoginGate.acquire();
+  const res = await postWithThrottleRetry(ctx, "/api/v1/public/member-auth/login", { data: { mobile, password } });
   const data = await unwrap<{ accessToken: string; member: { id: string } }>(res);
   return { accessToken: data.accessToken, memberId: data.member.id };
 }
@@ -86,7 +153,10 @@ export async function memberRegisterApi(
   // deterministic 12-digit value from the (already-unique-per-test) mobile
   // number rather than making every call site pass one explicitly.
   const aadhaarNumber = params.aadhaarNumber ?? `20${params.mobile.replace(/\D/g, "").slice(-10).padStart(10, "0")}`;
-  const res = await ctx.post("/api/v1/public/member-auth/register", { data: { ...params, aadhaarNumber } });
+  await memberRegisterGate.acquire();
+  const res = await postWithThrottleRetry(ctx, "/api/v1/public/member-auth/register", {
+    data: { ...params, aadhaarNumber },
+  });
   if (res.status() === 409) return null; // already registered — caller falls back to login
   const data = await unwrap<{ accessToken: string; member: { id: string } }>(res);
   return { accessToken: data.accessToken, memberId: data.member.id };

@@ -17,6 +17,7 @@ import {
   Bell,
   Gift,
   Banknote,
+  HeartHandshake,
   UserCheck,
   User,
   Shield,
@@ -55,6 +56,7 @@ function buildSections(applicationsBadge: number | undefined, userRole: Role): S
       items: [
         { key: "payments", label: "Payments", to: "/admin/payments", icon: Wallet },
         { key: "withdrawals", label: "Withdrawals", to: "/admin/withdrawals", icon: Banknote },
+        { key: "donations", label: "Donations", to: "/admin/donations", icon: HeartHandshake },
       ],
     },
     {

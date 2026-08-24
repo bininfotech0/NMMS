@@ -546,6 +546,9 @@ export function MyProfile() {
               <Label htmlFor="whatsappNumber">WhatsApp number</Label>
               <Input
                 id="whatsappNumber"
+                inputMode="numeric"
+                pattern="[6-9][0-9]{9}"
+                maxLength={10}
                 value={form.whatsappNumber}
                 onChange={(e) => setForm((f) => (f ? { ...f, whatsappNumber: e.target.value } : f))}
               />
@@ -712,6 +715,9 @@ export function MyProfile() {
             <Label htmlFor="emergencyContactMobile">Mobile</Label>
             <Input
               id="emergencyContactMobile"
+              inputMode="numeric"
+              pattern="[6-9][0-9]{9}"
+              maxLength={10}
               value={form.emergencyContactMobile}
               onChange={(e) => setForm((f) => (f ? { ...f, emergencyContactMobile: e.target.value } : f))}
             />

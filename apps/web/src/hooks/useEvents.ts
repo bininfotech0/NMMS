@@ -33,6 +33,34 @@ export function useCreateEvent() {
   });
 }
 
+export function useUploadEventBanner() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, file }: { eventId: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return apiFetch<EventResponse>(`/events/${eventId}/banner`, { method: "POST", body: formData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast.success("Banner uploaded");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to upload banner")),
+  });
+}
+
+export function useRemoveEventBanner() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (eventId: string) => apiFetch<EventResponse>(`/events/${eventId}/banner`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast.success("Banner removed");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to remove banner")),
+  });
+}
+
 export function useUpdateEvent() {
   const queryClient = useQueryClient();
   return useMutation({

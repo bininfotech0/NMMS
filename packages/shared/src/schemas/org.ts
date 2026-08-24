@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { withdrawalChargeTypeSchema } from "./withdrawal";
+import { ifscSchema } from "./validators";
 
 export const publicOrgSchema = z.object({
   name: z.string(),
@@ -22,9 +23,6 @@ export const orgProfileSchema = z.object({
   receiptNumberFormat: z.string(),
   referralProgramEnabled: z.boolean(),
   pointsPerApprovedReferral: z.number(),
-  volunteerBatchSilverMinPoints: z.number(),
-  volunteerBatchGoldMinPoints: z.number(),
-  volunteerBatchPlatinumMinPoints: z.number(),
   referralPointsCapPerMember: z.number().nullable(),
   referralRequireActiveReferrerPlan: z.boolean(),
   pointsToMoneyRatioPoints: z.number(),
@@ -37,6 +35,7 @@ export const orgProfileSchema = z.object({
   withdrawalFrequencyDays: z.number().nullable(),
   withdrawalChargeType: withdrawalChargeTypeSchema,
   withdrawalChargeValue: z.number(),
+  donationPointsPercent: z.number(),
 });
 export type OrgProfile = z.infer<typeof orgProfileSchema>;
 
@@ -58,15 +57,12 @@ export const updateOrgSchema = z.object({
   contactPhone: z.string().nullish(),
   bankAccountName: z.string().nullish(),
   bankAccountNumber: z.string().nullish(),
-  bankIfscCode: z.string().nullish(),
+  bankIfscCode: ifscSchema.nullish(),
   bankName: z.string().nullish(),
   membershipNumberFormat: numberFormatSchema.optional(),
   receiptNumberFormat: numberFormatSchema.optional(),
   referralProgramEnabled: z.boolean().optional(),
   pointsPerApprovedReferral: z.number().int().nonnegative().optional(),
-  volunteerBatchSilverMinPoints: z.number().int().nonnegative().optional(),
-  volunteerBatchGoldMinPoints: z.number().int().nonnegative().optional(),
-  volunteerBatchPlatinumMinPoints: z.number().int().nonnegative().optional(),
   referralPointsCapPerMember: z.number().int().nonnegative().nullish(),
   referralRequireActiveReferrerPlan: z.boolean().optional(),
   pointsToMoneyRatioPoints: z.number().int().positive().optional(),
@@ -79,5 +75,6 @@ export const updateOrgSchema = z.object({
   withdrawalFrequencyDays: z.number().int().nonnegative().nullish(),
   withdrawalChargeType: withdrawalChargeTypeSchema.optional(),
   withdrawalChargeValue: z.number().nonnegative().optional(),
+  donationPointsPercent: z.number().int().min(0).max(100).optional(),
 });
 export type UpdateOrgInput = z.infer<typeof updateOrgSchema>;

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { PlanTier } from "@nmms/shared";
+import { PLAN_TIER_ORDER, type PlanTier } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 
 export interface EventRewardRuleResponse {
@@ -81,7 +81,7 @@ export class PlanRewardsService {
     eventId: string,
     rules: { tier: PlanTier; points: number }[],
   ): Promise<EventRewardRuleResponse[]> {
-    const tiers: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
+    const tiers = PLAN_TIER_ORDER;
     const included = new Map(rules.map((r) => [r.tier, r.points]));
 
     await this.prisma.$transaction(

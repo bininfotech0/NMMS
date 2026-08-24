@@ -19,6 +19,18 @@ export const createWithdrawalRequestSchema = z.object({
 });
 export type CreateWithdrawalRequestInput = z.infer<typeof createWithdrawalRequestSchema>;
 
+// Just enough of OrgSettings for a member to preview a withdrawal's gross/net
+// amount client-side before submitting — GET /org itself is staff-only
+// (bank details, receipt formats, etc.), so this is a narrower member-scoped
+// view of only the conversion-rate fields.
+export const withdrawalRateResponseSchema = z.object({
+  pointsToMoneyRatioPoints: z.number(),
+  pointsToMoneyRatioAmount: z.number(),
+  withdrawalChargeType: withdrawalChargeTypeSchema,
+  withdrawalChargeValue: z.number(),
+});
+export type WithdrawalRateResponse = z.infer<typeof withdrawalRateResponseSchema>;
+
 export const withdrawalRequestResponseSchema = z.object({
   id: z.string(),
   memberId: z.string(),

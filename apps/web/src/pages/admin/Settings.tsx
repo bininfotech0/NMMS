@@ -12,9 +12,14 @@ import { useIntegrations, useUpdateIntegration } from "@/hooks/useIntegrations";
 import { useCreateLookup, useLookups, useUpdateLookup } from "@/hooks/useLookups";
 import { useReferralPointRules, useUpsertReferralPointRuleMatrix } from "@/hooks/useReferrals";
 import { useAuthStore } from "@/stores/auth";
-import type { FeatureFlagKey, LookupCategory, PlanTier, WithdrawalChargeType } from "@nmms/shared";
+import {
+  PLAN_TIER_ORDER,
+  type FeatureFlagKey,
+  type LookupCategory,
+  type WithdrawalChargeType,
+} from "@nmms/shared";
 
-const PLAN_TIERS: PlanTier[] = ["SILVER", "GOLD", "PLATINUM"];
+const PLAN_TIERS = PLAN_TIER_ORDER;
 
 const REQUIRED_FIELD_BLANK_ERROR = "Please fill in all required fields — they can't be left blank.";
 
@@ -237,7 +242,13 @@ function OrganizationSettings() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="bankIfscCode">IFSC code</Label>
-            <Input id="bankIfscCode" {...field("bankIfscCode")} />
+            <Input
+              id="bankIfscCode"
+              {...field("bankIfscCode")}
+              onChange={(e) => setForm((f) => ({ ...f, bankIfscCode: e.target.value.toUpperCase() }))}
+              pattern="[A-Z]{4}0[A-Z0-9]{6}"
+              placeholder="SBIN0001234"
+            />
           </div>
         </div>
       </section>
@@ -286,6 +297,7 @@ function ReferralProgramSettings() {
     referralRequireActiveReferrerPlan: true,
     pointsToMoneyRatioPoints: "100",
     pointsToMoneyRatioAmount: "10",
+    donationPointsPercent: "0",
   });
   const [saved, setSaved] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -300,6 +312,7 @@ function ReferralProgramSettings() {
       referralRequireActiveReferrerPlan: org.referralRequireActiveReferrerPlan,
       pointsToMoneyRatioPoints: String(org.pointsToMoneyRatioPoints),
       pointsToMoneyRatioAmount: String(org.pointsToMoneyRatioAmount),
+      donationPointsPercent: String(org.donationPointsPercent),
     });
   }, [org]);
 
@@ -312,6 +325,7 @@ function ReferralProgramSettings() {
         form.pointsPerApprovedReferral,
         form.pointsToMoneyRatioPoints,
         form.pointsToMoneyRatioAmount,
+        form.donationPointsPercent,
       ])
     ) {
       setFormError(REQUIRED_FIELD_BLANK_ERROR);
@@ -326,6 +340,7 @@ function ReferralProgramSettings() {
         referralRequireActiveReferrerPlan: form.referralRequireActiveReferrerPlan,
         pointsToMoneyRatioPoints: Number(form.pointsToMoneyRatioPoints),
         pointsToMoneyRatioAmount: Number(form.pointsToMoneyRatioAmount),
+        donationPointsPercent: Number(form.donationPointsPercent),
       });
       setSaved(true);
     } catch (err) {
@@ -392,6 +407,20 @@ function ReferralProgramSettings() {
               />
               <p className="text-xs text-muted-foreground">
                 Used when the referral point matrix below has no cell for the two members' plan tiers.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="donationPointsPercent">Donation reward — % of amount</Label>
+              <Input
+                id="donationPointsPercent"
+                type="number"
+                min="0"
+                max="100"
+                value={form.donationPointsPercent}
+                onChange={(e) => setForm((f) => ({ ...f, donationPointsPercent: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                % of a donation's amount credited as reward points once approved. 0 disables the points reward.
               </p>
             </div>
           </div>

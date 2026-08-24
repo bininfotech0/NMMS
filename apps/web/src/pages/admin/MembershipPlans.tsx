@@ -12,14 +12,14 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
+import { cn, titleCase } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { VolunteerBatchBadge } from "@/components/shared/VolunteerBatchBadge";
 import { useCreatePlan, usePlans, useUpdatePlan } from "@/hooks/usePlans";
 import { useAuthStore } from "@/stores/auth";
-import { Role, type PlanResponse, type PlanTier, type PlanValidityType } from "@nmms/shared";
+import { PLAN_TIER_ORDER, Role, type PlanResponse, type PlanTier, type PlanValidityType } from "@nmms/shared";
 
 const CAN_MANAGE = [Role.SUPER_ADMIN, Role.ADMIN];
 
@@ -264,9 +264,11 @@ function PlanSheet({
               className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               <option value="">None</option>
-              <option value="SILVER">Silver</option>
-              <option value="GOLD">Gold</option>
-              <option value="PLATINUM">Platinum</option>
+              {PLAN_TIER_ORDER.map((t) => (
+                <option key={t} value={t}>
+                  {titleCase(t)}
+                </option>
+              ))}
             </select>
             <p className="text-xs text-muted-foreground">
               Drives per-tier reward points, referral point rules, and the member's volunteer batch. Leave as

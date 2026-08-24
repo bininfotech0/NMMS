@@ -181,6 +181,36 @@ export function makeWithdrawalRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// Every field DonationsService/donation.mapper touch, defaulted to a PENDING
+// cash donation with no donor tax-receipt details. Pass overrides for
+// whatever the test cares about.
+export function makeDonation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "donation-1",
+    organizationId: "org-1",
+    memberId: "member-1",
+    member: { fullName: "Test Member" },
+    amount: decimal(500),
+    mode: "CASH",
+    note: null,
+    reference: null,
+    donorAddress: null,
+    donorPan: null,
+    status: "PENDING",
+    receiptNumber: null,
+    pointsAwarded: null,
+    recordedById: null,
+    reviewedById: null,
+    reviewedAt: null,
+    reviewNote: null,
+    gatewayOrderId: null,
+    gatewayPaymentId: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 // Minimal shape shared by both PrismaService and an interactive $transaction
 // callback's `tx` argument — the services under test only ever touch the
 // tables listed here.
@@ -284,6 +314,15 @@ export function makeMockPrisma() {
       create: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
+    },
+    donation: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
     },
     $transaction: jest.fn(),
   };

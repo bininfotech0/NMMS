@@ -27,9 +27,6 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     organizationId: "org-1",
     referralProgramEnabled: true,
     pointsPerApprovedReferral: 10,
-    volunteerBatchSilverMinPoints: 0,
-    volunteerBatchGoldMinPoints: 20,
-    volunteerBatchPlatinumMinPoints: 50,
     referralPointsCapPerMember: null,
     // Off by default in these tests so the base crediting flow doesn't need a
     // referrer plan set up — see the dedicated eligibility tests below.
@@ -388,7 +385,7 @@ describe("ReferralsService", () => {
       expect(summary.pointsToNextBatch).toBeNull();
     });
 
-    it("has no batch and next-batch SILVER when the member has no plan", async () => {
+    it("has no batch and next-batch BRONZE when the member has no plan", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.member.findUniqueOrThrow.mockResolvedValue(
@@ -399,7 +396,7 @@ describe("ReferralsService", () => {
       const summary = await service.getMySummary("member-1");
 
       expect(summary.batch).toBeNull();
-      expect(summary.nextBatch).toBe("SILVER");
+      expect(summary.nextBatch).toBe("BRONZE");
     });
   });
 

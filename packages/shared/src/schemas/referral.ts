@@ -1,11 +1,13 @@
 import { z } from "zod";
-import { planTierSchema } from "./plan";
+import { PLAN_TIER_ORDER, planTierSchema } from "./plan";
 
-// Points-threshold badge tier, computed from a member's referral points
-// balance against admin-configured thresholds. Unrelated to PlanTier (the
-// membership plan a member paid for) despite sharing the same three names —
-// see VolunteerBatchBadge / computeVolunteerBatch on the frontend.
-export const volunteerBatchSchema = z.enum(["SILVER", "GOLD", "PLATINUM"]);
+// Badge tier shown on a member's profile. Historically a points-threshold
+// badge computed independently of PlanTier (the membership plan a member
+// paid for); the current implementation (computeVolunteerBatchFromTier in
+// apps/api/src/referrals/volunteer-batch.util.ts, and its frontend mirror in
+// apps/web/src/lib/volunteer-batch.ts) now just returns the member's PlanTier
+// directly, so this enum's values must always match planTierSchema's.
+export const volunteerBatchSchema = z.enum(["BRONZE", "SILVER", "GOLD", "PLATINUM"]);
 export type VolunteerBatch = z.infer<typeof volunteerBatchSchema>;
 
 export const referralLedgerReasonSchema = z.enum([
@@ -13,6 +15,7 @@ export const referralLedgerReasonSchema = z.enum([
   "EVENT_TARGET_COMPLETED",
   "MANUAL_ADJUSTMENT",
   "WITHDRAWAL_CONVERTED",
+  "DONATION_RECEIVED",
 ]);
 export type ReferralLedgerReason = z.infer<typeof referralLedgerReasonSchema>;
 
@@ -52,6 +55,7 @@ export const referralLedgerEntryResponseSchema = z.object({
   status: pointsLedgerStatusSchema,
   relatedMemberName: z.string().nullable(),
   relatedEventTitle: z.string().nullable(),
+  relatedDonationReceiptNumber: z.string().nullable(),
   note: z.string().nullable(),
   createdAt: z.date(),
 });
@@ -121,8 +125,9 @@ export const referrerSearchResultSchema = z.object({
 });
 export type ReferrerSearchResult = z.infer<typeof referrerSearchResultSchema>;
 
-// Referrer-tier x referred-tier referral point matrix — up to 9 rows. A
-// missing cell (or either side's plan tier being null) falls back to
+// Referrer-tier x referred-tier referral point matrix — up to
+// PLAN_TIER_ORDER.length^2 rows (one per tier pair). A missing cell (or
+// either side's plan tier being null) falls back to
 // OrgSettings.pointsPerApprovedReferral.
 export const referralPointRuleSchema = z.object({
   referrerTier: planTierSchema,
@@ -137,6 +142,6 @@ export const referralPointRuleResponseSchema = referralPointRuleSchema.extend({
 export type ReferralPointRuleResponse = z.infer<typeof referralPointRuleResponseSchema>;
 
 export const upsertReferralPointRuleMatrixSchema = z.object({
-  rules: z.array(referralPointRuleSchema).max(9),
+  rules: z.array(referralPointRuleSchema).max(PLAN_TIER_ORDER.length ** 2),
 });
 export type UpsertReferralPointRuleMatrixInput = z.infer<typeof upsertReferralPointRuleMatrixSchema>;

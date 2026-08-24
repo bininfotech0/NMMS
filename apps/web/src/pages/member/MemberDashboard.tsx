@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { VolunteerBatchBadge, VolunteerBatchIcon } from "@/components/shared/VolunteerBatchBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { MemberCompleteRegistration } from "@/pages/member/MemberCompleteRegistration";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useMemberAuthStore } from "@/stores/member-auth";
@@ -57,6 +58,19 @@ export function MemberDashboard() {
   }
 
   if (member?.status !== "ACTIVE") {
+    // A self-registered member starts DRAFT with no plan or payment at all
+    // (unlike the staff wizard) — guide them through finishing it themselves
+    // instead of the generic "pending" message, which only applies once
+    // there's actually nothing left for the member to do but wait.
+    if (member?.status === "DRAFT" || member?.status === "PAYMENT_COLLECTED") {
+      // Needs the full MemberResponse (addressLine, planId, etc.), not the
+      // narrower login-time AuthMember snapshot storeMember falls back to.
+      if (!profile) {
+        return <p className="text-sm text-muted-foreground">Loading…</p>;
+      }
+      return <MemberCompleteRegistration member={profile} />;
+    }
+
     const lapsed = member?.status === "EXPIRED" || member?.status === "RENEWED";
     return (
       <Card>

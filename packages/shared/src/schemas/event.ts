@@ -18,6 +18,15 @@ export const eventCompletionStatusSchema = z.enum([
 ]);
 export type EventCompletionStatus = z.infer<typeof eventCompletionStatusSchema>;
 
+// Host/path check rather than an exact-match regex — tolerant of shorts
+// links, mobile app share links, and tracking params like ?si=.
+const YOUTUBE_URL_PATTERN = /^https?:\/\/(www\.|m\.)?(youtube\.com\/|youtu\.be\/)/i;
+const youtubeUrlSchema = z
+  .string()
+  .url()
+  .refine((v) => YOUTUBE_URL_PATTERN.test(v), { message: "Must be a YouTube URL" })
+  .nullish();
+
 export const createEventSchema = z.object({
   title: z.string().min(1),
   description: z.string().nullish(),
@@ -33,6 +42,7 @@ export const createEventSchema = z.object({
   targetQuantity: z.coerce.number().int().positive().nullish(),
   pointsReward: z.coerce.number().int().nonnegative().optional(),
   tierRewardOverrides: tierRewardOverridesSchema.optional(),
+  youtubeUrl: youtubeUrlSchema,
 });
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 
@@ -48,6 +58,7 @@ export const updateEventSchema = z.object({
   targetQuantity: z.coerce.number().int().positive().nullish(),
   pointsReward: z.coerce.number().int().nonnegative().optional(),
   tierRewardOverrides: tierRewardOverridesSchema.optional(),
+  youtubeUrl: youtubeUrlSchema,
 });
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 
@@ -89,6 +100,10 @@ export const eventResponseSchema = z.object({
   targetQuantity: z.number().nullable(),
   pointsReward: z.number(),
   tierRewardOverrides: tierRewardOverridesSchema,
+  // Server-computed served URL (e.g. /public/events/{id}/banner) — never the
+  // raw storage path.
+  bannerImageUrl: z.string().nullable(),
+  youtubeUrl: z.string().nullable(),
   createdById: z.string(),
   registrationCount: z.number(),
   attendedCount: z.number(),
@@ -125,6 +140,8 @@ export const myEventSummarySchema = z.object({
   targetDescription: z.string().nullable(),
   targetQuantity: z.number().nullable(),
   pointsReward: z.number(),
+  bannerImageUrl: z.string().nullable(),
+  youtubeUrl: z.string().nullable(),
   status: eventStatusSchema,
   registered: z.boolean(),
   registrationId: z.string().nullable(),

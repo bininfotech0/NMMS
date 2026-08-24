@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type {
   CreateWithdrawalRequestInput,
   WalletSummaryResponse,
+  WithdrawalRateResponse,
   WithdrawalRequestResponse,
   WithdrawalStatus,
 } from "@nmms/shared";
@@ -22,6 +23,16 @@ export function useMyWithdrawals() {
   return useQuery({
     queryKey: ["withdrawals", "me"],
     queryFn: () => memberApiFetch<WithdrawalRequestResponse[]>("/withdrawals/me"),
+  });
+}
+
+// The conversion-rate fields only, for the request sheet's live preview —
+// GET /org has the full settings object but is staff-only.
+export function useMyWithdrawalRate() {
+  return useQuery({
+    queryKey: ["withdrawals", "me", "rate"],
+    queryFn: () => memberApiFetch<WithdrawalRateResponse>("/withdrawals/me/rate"),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

@@ -39,6 +39,7 @@ model Organization {
   eventRewardRules     EventRewardRule[]
   referralPointRules   ReferralPointRule[]
   withdrawalRequests   WithdrawalRequest[]
+  donations            Donation[]
 
   @@map("organizations")
 }
@@ -75,18 +76,11 @@ model OrgSettings {
   // pattern as lastMembershipSeq/lastReceiptSeq.
   lastRegistrationSeq      Int    @default(0)
 
-  // Referral program config — see ReferralsService. VolunteerBatch is computed
-  // from Member.referralPointsBalance against these thresholds at read time,
-  // never stored, so editing a threshold retroactively re-batches everyone.
-  // Unrelated to MembershipPlan.tier — this is a points-earned badge, not the
-  // plan a member paid for.
-  referralProgramEnabled          Boolean @default(false)
+  // Referral program config — see ReferralsService.
+  referralProgramEnabled    Boolean @default(false)
   // Fallback points for an approved referral when ReferralPointRule has no
   // matching cell (either party's plan has no tier, or the cell is unset).
-  pointsPerApprovedReferral       Int     @default(10)
-  volunteerBatchSilverMinPoints   Int     @default(0)
-  volunteerBatchGoldMinPoints     Int     @default(500)
-  volunteerBatchPlatinumMinPoints Int     @default(2000)
+  pointsPerApprovedReferral Int     @default(10)
 
   // Lifetime cap on REFERRAL_APPROVED points a single referrer can earn —
   // null = uncapped.
@@ -117,6 +111,17 @@ model OrgSettings {
   withdrawalFrequencyDays Int?
   withdrawalChargeType    WithdrawalChargeType @default(NONE)
   withdrawalChargeValue   Decimal              @default(0) @db.Decimal(10, 2)
+
+  // Donation program config — see DonationsService. % of a donation's amount
+  // credited as points on approval (floored), same role as
+  // pointsPerApprovedReferral but a straight percentage rather than a fixed
+  // per-approval amount.
+  donationPointsPercent       Int    @default(0)
+  donationReceiptNumberFormat String @default("{PREFIX}-{YYYY}-{SEQ}")
+  donationReceiptNumberPrefix String @default("DON")
+  // Atomically incremented by NumberingService on each approved/recorded
+  // donation — same pattern as lastReceiptSeq.
+  lastDonationReceiptSeq      Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -154,6 +159,8 @@ model User {
   reviewedWithdrawalRequests WithdrawalRequest[]    @relation("WithdrawalReviewedBy")
   paidWithdrawalRequests     WithdrawalRequest[]    @relation("WithdrawalPaidBy")
   payoutInitiatedWithdrawalRequests WithdrawalRequest[] @relation("WithdrawalPayoutInitiatedBy")
+  recordedDonations          Donation[]             @relation("DonationRecordedBy")
+  reviewedDonations          Donation[]             @relation("DonationReviewedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -167,6 +174,7 @@ enum PlanValidityType {
 }
 
 enum PlanTier {
+  BRONZE
   SILVER
   GOLD
   PLATINUM
@@ -476,6 +484,7 @@ model Member {
   totalWithdrawnAmount Decimal @default(0) @db.Decimal(10, 2)
 
   withdrawalRequests WithdrawalRequest[]
+  donations          Donation[]
 
   socialMediaLinks String?
 
@@ -610,6 +619,23 @@ enum PaymentMode {
   ONLINE
 }
 
+enum DonationMode {
+  CASH
+  UPI
+  BANK
+  CHEQUE
+  // Gateway-originated only — created exclusively by
+  // DonationGatewayService.verifyAndRecord, never hand-picked from the
+  // manual submit/record forms. Same precedent as PaymentMode.ONLINE.
+  ONLINE
+}
+
+enum DonationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Payment {
   id             String       @id @default(cuid())
   organizationId String
@@ -687,6 +713,14 @@ model Event {
   targetDescription String?
   targetQuantity    Int?
   pointsReward      Int     @default(0)
+
+  // Promotional media — served via a public, unguarded route (event ids are
+  // non-enumerable cuids, same access-control precedent as the public
+  // membership-card verify endpoint). bannerImagePath is a
+  // DocumentStorageService-relative path, never exposed to clients directly.
+  bannerImagePath     String?
+  bannerImageMimeType String?
+  youtubeUrl          String?
 
   createdById String
   createdBy   User   @relation("EventCreatedBy", fields: [createdById], references: [id])
@@ -790,6 +824,10 @@ enum ReferralLedgerReason {
   // Inserted only when a WithdrawalRequest transitions to PAID; points is
   // negative — see WithdrawalsService.markPaid.
   WITHDRAWAL_CONVERTED
+  // Inserted once a Donation reaches APPROVED (self-submitted after review,
+  // or immediately for a staff-recorded direct donation) — see
+  // DonationsService.
+  DONATION_RECEIVED
 }
 
 // Append-only points history. Member.referralPointsBalance is a cached sum
@@ -834,6 +872,12 @@ model ReferralPointsLedger {
   relatedWithdrawalRequestId String?            @unique
   relatedWithdrawalRequest   WithdrawalRequest? @relation(fields: [relatedWithdrawalRequestId], references: [id])
 
+  // Set only for DONATION_RECEIVED entries — the Donation whose APPROVED
+  // transition produced this row. @unique enforces exactly one credit per
+  // donation, ever, mirroring relatedWithdrawalRequestId above.
+  relatedDonationId String?   @unique
+  relatedDonation   Donation? @relation(fields: [relatedDonationId], references: [id])
+
   note String?
 
   // Staff who made a MANUAL_ADJUSTMENT — null for system-generated entries.
@@ -856,12 +900,13 @@ enum PointsLedgerStatus {
   REJECTED
 }
 
-// Points-threshold badge tier, computed at read time from
-// Member.referralPointsBalance against OrgSettings.volunteerBatch*MinPoints —
-// never stored, never plan-based. Unrelated to MembershipPlan.tier (the
-// actual paid plan a member chose), despite sharing the same three names —
-// see VolunteerBatchBadge / computeVolunteerBatch on the frontend.
+// Mirrors the member's current paid membership plan tier — computed at read
+// time (never stored) via computeVolunteerBatchFromTier, which just maps
+// Member.plan.tier straight through PLAN_TIER_ORDER. A plan upgrade/downgrade
+// is what changes the badge; see ReferralsService.awardBatchRewardForTier for
+// where rewards are actually granted.
 enum VolunteerBatch {
+  BRONZE
   SILVER
   GOLD
   PLATINUM
@@ -1023,4 +1068,71 @@ model WithdrawalRequest {
   @@index([organizationId, status])
   @@index([memberId, status])
   @@map("withdrawal_requests")
+}
+
+// A member's monetary gift to the NGO — the third earning channel alongside
+// REFERRAL_APPROVED and EVENT_TARGET_COMPLETED (see ReferralLedgerReason).
+// Always offline self-report (no payment gateway): a member declares an
+// amount+mode they sent outside the app, or Field Executive/Admin record one
+// received in person directly (see DonationsService.recordDirect, which
+// inserts straight to APPROVED — staff already vouching for receipt). A
+// member-submitted donation starts PENDING and needs Field Executive/Admin
+// review before its receipt is available and points are credited — see
+// DonationsService.approve/reject. This deliberately diverges from the
+// withdrawal/KYC precedent (ADMIN/SUPER_ADMIN-only review): Field Executive
+// is allowed to approve donations too.
+model Donation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id])
+
+  amount    Decimal      @db.Decimal(10, 2)
+  mode      DonationMode
+  note      String?
+  reference String?
+
+  // Optional donor details for 80G-style tax receipts — unvalidated free
+  // text, same lenient pattern as Member.pan.
+  donorAddress String?
+  donorPan     String?
+
+  status DonationStatus @default(PENDING)
+
+  // Allocated only once APPROVED (recordDirect's immediate approval, or the
+  // review action) — same lazy-allocation pattern as Payment.receiptNumber,
+  // via NumberingService.nextDonationReceiptNumber.
+  receiptNumber String? @unique
+  // Snapshot of the points credited at approval time (amount *
+  // OrgSettings.donationPointsPercent / 100, floored) — an audit trail
+  // independent of the ledger row, same role as ReferralReward.pointsAtEarn.
+  pointsAwarded Int?
+
+  // Set only when staff record a donation as directly received in person;
+  // null when a member self-submitted it through the portal.
+  recordedById String?
+  recordedBy   User?   @relation("DonationRecordedBy", fields: [recordedById], references: [id])
+
+  reviewedById String?
+  reviewedBy   User?     @relation("DonationReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  // Razorpay order/payment ids — set only for mode = ONLINE. gatewayPaymentId
+  // is the idempotency key (DonationGatewayService.verifyAndRecord no-ops a
+  // redelivered/duplicate verify call for the same payment), same role as
+  // Payment.gatewayPaymentId.
+  gatewayOrderId   String?
+  gatewayPaymentId String? @unique
+
+  ledgerEntry ReferralPointsLedger?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([memberId, status])
+  @@map("donations")
 }

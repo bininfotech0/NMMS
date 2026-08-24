@@ -18,9 +18,6 @@ function makeExistingSettings(overrides: Record<string, unknown> = {}) {
     receiptNumberFormat: "RCP-{SEQ}",
     referralProgramEnabled: true,
     pointsPerApprovedReferral: 10,
-    volunteerBatchSilverMinPoints: 100,
-    volunteerBatchGoldMinPoints: 500,
-    volunteerBatchPlatinumMinPoints: 2000,
     referralPointsCapPerMember: null,
     referralRequireActiveReferrerPlan: false,
     pointsToMoneyRatioPoints: 100,
@@ -73,18 +70,6 @@ describe("OrgService.update", () => {
 
     await expect(
       service.update("org-1", { withdrawalMinAmount: 1000, withdrawalMaxAmount: 500 }),
-    ).rejects.toThrow(BadRequestException);
-    expect(prisma.orgSettings.update).not.toHaveBeenCalled();
-  });
-
-  it("rejects volunteer batch thresholds that are out of order", async () => {
-    const prisma = makeMockPrisma();
-    const service = makeService(prisma);
-    prisma.organization.findUniqueOrThrow.mockResolvedValue({ id: "org-1", name: "Org" });
-    prisma.orgSettings.upsert.mockResolvedValue(makeExistingSettings());
-
-    await expect(
-      service.update("org-1", { volunteerBatchGoldMinPoints: 50 }), // below existing Silver (100)
     ).rejects.toThrow(BadRequestException);
     expect(prisma.orgSettings.update).not.toHaveBeenCalled();
   });

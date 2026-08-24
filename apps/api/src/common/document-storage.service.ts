@@ -49,16 +49,19 @@ export class DocumentStorageService {
     return signature.every((byte, i) => buffer[i] === byte);
   }
 
-  // filePath is always server-generated (organizationId/memberId/uuid.ext) —
-  // never derived from client-supplied file names, to rule out path traversal.
+  // filePath is always server-generated (organizationId/scopeId/uuid.ext) —
+  // never derived from client-supplied file names, to rule out path
+  // traversal. scopeId is usually a memberId (member documents, event
+  // evidence) but is just an opaque path segment — e.g. EventsService.uploadBanner
+  // passes an eventId here.
   async save(
     organizationId: string,
-    memberId: string,
+    scopeId: string,
     mimeType: string,
     buffer: Buffer,
   ): Promise<string> {
     const ext = EXTENSION_BY_MIME[mimeType];
-    const relativeDir = path.join(organizationId, memberId);
+    const relativeDir = path.join(organizationId, scopeId);
     await mkdir(path.join(this.root, relativeDir), { recursive: true });
     const relativePath = path.join(relativeDir, `${randomUUID()}.${ext}`);
     await writeFile(path.join(this.root, relativePath), buffer);

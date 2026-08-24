@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { useMember, useUpdateMember } from "@/hooks/useMembers";
 import { emptyWizardForm, memberToWizardForm, wizardFormToUpdateDto, type WizardFormState } from "./wizard-types";
+import { StepJoiningDetails } from "./steps/StepJoiningDetails";
 import { StepBasicInfo } from "./steps/StepBasicInfo";
 import { StepPersonal } from "./steps/StepPersonal";
 import { StepAddress } from "./steps/StepAddress";
@@ -16,11 +17,14 @@ import { StepNominee } from "./steps/StepNominee";
 // reuses the same wizard step components and form<->DTO mapping as the
 // pre-activation onboarding wizard, since every field an admin might need to
 // correct after activation (personal info, address, education, documents,
-// nominee) already has a built, tested UI there. Deliberately omits the
-// Membership step (plan/fee are locked once not DRAFT — see
-// MembersService.update) and the Declaration/Review/Submit steps (not
-// applicable to an already-approved member).
+// nominee) already has a built, tested UI there. Joining Details exposes only
+// the non-financial subset of the wizard's Membership step (category, branch,
+// joining date, payment frequency, unit, remarks) — plan/fee stay locked once
+// not DRAFT (see MembersService.update) and are changed only via the
+// "Upgrade Plan" flow on the profile page. Also omits the Declaration/Review/
+// Submit steps (not applicable to an already-approved member).
 const SECTIONS = [
+  { key: "joining", title: "Joining Details", Component: StepJoiningDetails },
   { key: "basic", title: "Basic Information", Component: StepBasicInfo },
   { key: "personal", title: "Personal Information", Component: StepPersonal },
   { key: "address", title: "Contact & Address", Component: StepAddress },

@@ -63,6 +63,42 @@ export class DocumentsService {
     return this.toResponse(doc);
   }
 
+  // Member-portal self-service — memberId comes only from the verified
+  // member JWT, so no authorization lookup is needed. uploadedById (a
+  // required FK to User, not Member) is attributed to the member's own
+  // createdById — the system sentinel user MemberAuthService.register used
+  // — same convention MembersService.submitMine/StatusHistory.actorId use
+  // for a self-service action with no staff actor in context.
+  async uploadMine(memberId: string, input: UploadInput): Promise<MemberDocumentResponse> {
+    const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
+
+    if (!this.storage.isAllowedMimeType(input.mimeType)) {
+      throw new BadRequestException(
+        `Unsupported file type. Allowed: ${this.storage.allowedMimeTypes().join(", ")}`,
+      );
+    }
+    if (!this.storage.matchesDeclaredType(input.mimeType, input.buffer)) {
+      throw new BadRequestException("File content does not match the declared file type");
+    }
+
+    const filePath = await this.storage.save(member.organizationId, memberId, input.mimeType, input.buffer);
+
+    const doc = await this.prisma.memberDocument.create({
+      data: {
+        organizationId: member.organizationId,
+        memberId,
+        type: input.type,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        sizeBytes: input.buffer.length,
+        filePath,
+        uploadedById: member.createdById,
+      },
+      include: { member: { select: { fullName: true } }, uploadedBy: { select: { email: true } } },
+    });
+    return this.toResponse(doc);
+  }
+
   async findByMember(memberId: string, user: AuthUser): Promise<MemberDocumentResponse[]> {
     await this.membersService.findOne(memberId, user);
     const docs = await this.prisma.memberDocument.findMany({
@@ -71,6 +107,31 @@ export class DocumentsService {
       orderBy: { createdAt: "desc" },
     });
     return docs.map((d) => this.toResponse(d));
+  }
+
+  // Member-portal self-service — memberId comes only from the verified
+  // member JWT (never a client-supplied param), so the caller's identity IS
+  // the authorization: no jurisdiction/membersService.findOne check needed,
+  // a member can only ever be themselves.
+  async findMine(memberId: string): Promise<MemberDocumentResponse[]> {
+    const docs = await this.prisma.memberDocument.findMany({
+      where: { memberId },
+      include: { member: { select: { fullName: true } }, uploadedBy: { select: { email: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return docs.map((d) => this.toResponse(d));
+  }
+
+  async getFileForMember(documentId: string, memberId: string) {
+    const doc = await this.prisma.memberDocument.findFirst({ where: { id: documentId, memberId } });
+    if (!doc) {
+      throw new NotFoundException("Document not found");
+    }
+    return {
+      stream: this.storage.readStream(doc.filePath),
+      mimeType: doc.mimeType,
+      fileName: doc.fileName,
+    };
   }
 
   async findAll(user: AuthUser): Promise<MemberDocumentResponse[]> {

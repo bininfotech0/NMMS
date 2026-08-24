@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Menu, ChevronDown, LogOut } from "lucide-react";
+import { Menu, MoreHorizontal, ChevronDown, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { ShellNavItem, ShellNavSection, ShellProps } from "./types";
 
@@ -51,7 +51,7 @@ function TabNavLink({ item }: { item: ShellNavItem }) {
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+          "shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors",
           isActive ? "border-brand-green text-brand-green" : "border-transparent text-muted-foreground hover:text-foreground",
         )
       }
@@ -83,6 +83,75 @@ function BottomNavLink({ item }: { item: ShellNavItem }) {
       </div>
       {item.shortLabel ?? item.label}
     </NavLink>
+  );
+}
+
+// The bottom tab bar only has room for a handful of items before they get
+// squeezed unreadable/off-screen on a phone — cap what renders directly and
+// fold the rest behind a "More" tab that opens a full-list sheet, so every
+// nav item stays reachable on mobile regardless of how many sections/pages
+// exist (11 for the member portal as of this writing, and growing). Set to 6
+// (not lower) so it never clips AppShell's own curated 6-item mobileItems
+// list (5 real destinations + its own literal "More" shortcut to Settings —
+// that array is hand-picked on purpose, not the full nav, since "sidebar"
+// density already has a separate hamburger-menu sheet for reaching every
+// admin page on mobile).
+const MAX_BOTTOM_TABS = 6;
+
+function BottomNav({ items }: { items: ShellNavItem[] }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const overflow = items.length > MAX_BOTTOM_TABS;
+  const visible = overflow ? items.slice(0, MAX_BOTTOM_TABS) : items;
+  const hidden = overflow ? items.slice(MAX_BOTTOM_TABS) : [];
+
+  return (
+    <div className="flex items-center justify-around">
+      {visible.map((item) => (
+        <BottomNavLink key={item.key} item={item} />
+      ))}
+      {overflow && (
+        <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              className="flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <MoreHorizontal className="size-5" />
+              More
+            </button>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="inset-0 h-full max-h-full overflow-y-auto border-t-0">
+            <SheetHeader>
+              <SheetTitle>More</SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col gap-1 px-4 pb-4">
+              {hidden.map((item) => (
+                <NavLink
+                  key={item.key}
+                  to={item.to}
+                  end={item.end}
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors",
+                      isActive ? "bg-brand-bg-soft text-brand-green" : "text-foreground hover:bg-muted",
+                    )
+                  }
+                >
+                  <item.icon className="size-5 shrink-0" />
+                  {item.label}
+                  {!!item.badgeCount && (
+                    <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-brand-gold text-[10px] font-bold text-brand-brown">
+                      {item.badgeCount > 9 ? "9+" : item.badgeCount}
+                    </span>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+    </div>
   );
 }
 
@@ -168,6 +237,7 @@ export function Shell({
   userLabel,
   userSubtitle,
   userInitials,
+  userAvatarUrl,
   onLogout,
   headerExtras,
   accountMenuItems,
@@ -219,6 +289,7 @@ export function Shell({
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-2 rounded-md p-1 hover:bg-accent">
                       <Avatar className="size-8">
+                        {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt="" />}
                         <AvatarFallback className="bg-brand-green text-xs text-white">{userInitials}</AvatarFallback>
                       </Avatar>
                       <div className="hidden text-left sm:block">
@@ -252,11 +323,7 @@ export function Shell({
         </div>
 
         <nav className="no-print fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card lg:hidden">
-          <div className="flex items-center justify-around">
-            {bottomItems.map((item) => (
-              <BottomNavLink key={item.key} item={item} />
-            ))}
-          </div>
+          <BottomNav items={bottomItems} />
         </nav>
       </div>
     );
@@ -269,6 +336,7 @@ export function Shell({
           <div className="flex min-w-0 items-center gap-3">
             {brandSlot}
             <Avatar className="size-9 shrink-0">
+              {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt="" />}
               <AvatarFallback className="bg-brand-green text-xs font-semibold text-white">{userInitials}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
@@ -284,7 +352,7 @@ export function Shell({
             </Button>
           </div>
         </div>
-        <nav className="mx-auto hidden max-w-4xl gap-1 px-4 sm:flex">
+        <nav className="mx-auto hidden max-w-4xl gap-1 overflow-x-auto px-4 sm:flex">
           {flattenSections(sections).map((item) => (
             <TabNavLink key={item.key} item={item} />
           ))}
@@ -294,11 +362,7 @@ export function Shell({
       <main className="mx-auto max-w-4xl px-4 py-6 pb-24 sm:pb-6">{children}</main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-white sm:hidden">
-        <div className="flex items-center justify-around">
-          {bottomItems.map((item) => (
-            <BottomNavLink key={item.key} item={item} />
-          ))}
-        </div>
+        <BottomNav items={bottomItems} />
       </nav>
     </div>
   );

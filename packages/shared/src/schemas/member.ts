@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { planTierSchema } from "./plan";
 import { kycStatusSchema } from "./kyc";
+import { indianMobileSchema, indianPincodeSchema } from "./validators";
 
 export const memberStatusSchema = z.enum([
   "DRAFT",
@@ -38,7 +39,7 @@ export const nomineeSchema = z.object({
   relationship: z.string().nullish(),
   dob: z.coerce.date().nullish(),
   address: z.string().nullish(),
-  mobile: z.string().nullish(),
+  mobile: indianMobileSchema.nullish(),
 });
 export type NomineeInput = z.infer<typeof nomineeSchema>;
 
@@ -56,7 +57,7 @@ export type NomineeResponse = z.infer<typeof nomineeResponseSchema>;
 // incrementally via PATCH as the wizard's steps are completed (Save as Draft).
 export const createMemberSchema = z.object({
   fullName: z.string().min(1),
-  mobile: z.string().min(10).max(15),
+  mobile: indianMobileSchema,
 
   // Field-executive registration metadata, captured client-side at draft
   // creation (see apps/web/src/lib/device.ts) — all optional since manual/
@@ -92,15 +93,15 @@ export const updateMemberSchema = z.object({
   isExServiceman: z.boolean().optional(),
   isSeniorCitizen: z.boolean().optional(),
 
-  mobile: z.string().min(10).max(15).optional(),
-  whatsappNumber: z.string().nullish(),
+  mobile: indianMobileSchema.optional(),
+  whatsappNumber: indianMobileSchema.nullish(),
   email: z.string().email().nullish(),
   emergencyContactName: z.string().nullish(),
-  emergencyContactMobile: z.string().nullish(),
+  emergencyContactMobile: indianMobileSchema.nullish(),
   emergencyContactRelationship: z.string().nullish(),
 
   // Current address
-  pincode: z.string().nullish(),
+  pincode: indianPincodeSchema.nullish(),
   addressLine: z.string().nullish(),
   landmark: z.string().nullish(),
   latitude: z.number().min(-90).max(90).nullish(),
@@ -109,7 +110,7 @@ export const updateMemberSchema = z.object({
   // Permanent address — the frontend copies current → perm* on save when
   // sameAsCurrentAddress is checked; the backend stores both explicitly.
   sameAsCurrentAddress: z.boolean().optional(),
-  permPincode: z.string().nullish(),
+  permPincode: indianPincodeSchema.nullish(),
   permAddressLine: z.string().nullish(),
   permLandmark: z.string().nullish(),
 
@@ -184,20 +185,20 @@ export const memberSelfUpdateSchema = z.object({
   isExServiceman: z.boolean().optional(),
   isSeniorCitizen: z.boolean().optional(),
 
-  whatsappNumber: z.string().nullish(),
+  whatsappNumber: indianMobileSchema.nullish(),
   email: z.string().email().nullish(),
   emergencyContactName: z.string().nullish(),
-  emergencyContactMobile: z.string().nullish(),
+  emergencyContactMobile: indianMobileSchema.nullish(),
   emergencyContactRelationship: z.string().nullish(),
 
-  pincode: z.string().nullish(),
+  pincode: indianPincodeSchema.nullish(),
   addressLine: z.string().nullish(),
   landmark: z.string().nullish(),
   latitude: z.number().min(-90).max(90).nullish(),
   longitude: z.number().min(-180).max(180).nullish(),
 
   sameAsCurrentAddress: z.boolean().optional(),
-  permPincode: z.string().nullish(),
+  permPincode: indianPincodeSchema.nullish(),
   permAddressLine: z.string().nullish(),
   permLandmark: z.string().nullish(),
 
@@ -213,8 +214,25 @@ export const memberSelfUpdateSchema = z.object({
   businessTypeId: z.string().nullish(),
 
   socialMediaLinks: z.string().nullish(),
+
+  // Required for MembersService.submitInternal's REQUIRED_FOR_SUBMIT gate —
+  // a self-registered member fills these in themselves (the staff wizard's
+  // StepDeclaration equivalent) before calling POST /members/me/submit.
+  declarationInfoCorrect: z.boolean().optional(),
+  declarationAcceptConstitution: z.boolean().optional(),
+  declarationAcceptPrivacyPolicy: z.boolean().optional(),
+  declarationAcceptTerms: z.boolean().optional(),
+  declarationPlace: z.string().nullish(),
+  declarationDate: z.coerce.date().nullish(),
 });
 export type MemberSelfUpdateInput = z.infer<typeof memberSelfUpdateSchema>;
+
+// A self-registered DRAFT member choosing their plan for the first time —
+// see MembersService.selectMyPlan.
+export const selectMemberPlanSchema = z.object({
+  planId: z.string().min(1),
+});
+export type SelectMemberPlanInput = z.infer<typeof selectMemberPlanSchema>;
 
 export const memberResponseSchema = z.object({
   id: z.string(),
