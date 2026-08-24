@@ -26,7 +26,13 @@ import { usePlans } from "@/hooks/usePlans";
 import type { MemberResponse, PaymentMode, PaymentResponse } from "@nmms/shared";
 
 const TABS = ["Outstanding", "History"] as const;
-const PAYMENT_MODES: PaymentMode[] = ["CASH", "UPI", "BANK", "CHEQUE"];
+// ONLINE is included here for manual entry (e.g. staff recording a transfer
+// they were shown proof of outside the app) — deliberately not excluded like
+// upgradeMemberPlanSchema/manualDonationModeSchema do, per explicit product
+// choice for this flow specifically. recordPaymentSchema already accepts it
+// server-side; a gateway-verified payment reaches the same mode via
+// PaymentGatewayService instead, never through this manual form.
+const PAYMENT_MODES: PaymentMode[] = ["CASH", "UPI", "BANK", "CHEQUE", "ONLINE"];
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
@@ -209,7 +215,6 @@ function RecordPaymentSheet({
   const [transactionNumber, setTransactionNumber] = useState("");
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [showManualForm, setShowManualForm] = useState(false);
   const recordPayment = useRecordPayment();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -237,7 +242,6 @@ function RecordPaymentSheet({
           setTransactionNumber("");
           setRemarks("");
           setError(null);
-          setShowManualForm(false);
         }
         onOpenChange(next);
       }}
@@ -250,61 +254,57 @@ function RecordPaymentSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-4 px-4">
-          {member && (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <PayOnlineButton
-                memberId={member.id}
-                onError={setError}
-                onSuccess={() => onOpenChange(false)}
-                className="flex-1 bg-brand-green hover:bg-brand-green/90"
-              />
-              <SharePaymentLinkButton memberId={member.id} memberName={member.fullName} className="flex-1" />
-            </div>
-          )}
-
-          {onlineAvailable && !showManualForm ? (
-            <button
-              type="button"
-              onClick={() => setShowManualForm(true)}
-              className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-brand-green-dark hover:underline"
+          <div className="space-y-1.5">
+            <Label htmlFor="amount">Amount (₹)</Label>
+            <Input
+              id="amount"
+              type="number"
+              min="0"
+              step="1"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="mode">Payment mode</Label>
+            <select
+              id="mode"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as PaymentMode)}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              Record an offline payment instead
-            </button>
+              {PAYMENT_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {m[0] + m.slice(1).toLowerCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {mode === "ONLINE" && onlineAvailable ? (
+            <>
+              {member && (
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <PayOnlineButton
+                    memberId={member.id}
+                    onError={setError}
+                    onSuccess={() => onOpenChange(false)}
+                    className="flex-1 bg-brand-green hover:bg-brand-green/90"
+                  />
+                  <SharePaymentLinkButton memberId={member.id} memberName={member.fullName} className="flex-1" />
+                </div>
+              )}
+              {error && <p className="text-sm text-destructive">{error}</p>}
+            </>
           ) : (
-            <form className="flex flex-1 flex-col gap-4 border-t border-border pt-4" onSubmit={handleSubmit}>
-              <div className="space-y-1.5">
-                <Label htmlFor="amount">Amount (₹)</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="mode">Payment mode</Label>
-                <select
-                  id="mode"
-                  value={mode}
-                  onChange={(e) => setMode(e.target.value as PaymentMode)}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                >
-                  {PAYMENT_MODES.map((m) => (
-                    <option key={m} value={m}>
-                      {m[0] + m.slice(1).toLowerCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <form className="flex flex-1 flex-col gap-4" onSubmit={handleSubmit}>
               {mode !== "CASH" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="transactionNumber">Transaction number</Label>
                   <Input
                     id="transactionNumber"
-                    placeholder="UPI/bank reference"
+                    placeholder="UPI/bank/transaction reference"
                     value={transactionNumber}
                     onChange={(e) => setTransactionNumber(e.target.value)}
                   />

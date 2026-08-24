@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ReferralsModule } from "../referrals/referrals.module";
 import { IntegrationsModule } from "../integrations/integrations.module";
 import { NumberingService } from "../common/numbering.service";
+import { RazorpayConfigService } from "../payments/gateway/razorpay-config.service";
 import { RazorpayProvider } from "../payments/gateway/razorpay-provider";
 import { DonationController } from "./donation.controller";
 import { DonationsAdminController } from "./donations-admin.controller";
@@ -15,6 +16,10 @@ import { DonationGatewayService } from "./donation-gateway.service";
   // DonationsAdminController ("donations/:id") so "me" isn't shadowed by
   // ":id" — same route-order caution as WithdrawalsModule.
   controllers: [DonationController, DonationsAdminController, MemberDonationsController],
-  providers: [DonationsService, DonationGatewayService, NumberingService, RazorpayProvider],
+  providers: [DonationsService, DonationGatewayService, NumberingService, RazorpayConfigService, RazorpayProvider],
+  // DonationGatewayService is consumed by PaymentGatewayService (PaymentsModule)
+  // to route a "donation"-purpose webhook event to the right service — see
+  // PaymentsModule's import of DonationsModule.
+  exports: [DonationGatewayService],
 })
 export class DonationsModule {}

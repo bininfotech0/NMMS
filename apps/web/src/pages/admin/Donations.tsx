@@ -16,15 +16,18 @@ import {
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { PayDonationOnlineButton } from "@/components/donations/PayDonationOnlineButton";
+import { ShareDonationLinkButton } from "@/components/donations/ShareDonationLinkButton";
 import { ApiError } from "@/lib/api-client";
 import {
   useApproveDonation,
+  useDonationGatewayStatus,
   useDonationsAdminList,
   useRecordDonationDirect,
   useRejectDonation,
 } from "@/hooks/useDonations";
 import { useMembers } from "@/hooks/useMembers";
-import type { DonationResponse, DonationStatus, ManualDonationMode } from "@nmms/shared";
+import type { DonationMode, DonationResponse, DonationStatus, ManualDonationMode } from "@nmms/shared";
 
 const TABS: { label: string; value: DonationStatus | undefined }[] = [
   { label: "Pending", value: "PENDING" },
@@ -254,15 +257,25 @@ function RejectSheet({
 
 function RecordDonationSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: members = [] } = useMembers();
+  const { data: gatewayStatus } = useDonationGatewayStatus();
+  const onlineAvailable = gatewayStatus?.enabled ?? false;
   const [memberId, setMemberId] = useState("");
   const [amount, setAmount] = useState("");
-  const [mode, setMode] = useState<ManualDonationMode>("CASH");
+  const [mode, setMode] = useState<DonationMode>("CASH");
   const [note, setNote] = useState("");
   const [reference, setReference] = useState("");
   const [donorAddress, setDonorAddress] = useState("");
   const [donorPan, setDonorPan] = useState("");
   const [error, setError] = useState<string | null>(null);
   const recordDirect = useRecordDonationDirect(memberId);
+
+  // "Online" only ever appears as a mode choice when the gateway is actually
+  // configured — selecting it always routes to PayDonationOnlineButton/
+  // ShareDonationLinkButton below, never to this manual submit path (which
+  // still can't accept mode: "ONLINE" server-side, by design — see
+  // manualDonationModeSchema). No separate "record offline instead" toggle
+  // needed anymore: switching the Mode dropdown IS the toggle.
+  const modeOptions = onlineAvailable ? [...MODE_OPTIONS, { value: "ONLINE" as const, label: "Online" }] : MODE_OPTIONS;
 
   function reset() {
     setMemberId("");
@@ -277,6 +290,7 @@ function RecordDonationSheet({ open, onOpenChange }: { open: boolean; onOpenChan
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === "ONLINE") return;
     setError(null);
     try {
       await recordDirect.mutateAsync({
@@ -307,7 +321,7 @@ function RecordDonationSheet({ open, onOpenChange }: { open: boolean; onOpenChan
           <SheetTitle>Record a donation</SheetTitle>
           <SheetDescription>For a donation received directly (e.g. cash handed to you in person) — approved immediately.</SheetDescription>
         </SheetHeader>
-        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
+        <div className="flex flex-1 flex-col gap-4 px-4">
           <NativeSelect
             id="donor"
             label="Donor"
@@ -329,21 +343,6 @@ function RecordDonationSheet({ open, onOpenChange }: { open: boolean; onOpenChan
               required
             />
           </div>
-          <NativeSelect
-            id="record-mode"
-            label="Mode"
-            value={mode}
-            onChange={(e) => setMode(e.target.value as ManualDonationMode)}
-            options={MODE_OPTIONS}
-          />
-          <div className="space-y-1.5">
-            <Label htmlFor="record-reference">Reference (optional)</Label>
-            <Input id="record-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="record-note">Note (optional)</Label>
-            <Input id="record-note" value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
           <div className="space-y-1.5">
             <Label htmlFor="record-donor-address">Donor address (optional)</Label>
             <Input
@@ -362,17 +361,62 @@ function RecordDonationSheet({ open, onOpenChange }: { open: boolean; onOpenChan
               placeholder="For an 80G tax receipt"
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <SheetFooter className="px-0">
-            <Button
-              type="submit"
-              disabled={recordDirect.isPending || !memberId}
-              className="bg-brand-green hover:bg-brand-green/90"
-            >
-              {recordDirect.isPending ? "Recording…" : "Record Donation"}
-            </Button>
-          </SheetFooter>
-        </form>
+
+          <NativeSelect
+            id="record-mode"
+            label="Mode"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as DonationMode)}
+            options={modeOptions}
+          />
+
+          {mode === "ONLINE" ? (
+            <>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <PayDonationOnlineButton
+                  memberId={memberId}
+                  amount={Number(amount)}
+                  donorAddress={donorAddress}
+                  donorPan={donorPan}
+                  disabled={!memberId || !amount || Number(amount) <= 0}
+                  className="flex-1 bg-brand-green hover:bg-brand-green/90"
+                  onError={setError}
+                  onSuccess={() => onOpenChange(false)}
+                />
+                <ShareDonationLinkButton
+                  memberId={memberId}
+                  amount={Number(amount)}
+                  donorAddress={donorAddress}
+                  donorPan={donorPan}
+                  disabled={!memberId || !amount || Number(amount) <= 0}
+                  className="flex-1"
+                />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+            </>
+          ) : (
+            <form className="flex flex-1 flex-col gap-4" onSubmit={handleSubmit}>
+              <div className="space-y-1.5">
+                <Label htmlFor="record-reference">Reference (optional)</Label>
+                <Input id="record-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="record-note">Note (optional)</Label>
+                <Input id="record-note" value={note} onChange={(e) => setNote(e.target.value)} />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <SheetFooter className="px-0">
+                <Button
+                  type="submit"
+                  disabled={recordDirect.isPending || !memberId}
+                  className="bg-brand-green hover:bg-brand-green/90"
+                >
+                  {recordDirect.isPending ? "Recording…" : "Record Donation"}
+                </Button>
+              </SheetFooter>
+            </form>
+          )}
+        </div>
       </SheetContent>
     </Sheet>
   );

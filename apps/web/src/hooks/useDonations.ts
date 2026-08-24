@@ -5,6 +5,7 @@ import type {
   DonationGatewayOrderResponse,
   DonationResponse,
   DonationStatus,
+  PaymentLinkResponse,
   RecordDonationInput,
   SubmitDonationInput,
   VerifyDonationGatewayPaymentInput,
@@ -97,6 +98,61 @@ export function useRecordDonationDirect(memberId: string) {
       toast.success("Donation recorded");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to record donation")),
+  });
+}
+
+// --- Staff, online on behalf of a member ---------------------------------
+// Mirrors usePaymentGateway.ts, but donation-scoped: amount is staff/donor
+// -chosen (not fixed by a plan), so useCreateDonationGatewayOrder takes it as
+// input, same as the member self-service variant above.
+
+export function useDonationGatewayStatus() {
+  return useQuery({
+    queryKey: ["donations", "gateway", "status"],
+    queryFn: () => apiFetch<{ enabled: boolean }>("/donations/gateway/status"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateDonationGatewayOrder(memberId: string) {
+  return useMutation({
+    mutationFn: (dto: CreateDonationOrderInput) =>
+      apiFetch<DonationGatewayOrderResponse>(`/members/${memberId}/donations/gateway/order`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    onError: (err) => toast.error(errorMessage(err, "Failed to start online donation")),
+  });
+}
+
+export function useVerifyDonationGatewayPayment(memberId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: VerifyDonationGatewayPaymentInput) =>
+      apiFetch<DonationResponse>(`/members/${memberId}/donations/gateway/verify`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members", memberId, "donations"] });
+      queryClient.invalidateQueries({ queryKey: ["donations", "admin"] });
+      toast.success("Donation recorded");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to verify donation payment")),
+  });
+}
+
+// Hosted Razorpay link, for a donor who'd rather pay on their own device —
+// the Donation itself is only created later, by the webhook picking up the
+// completed link (see PaymentGatewayService.handleWebhook's purpose routing).
+export function useCreateDonationPaymentLink(memberId: string) {
+  return useMutation({
+    mutationFn: (dto: CreateDonationOrderInput) =>
+      apiFetch<PaymentLinkResponse>(`/members/${memberId}/donations/gateway/payment-link`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    onError: (err) => toast.error(errorMessage(err, "Failed to create donation link")),
   });
 }
 

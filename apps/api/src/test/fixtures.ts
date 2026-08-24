@@ -324,6 +324,12 @@ export function makeMockPrisma() {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    featureFlag: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      upsert: jest.fn(),
+      createMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
   // Default: $transaction(cb) just runs cb with the same mock as `tx`.

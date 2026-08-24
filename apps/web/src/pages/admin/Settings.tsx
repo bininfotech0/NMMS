@@ -8,7 +8,13 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { useOrgProfile, useUpdateOrg } from "@/hooks/useOrg";
-import { useIntegrations, useUpdateIntegration } from "@/hooks/useIntegrations";
+import {
+  useIntegrations,
+  usePaymentGatewayCredentialsStatus,
+  useSetPaymentGatewayMode,
+  useUpdateIntegration,
+  useUpdatePaymentGatewayCredentials,
+} from "@/hooks/useIntegrations";
 import { useCreateLookup, useLookups, useUpdateLookup } from "@/hooks/useLookups";
 import { useReferralPointRules, useUpsertReferralPointRuleMatrix } from "@/hooks/useReferrals";
 import { useAuthStore } from "@/stores/auth";
@@ -16,6 +22,7 @@ import {
   PLAN_TIER_ORDER,
   type FeatureFlagKey,
   type LookupCategory,
+  type RazorpayMode,
   type WithdrawalChargeType,
 } from "@nmms/shared";
 
@@ -866,7 +873,9 @@ function IntegrationsSettings() {
                 </Button>
               </div>
             </div>
-            {flag.key === "PAYMENT_GATEWAY" && expandedKey === "PAYMENT_GATEWAY" && <PaymentGatewayConfigForm />}
+            {flag.key === "PAYMENT_GATEWAY" && expandedKey === "PAYMENT_GATEWAY" && (
+              <PaymentGatewayConfigForm enabled={flag.enabled} />
+            )}
             {flag.key === "PAYMENT_GATEWAY_PAYOUTS" && expandedKey === "PAYMENT_GATEWAY_PAYOUTS" && (
               <PayoutGatewayConfigForm />
             )}
@@ -888,83 +897,148 @@ function IntegrationsSettings() {
   );
 }
 
-function PaymentGatewayConfigForm() {
+function PaymentGatewayConfigForm({ enabled }: { enabled: boolean }) {
   const organizationId = useAuthStore((s) => s.user?.organizationId);
-  const updateIntegration = useUpdateIntegration();
-
-  const [keyId, setKeyId] = useState("");
-  const [keySecret, setKeySecret] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
-  const [saved, setSaved] = useState(false);
+  const { data: status } = usePaymentGatewayCredentialsStatus();
+  const setMode = useSetPaymentGatewayMode();
 
   const webhookUrl = organizationId
     ? `${window.location.origin}/api/v1/webhooks/razorpay/${organizationId}`
     : "";
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setSaved(false);
-    await updateIntegration.mutateAsync({
-      key: "PAYMENT_GATEWAY",
-      dto: { config: { keyId, keySecret, webhookSecret } },
-    });
-    setKeyId("");
-    setKeySecret("");
-    setWebhookSecret("");
-    setSaved(true);
-  }
+  const activeMode = status?.mode ?? "test";
+  const hasAnyConfig = (status?.hasTestConfig || status?.hasLiveConfig) ?? false;
 
   return (
-    <form onSubmit={handleSave} className="mt-4 space-y-4 border-t border-border pt-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="rzp-key-id">Key ID</Label>
-          <Input
-            id="rzp-key-id"
-            value={keyId}
-            onChange={(e) => setKeyId(e.target.value)}
-            placeholder="rzp_live_..."
-            required
-          />
+    <div className="mt-4 space-y-5 border-t border-border pt-4">
+      {hasAnyConfig && !enabled && (
+        <div className="rounded-lg border border-brand-gold/40 bg-brand-bg-soft px-3 py-2 text-sm text-brand-brown">
+          Credentials are saved, but this integration is still <strong>Disabled</strong> — click the "Disabled" button
+          in the top-right corner of this card to turn it on. Saving credentials here and enabling the integration are
+          two separate steps.
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="rzp-key-secret">Key Secret</Label>
-          <Input
-            id="rzp-key-secret"
-            type="password"
-            value={keySecret}
-            onChange={(e) => setKeySecret(e.target.value)}
-            required
-          />
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="rzp-webhook-secret">Webhook Secret</Label>
-          <Input
-            id="rzp-webhook-secret"
-            type="password"
-            value={webhookSecret}
-            onChange={(e) => setWebhookSecret(e.target.value)}
-            placeholder="From Razorpay Dashboard → Webhooks"
-            required
-          />
+      )}
+      <div className="space-y-1.5">
+        <Label>Active mode</Label>
+        <p className="text-xs text-muted-foreground">
+          Which credentials new checkouts use. Keep both saved so you can switch back to Test without re-entering keys.
+        </p>
+        <div className="flex gap-2">
+          {(["test", "live"] as RazorpayMode[]).map((mode) => {
+            const hasConfig = mode === "test" ? status?.hasTestConfig : status?.hasLiveConfig;
+            const isActive = activeMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                disabled={!hasConfig || isActive || setMode.isPending}
+                onClick={() => setMode.mutate(mode)}
+                title={!hasConfig ? `Save ${mode} credentials below first` : undefined}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-sm font-medium capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                  isActive
+                    ? "border-brand-green bg-brand-bg-soft text-brand-green"
+                    : "border-border text-muted-foreground hover:border-brand-green hover:text-brand-green",
+                )}
+              >
+                {mode}
+                {isActive && " (active)"}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label>Webhook URL — paste this into Razorpay Dashboard → Webhooks</Label>
+        <Label>Webhook URL — paste this into both your Test and Live Razorpay Dashboard → Webhooks</Label>
         <Input readOnly value={webhookUrl} className="bg-muted font-mono text-xs" />
+        <p className="text-xs text-muted-foreground">
+          Test and Live are separate Razorpay accounts with separate webhook secrets, but both post to this same URL —
+          save each mode's webhook secret below and either can be verified.
+        </p>
       </div>
 
+      <div className="grid gap-5 sm:grid-cols-2">
+        <RazorpayModeCredentialsForm mode="test" configured={status?.hasTestConfig ?? false} />
+        <RazorpayModeCredentialsForm mode="live" configured={status?.hasLiveConfig ?? false} />
+      </div>
+    </div>
+  );
+}
+
+function RazorpayModeCredentialsForm({ mode, configured }: { mode: RazorpayMode; configured: boolean }) {
+  const updateCredentials = useUpdatePaymentGatewayCredentials();
+
+  const [keyId, setKeyId] = useState("");
+  const [keySecret, setKeySecret] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    await updateCredentials.mutateAsync({ mode, credentials: { keyId, keySecret, webhookSecret } });
+    setKeyId("");
+    setKeySecret("");
+    setWebhookSecret("");
+  }
+
+  return (
+    <form onSubmit={handleSave} className="space-y-3 rounded-lg border border-border p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold capitalize">{mode} mode</span>
+        {configured && (
+          <Badge variant="outline" className="border-transparent bg-brand-bg-soft text-brand-green">
+            Configured
+          </Badge>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={`rzp-${mode}-key-id`}>Key ID</Label>
+        <Input
+          id={`rzp-${mode}-key-id`}
+          name={`rzp-${mode}-key-id`}
+          value={keyId}
+          onChange={(e) => setKeyId(e.target.value)}
+          placeholder={mode === "live" ? "rzp_live_..." : "rzp_test_..."}
+          autoComplete="off"
+          required
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={`rzp-${mode}-key-secret`}>Key Secret</Label>
+        <Input
+          id={`rzp-${mode}-key-secret`}
+          name={`rzp-${mode}-key-secret`}
+          type="password"
+          value={keySecret}
+          onChange={(e) => setKeySecret(e.target.value)}
+          autoComplete="new-password"
+          required
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={`rzp-${mode}-webhook-secret`}>Webhook Secret</Label>
+        <Input
+          id={`rzp-${mode}-webhook-secret`}
+          name={`rzp-${mode}-webhook-secret`}
+          type="password"
+          value={webhookSecret}
+          onChange={(e) => setWebhookSecret(e.target.value)}
+          placeholder="From Razorpay Dashboard → Webhooks"
+          autoComplete="new-password"
+          required
+        />
+      </div>
       <p className="text-xs text-muted-foreground">
-        Credentials are encrypted at rest and are write-only — they won't be shown again after saving.
+        Encrypted at rest and write-only — won't be shown again after saving.
       </p>
-
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={updateIntegration.isPending} className="bg-brand-green hover:bg-brand-green/90">
-          {updateIntegration.isPending ? "Saving…" : "Save Credentials"}
-        </Button>
-        {saved && <span className="text-sm text-brand-green">Saved.</span>}
-      </div>
+      <Button
+        type="submit"
+        size="sm"
+        disabled={updateCredentials.isPending}
+        className="w-full bg-brand-green hover:bg-brand-green/90"
+      >
+        {updateCredentials.isPending ? "Saving…" : `Save ${mode} credentials`}
+      </Button>
     </form>
   );
 }
@@ -1004,9 +1078,11 @@ function PayoutGatewayConfigForm() {
           <Label htmlFor="rzpx-key-id">Key ID</Label>
           <Input
             id="rzpx-key-id"
+            name="rzpx-key-id"
             value={keyId}
             onChange={(e) => setKeyId(e.target.value)}
             placeholder="rzp_live_..."
+            autoComplete="off"
             required
           />
         </div>
@@ -1014,9 +1090,11 @@ function PayoutGatewayConfigForm() {
           <Label htmlFor="rzpx-key-secret">Key Secret</Label>
           <Input
             id="rzpx-key-secret"
+            name="rzpx-key-secret"
             type="password"
             value={keySecret}
             onChange={(e) => setKeySecret(e.target.value)}
+            autoComplete="new-password"
             required
           />
         </div>
@@ -1024,9 +1102,11 @@ function PayoutGatewayConfigForm() {
           <Label htmlFor="rzpx-account-number">RazorpayX Account Number</Label>
           <Input
             id="rzpx-account-number"
+            name="rzpx-account-number"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value)}
             placeholder="The virtual account payouts are sent from"
+            autoComplete="off"
             required
           />
         </div>
@@ -1034,10 +1114,12 @@ function PayoutGatewayConfigForm() {
           <Label htmlFor="rzpx-webhook-secret">Webhook Secret</Label>
           <Input
             id="rzpx-webhook-secret"
+            name="rzpx-webhook-secret"
             type="password"
             value={webhookSecret}
             onChange={(e) => setWebhookSecret(e.target.value)}
             placeholder="From Razorpay Dashboard → Webhooks"
+            autoComplete="new-password"
             required
           />
         </div>
@@ -1098,9 +1180,11 @@ function TwilioConfigForm({
           <Label htmlFor={`twilio-sid-${flagKey}`}>Twilio Account SID</Label>
           <Input
             id={`twilio-sid-${flagKey}`}
+            name={`twilio-sid-${flagKey}`}
             value={accountSid}
             onChange={(e) => setAccountSid(e.target.value)}
             placeholder="AC..."
+            autoComplete="off"
             required
           />
         </div>
@@ -1108,9 +1192,11 @@ function TwilioConfigForm({
           <Label htmlFor={`twilio-token-${flagKey}`}>Auth Token</Label>
           <Input
             id={`twilio-token-${flagKey}`}
+            name={`twilio-token-${flagKey}`}
             type="password"
             value={authToken}
             onChange={(e) => setAuthToken(e.target.value)}
+            autoComplete="new-password"
             required
           />
         </div>
@@ -1118,9 +1204,11 @@ function TwilioConfigForm({
           <Label htmlFor={`twilio-from-${flagKey}`}>{fromLabel}</Label>
           <Input
             id={`twilio-from-${flagKey}`}
+            name={`twilio-from-${flagKey}`}
             value={fromNumber}
             onChange={(e) => setFromNumber(e.target.value)}
             placeholder={fromPlaceholder}
+            autoComplete="off"
             required
           />
         </div>
@@ -1166,10 +1254,12 @@ function ResendConfigForm() {
           <Label htmlFor="resend-api-key">Resend API Key</Label>
           <Input
             id="resend-api-key"
+            name="resend-api-key"
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="re_..."
+            autoComplete="new-password"
             required
           />
         </div>
@@ -1177,10 +1267,12 @@ function ResendConfigForm() {
           <Label htmlFor="resend-from-address">From Address</Label>
           <Input
             id="resend-from-address"
+            name="resend-from-address"
             type="email"
             value={fromAddress}
             onChange={(e) => setFromAddress(e.target.value)}
             placeholder="notifications@yourorg.org"
+            autoComplete="off"
             required
           />
         </div>

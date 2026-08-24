@@ -7,6 +7,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { DonationsService } from "./donations.service";
+import { DonationGatewayService } from "./donation-gateway.service";
 import { ReviewDonationDto } from "./dto/review-donation.dto";
 
 // Deliberately includes FIELD_EXECUTIVE — diverging from the withdrawal/KYC
@@ -20,7 +21,17 @@ const CAN_MANAGE_DONATIONS: Role[] = [Role.FIELD_EXECUTIVE, Role.ADMIN, Role.SUP
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("donations")
 export class DonationsAdminController {
-  constructor(private readonly donationsService: DonationsService) {}
+  constructor(
+    private readonly donationsService: DonationsService,
+    private readonly donationGatewayService: DonationGatewayService,
+  ) {}
+
+  // No @Roles() restriction — matches PaymentsController.gatewayStatus, any
+  // authenticated staff can check whether the "Pay Online" option should show.
+  @Get("gateway/status")
+  async gatewayStatus(@CurrentUser() user: AuthUser) {
+    return { enabled: await this.donationGatewayService.isEnabled(user.organizationId) };
+  }
 
   @Get()
   @Roles(...CAN_MANAGE_DONATIONS)

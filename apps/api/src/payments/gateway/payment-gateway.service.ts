@@ -1,11 +1,11 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { FeatureFlagKey } from "@prisma/client";
 import type { AuthMember, AuthUser, GatewayOrderResponse, PaymentLinkResponse, PaymentResponse } from "@nmms/shared";
 import { PrismaService } from "../../prisma/prisma.service";
-import { IntegrationsService } from "../../integrations/integrations.service";
 import { buildJurisdictionWhere } from "../../common/scope.util";
 import { PaymentsService } from "../payments.service";
-import { RazorpayCredentials, RazorpayProvider } from "./razorpay-provider";
+import { DonationGatewayService } from "../../donations/donation-gateway.service";
+import { RazorpayConfigService } from "./razorpay-config.service";
+import { RazorpayProvider } from "./razorpay-provider";
 
 interface WebhookEvent {
   type: string;
@@ -13,6 +13,12 @@ interface WebhookEvent {
   paymentId: string;
   amountPaise: number;
   memberId: string | null;
+  // "donation" for an order/link created by DonationGatewayService, absent
+  // for a membership-fee order — routes handleWebhook to the right service
+  // instead of always recording into Payment.
+  purpose: string | null;
+  donorAddress: string | null;
+  donorPan: string | null;
 }
 
 @Injectable()
@@ -21,25 +27,18 @@ export class PaymentGatewayService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly integrations: IntegrationsService,
+    private readonly razorpayConfig: RazorpayConfigService,
     private readonly razorpay: RazorpayProvider,
     private readonly paymentsService: PaymentsService,
+    private readonly donationGatewayService: DonationGatewayService,
   ) {}
 
   async isEnabled(organizationId: string): Promise<boolean> {
-    return this.integrations.isEnabled(FeatureFlagKey.PAYMENT_GATEWAY, organizationId);
+    return this.razorpayConfig.isEnabled(organizationId);
   }
 
-  private async getCredentials(organizationId: string): Promise<RazorpayCredentials> {
-    const enabled = await this.isEnabled(organizationId);
-    const config = await this.integrations.getDecryptedConfig<Partial<RazorpayCredentials>>(
-      FeatureFlagKey.PAYMENT_GATEWAY,
-      organizationId,
-    );
-    if (!enabled || !config?.keyId || !config?.keySecret) {
-      throw new ConflictException("Payment gateway is not configured");
-    }
-    return { keyId: config.keyId, keySecret: config.keySecret, webhookSecret: config.webhookSecret };
+  private async getCredentials(organizationId: string) {
+    return this.razorpayConfig.getCredentials(organizationId);
   }
 
   // Shared by createOrder (embedded checkout) and createPaymentLink (hosted
@@ -218,18 +217,19 @@ export class PaymentGatewayService {
     if (!signatureHeader) {
       throw new ConflictException("Missing webhook signature");
     }
-    const config = await this.integrations.getDecryptedConfig<Partial<RazorpayCredentials>>(
-      FeatureFlagKey.PAYMENT_GATEWAY,
-      organizationId,
-    );
-    if (!config?.webhookSecret) {
+    // Test-mode and live-mode Razorpay accounts are entirely separate, but
+    // both post to this same org-scoped URL — so a webhook could legitimately
+    // arrive from either one regardless of which mode is currently "active"
+    // for new checkouts (e.g. an order started in test mode, completed after
+    // an admin flips to live). Try every configured mode's webhook secret
+    // rather than only the active one.
+    const webhookSecrets = await this.razorpayConfig.getWebhookSecrets(organizationId);
+    if (webhookSecrets.length === 0) {
       throw new ConflictException("Payment gateway webhook is not configured");
     }
-    const valid = this.razorpay.verifyWebhookSignature({
-      rawBody,
-      signature: signatureHeader,
-      webhookSecret: config.webhookSecret,
-    });
+    const valid = webhookSecrets.some((webhookSecret) =>
+      this.razorpay.verifyWebhookSignature({ rawBody, signature: signatureHeader, webhookSecret }),
+    );
     if (!valid) {
       throw new ConflictException("Invalid webhook signature");
     }
@@ -244,11 +244,20 @@ export class PaymentGatewayService {
     // non-2xx to Razorpay, which would just trigger retries for a payment
     // that already succeeded on their end. Log it for manual reconciliation.
     try {
-      await this.paymentsService.recordGatewayPaymentFromWebhook(
-        event.memberId,
-        { orderId: event.orderId, paymentId: event.paymentId, amount: event.amountPaise / 100 },
-        organizationId,
-      );
+      if (event.purpose === "donation") {
+        await this.donationGatewayService.recordFromWebhook(
+          event.memberId,
+          { orderId: event.orderId, paymentId: event.paymentId, amount: event.amountPaise / 100 },
+          organizationId,
+          { donorAddress: event.donorAddress, donorPan: event.donorPan },
+        );
+      } else {
+        await this.paymentsService.recordGatewayPaymentFromWebhook(
+          event.memberId,
+          { orderId: event.orderId, paymentId: event.paymentId, amount: event.amountPaise / 100 },
+          organizationId,
+        );
+      }
     } catch (err) {
       this.logger.error(
         `Failed to record webhook payment ${event.paymentId} for member ${event.memberId}`,
@@ -272,6 +281,9 @@ export class PaymentGatewayService {
         paymentId: String(entity.id ?? ""),
         amountPaise: Number(entity.amount ?? 0),
         memberId: notes.memberId ?? null,
+        purpose: notes.purpose ?? null,
+        donorAddress: notes.donorAddress || null,
+        donorPan: notes.donorPan || null,
       };
     } catch {
       return null;

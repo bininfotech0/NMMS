@@ -66,3 +66,38 @@ export const paymentLinkResponseSchema = z.object({
   shortUrl: z.string(),
 });
 export type PaymentLinkResponse = z.infer<typeof paymentLinkResponseSchema>;
+
+// An org can hold both a test-mode and a live-mode Razorpay credential set at
+// once (so switching back to test for debugging doesn't mean re-entering live
+// keys), with `mode` on PAYMENT_GATEWAY's stored config picking which one
+// RazorpayConfigService actually uses for checkout/webhook calls.
+export const razorpayModeSchema = z.enum(["test", "live"]);
+export type RazorpayMode = z.infer<typeof razorpayModeSchema>;
+
+export const razorpayCredentialsInputSchema = z.object({
+  keyId: z.string().min(1),
+  keySecret: z.string().min(1),
+  webhookSecret: z.string().min(1),
+});
+export type RazorpayCredentialsInput = z.infer<typeof razorpayCredentialsInputSchema>;
+
+export const updatePaymentGatewayCredentialsSchema = z.object({
+  mode: razorpayModeSchema,
+  credentials: razorpayCredentialsInputSchema,
+});
+export type UpdatePaymentGatewayCredentialsInput = z.infer<typeof updatePaymentGatewayCredentialsSchema>;
+
+export const setPaymentGatewayModeSchema = z.object({
+  mode: razorpayModeSchema,
+});
+export type SetPaymentGatewayModeInput = z.infer<typeof setPaymentGatewayModeSchema>;
+
+// Never includes the secrets themselves (write-only, same convention as
+// FeatureFlagResponse.hasConfig) — just enough for the settings UI to show
+// which modes are configured and which one is currently active.
+export const paymentGatewayCredentialsStatusSchema = z.object({
+  mode: razorpayModeSchema,
+  hasTestConfig: z.boolean(),
+  hasLiveConfig: z.boolean(),
+});
+export type PaymentGatewayCredentialsStatus = z.infer<typeof paymentGatewayCredentialsStatusSchema>;
