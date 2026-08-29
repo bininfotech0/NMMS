@@ -38,7 +38,10 @@ type EventWithCounts = {
 };
 
 function bannerImageUrl(eventId: string, bannerImagePath: string | null): string | null {
-  return bannerImagePath ? `/public/events/${eventId}/banner` : null;
+  // Must include the API's global prefix (main.ts: setGlobalPrefix("api/v1"))
+  // — the frontend renders this straight into an <img src>, and nginx only
+  // routes /api/ to the API service (everything else goes to the web app).
+  return bannerImagePath ? `/api/v1/public/events/${eventId}/banner` : null;
 }
 
 const BANNER_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
