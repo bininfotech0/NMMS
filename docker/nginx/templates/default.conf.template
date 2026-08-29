@@ -9,9 +9,12 @@ upstream web_upstream {
 server {
     listen 80;
 
-    # Above the API's own 2 MB document-upload cap, so oversized uploads are
-    # rejected by the app (clear JSON 400) rather than nginx's plain-HTML 413.
-    client_max_body_size 6m;
+    # Above the API's raw upload ceiling (MAX_RAW_UPLOAD_BYTES in
+    # apps/api/src/common/upload.util.ts, currently 10 MB — images get
+    # compressed down to the app's real 2 MB stored limit after that), so an
+    # oversized upload is rejected by the app (clear JSON 400) rather than
+    # nginx's plain-HTML 413.
+    client_max_body_size 11m;
 
     location /api/ {
         # The API serves everything under its own /api/v1 global prefix, so

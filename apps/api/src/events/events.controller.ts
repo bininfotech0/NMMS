@@ -15,6 +15,7 @@ import { RegisterMemberDto } from "./dto/register-member.dto";
 import { SetAttendanceDto } from "./dto/set-attendance.dto";
 import { ReviewEventEvidenceDto } from "./dto/review-event-evidence.dto";
 import { EventsService } from "./events.service";
+import { MAX_RAW_UPLOAD_BYTES, processUpload } from "../common/upload.util";
 
 const REVIEWER_ROLES = [Role.ADMIN, Role.SUPER_ADMIN] as const;
 
@@ -65,7 +66,7 @@ export class EventsController {
       }
     } catch (err) {
       if (err instanceof Error && "code" in err && err.code === "FST_REQ_FILE_TOO_LARGE") {
-        throw new BadRequestException("File exceeds the 2 MB upload limit");
+        throw new BadRequestException(`File exceeds the ${MAX_RAW_UPLOAD_BYTES / (1024 * 1024)} MB upload limit`);
       }
       throw new BadRequestException("Could not process the uploaded file");
     }
@@ -73,6 +74,7 @@ export class EventsController {
     if (!fileBuffer || !mimeType) {
       throw new BadRequestException("A file is required");
     }
+    fileBuffer = await processUpload(mimeType, fileBuffer);
     return this.eventsService.uploadBanner(id, { mimeType, buffer: fileBuffer }, user);
   }
 

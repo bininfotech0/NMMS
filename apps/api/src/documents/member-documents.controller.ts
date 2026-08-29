@@ -8,6 +8,7 @@ import { documentTypeSchema, type AuthUser } from "@nmms/shared";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { DocumentsService } from "./documents.service";
+import { MAX_RAW_UPLOAD_BYTES, processUpload } from "../common/upload.util";
 
 @ApiTags("documents")
 @ApiBearerAuth()
@@ -44,7 +45,7 @@ export class MemberDocumentsController {
       }
     } catch (err) {
       if (err instanceof Error && "code" in err && err.code === "FST_REQ_FILE_TOO_LARGE") {
-        throw new BadRequestException("File exceeds the 2 MB upload limit");
+        throw new BadRequestException(`File exceeds the ${MAX_RAW_UPLOAD_BYTES / (1024 * 1024)} MB upload limit`);
       }
       throw new BadRequestException("Could not process the uploaded file");
     }
@@ -57,6 +58,7 @@ export class MemberDocumentsController {
       throw new BadRequestException("A valid document type is required");
     }
 
+    fileBuffer = await processUpload(mimeType, fileBuffer);
     return this.documentsService.upload(
       memberId,
       { type: type.data, fileName: fileName ?? "upload", mimeType, buffer: fileBuffer },

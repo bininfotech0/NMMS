@@ -9,8 +9,7 @@ import fastifyMultipart from "@fastify/multipart";
 import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { TransformInterceptor } from "./common/interceptors/transform.interceptor";
-
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+import { MAX_RAW_UPLOAD_BYTES } from "./common/upload.util";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -24,7 +23,7 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   await app.register(fastifyCookie);
-  await app.register(fastifyMultipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
+  await app.register(fastifyMultipart, { limits: { fileSize: MAX_RAW_UPLOAD_BYTES, files: 1 } });
 
   app.enableCors({
     origin: config.get<string>("CORS_ORIGIN", "http://localhost:5173"),

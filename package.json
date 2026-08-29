@@ -30,7 +30,8 @@
       "@scarf/scarf",
       "argon2",
       "esbuild",
-      "prisma"
+      "prisma",
+      "sharp"
     ]
   }
 }

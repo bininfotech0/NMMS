@@ -8,6 +8,7 @@ import { documentTypeSchema, type AuthMember } from "@nmms/shared";
 import { CurrentMember } from "../member-auth/decorators/current-member.decorator";
 import { MemberJwtAuthGuard } from "../member-auth/guards/member-jwt-auth.guard";
 import { DocumentsService } from "./documents.service";
+import { MAX_RAW_UPLOAD_BYTES, processUpload } from "../common/upload.util";
 
 function safeHeaderValue(value: string): string {
   return value.replace(/[\r\n"]/g, "");
@@ -62,7 +63,7 @@ export class MemberDocumentsSelfController {
       }
     } catch (err) {
       if (err instanceof Error && "code" in err && err.code === "FST_REQ_FILE_TOO_LARGE") {
-        throw new BadRequestException("File exceeds the 2 MB upload limit");
+        throw new BadRequestException(`File exceeds the ${MAX_RAW_UPLOAD_BYTES / (1024 * 1024)} MB upload limit`);
       }
       throw new BadRequestException("Could not process the uploaded file");
     }
@@ -75,6 +76,7 @@ export class MemberDocumentsSelfController {
       throw new BadRequestException("A valid document type is required");
     }
 
+    fileBuffer = await processUpload(mimeType, fileBuffer);
     return this.documentsService.uploadMine(member.id, {
       type: type.data,
       fileName: fileName ?? "upload",
