@@ -1,5 +1,12 @@
 export const BASE_URL = "http://localhost";
 
+// Shared by support/api.ts and support/throttle-retry.ts — both extend a
+// colliding test's timeout to survive the server's ~60s IP-keyed throttle
+// window (see either file's own comment for the full explanation). One
+// constant so the two independently-hardcoded margins can't drift apart if
+// the server's window ever changes.
+export const THROTTLE_RETRY_TEST_TIMEOUT_MS = 90_000;
+
 // Paths for `test.use({ storageState: AUTH_STATE.xxx })` — relative to
 // apps/e2e (playwright.config.ts's rootDir), matching global-setup.ts's
 // output paths.

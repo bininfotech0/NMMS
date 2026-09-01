@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { createDraftMemberApi, E2E_BASELINE_PLAN_FEE, ensureActivePlan, newApiContext, staffLoginApi } from "./support/api";
+import {
+  E2E_BASELINE_PLAN_FEE,
+  bringMemberToAwaitingPaymentApi,
+  createDraftMemberApi,
+  newApiContext,
+  requestWithThrottleRetry,
+  staffLoginApi,
+} from "./support/api";
 import { AUTH_STATE, E2E_ADMIN, uniqueMobile, uniqueSuffix } from "./support/constants";
 
 function authHeaders(token: string) {
@@ -14,11 +21,9 @@ test.describe("payments — admin", () => {
     const apiCtx = await newApiContext();
     const admin = await staffLoginApi(apiCtx, E2E_ADMIN.email, E2E_ADMIN.password);
     const memberId = await createDraftMemberApi(apiCtx, admin.accessToken, { fullName: name, mobile: uniqueMobile() });
-    const planId = await ensureActivePlan(apiCtx, admin.accessToken);
-    await apiCtx.patch(`/api/v1/members/${memberId}`, {
-      headers: authHeaders(admin.accessToken),
-      data: { planId },
-    });
+    // "Outstanding" now means AWAITING_PAYMENT (form complete, fee due) — a
+    // bare DRAFT member hasn't submitted yet, so isn't outstanding anything.
+    await bringMemberToAwaitingPaymentApi(apiCtx, admin.accessToken, memberId);
     await apiCtx.dispose();
 
     await page.goto("/admin/payments");
@@ -55,12 +60,14 @@ test.describe("payments — admin", () => {
     const apiCtx = await newApiContext();
     const admin = await staffLoginApi(apiCtx, E2E_ADMIN.email, E2E_ADMIN.password);
     const memberId = await createDraftMemberApi(apiCtx, admin.accessToken, { fullName: name, mobile: uniqueMobile() });
-    const planId = await ensureActivePlan(apiCtx, admin.accessToken);
-    await apiCtx.patch(`/api/v1/members/${memberId}`, { headers: authHeaders(admin.accessToken), data: { planId } });
-    await apiCtx.post(`/api/v1/members/${memberId}/payments`, {
-      headers: authHeaders(admin.accessToken),
-      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
-    });
+    // Payment now requires AWAITING_PAYMENT (not bare DRAFT) — see assertPayable.
+    await bringMemberToAwaitingPaymentApi(apiCtx, admin.accessToken, memberId);
+    await requestWithThrottleRetry(() =>
+      apiCtx.post(`/api/v1/members/${memberId}/payments`, {
+        headers: authHeaders(admin.accessToken),
+        data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
+      }),
+    );
     await apiCtx.dispose();
 
     await page.goto("/admin/payments");

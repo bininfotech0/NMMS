@@ -1,8 +1,8 @@
-import { request as playwrightRequest, type APIRequestContext } from "@playwright/test";
+import { request as playwrightRequest, test, type APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BASE_URL } from "./constants";
+import { BASE_URL, THROTTLE_RETRY_TEST_TIMEOUT_MS } from "./constants";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOKENS_FILE = path.join(__dirname, "..", "..", ".auth", "tokens.json");
@@ -10,6 +10,27 @@ const TOKENS_FILE = path.join(__dirname, "..", "..", ".auth", "tokens.json");
 interface Envelope<T> {
   success: boolean;
   data: T;
+}
+
+// Both ThrottleGate.acquire() and requestWithThrottleRetry below can wait up
+// to ~60s (the server's IP-keyed throttle window) before proceeding —
+// comfortably past Playwright's 45s default per-test timeout
+// (playwright.config.ts) if a test genuinely collides with it. Extend just
+// the current test's timeout when that's about to happen, so it degrades to
+// "slightly slower" instead of "times out" — but only ever upward: a test
+// that already set a longer timeout for its own reasons (test.slow(), or its
+// own test.setTimeout()) must keep it, since test.setTimeout() replaces
+// rather than adds to the existing value. global-setup.ts calls into this
+// same module before any test is running, where test.info() has no current
+// test to read — swallow that rather than let an unrelated API quirk break
+// setup.
+function extendTimeoutForThrottleWait(): void {
+  try {
+    const current = test.info().timeout;
+    test.setTimeout(Math.max(current, THROTTLE_RETRY_TEST_TIMEOUT_MS));
+  } catch {
+    // Not running inside a Playwright test (e.g. global-setup) — nothing to extend.
+  }
 }
 
 async function unwrap<T>(res: { ok(): boolean; status(): number; json(): Promise<unknown>; url(): string }): Promise<T> {
@@ -27,22 +48,37 @@ async function unwrap<T>(res: { ok(): boolean; status(): number; json(): Promise
 // same file — it can't see (and so can't wait out) calls another file just
 // made. Only something that reacts to the server's own answer works across
 // that boundary: on a 429, read the real x-ratelimit-reset header (seconds
-// until the IP-keyed window actually clears — see ThrottleGate's comment for
-// which three routes this applies to) and retry once after that, rather than
-// guessing a wait or failing outright.
+// until the IP-keyed window actually clears) and retry once after that,
+// rather than guessing a wait or failing outright.
+//
+// Originally this only wrapped the three explicitly-@Throttle'd auth routes
+// (see ThrottleGate's comment) — but every route also sits behind NestJS's
+// *global* default ThrottlerModule limit, which a heavy enough burst of
+// otherwise-ordinary GET/PATCH fixture calls (e.g. GET /plans, called by
+// nearly every test that needs a member) can hit too. Generalized to wrap
+// any request, keyed off the response alone rather than the route.
+// Exported so spec files can wrap a one-off raw ctx call directly rather
+// than adding a dedicated named helper here for every possible request.
+export async function requestWithThrottleRetry<T extends { status(): number; headers(): Record<string, string> }>(
+  send: () => Promise<T>,
+): Promise<T> {
+  const res = await send();
+  if (res.status() !== 429) return res;
+
+  extendTimeoutForThrottleWait();
+  const resetHeader = res.headers()["x-ratelimit-reset"];
+  const resetSeconds = resetHeader ? Number(resetHeader) : 60;
+  const waitMs = (Number.isFinite(resetSeconds) ? resetSeconds : 60) * 1000 + 1000;
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
+  return send();
+}
+
 async function postWithThrottleRetry(
   ctx: APIRequestContext,
   url: string,
   options: { data: unknown },
 ): Promise<Awaited<ReturnType<APIRequestContext["post"]>>> {
-  const res = await ctx.post(url, options);
-  if (res.status() !== 429) return res;
-
-  const resetHeader = res.headers()["x-ratelimit-reset"];
-  const resetSeconds = resetHeader ? Number(resetHeader) : 60;
-  const waitMs = (Number.isFinite(resetSeconds) ? resetSeconds : 60) * 1000 + 1000;
-  await new Promise((resolve) => setTimeout(resolve, waitMs));
-  return ctx.post(url, options);
+  return requestWithThrottleRetry(() => ctx.post(url, options));
 }
 
 /** A short-lived APIRequestContext for pure fixture setup (not itself a UI test). */
@@ -78,6 +114,7 @@ class ThrottleGate {
         this.timestamps.push(now);
         return;
       }
+      extendTimeoutForThrottleWait();
       const waitMs = this.windowMs - (now - this.timestamps[0]) + 250;
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
@@ -172,10 +209,12 @@ export async function ensureStaffUser(
   superAdminToken: string,
   params: { email: string; password: string; role: string },
 ): Promise<void> {
-  const res = await ctx.post("/api/v1/users", {
-    headers: authHeaders(superAdminToken),
-    data: { email: params.email, password: params.password, role: params.role },
-  });
+  const res = await requestWithThrottleRetry(() =>
+    ctx.post("/api/v1/users", {
+      headers: authHeaders(superAdminToken),
+      data: { email: params.email, password: params.password, role: params.role },
+    }),
+  );
   if (res.status() === 409 || res.ok()) return;
   throw new Error(`ensureStaffUser failed (${res.status()}): ${await res.text()}`);
 }
@@ -194,15 +233,17 @@ export async function ensureActivePlan(
   // other active plans (seeded data, other tests, manual exploration) whose
   // fee has nothing to do with E2E_BASELINE_PLAN_FEE, which would break every
   // fixture that pays that fixed amount against whatever plan comes back.
-  const listRes = await ctx.get("/api/v1/plans", { headers: authHeaders(staffToken) });
+  const listRes = await requestWithThrottleRetry(() => ctx.get("/api/v1/plans", { headers: authHeaders(staffToken) }));
   const plans = await unwrap<Array<{ id: string; name: string; isActive: boolean }>>(listRes);
   const existing = plans.find((p) => p.isActive && p.name === "E2E Baseline Plan");
   if (existing) return existing.id;
 
-  const createRes = await ctx.post("/api/v1/plans", {
-    headers: authHeaders(staffToken),
-    data: { name: "E2E Baseline Plan", fee: E2E_BASELINE_PLAN_FEE, validityType: "LIFETIME" },
-  });
+  const createRes = await requestWithThrottleRetry(() =>
+    ctx.post("/api/v1/plans", {
+      headers: authHeaders(staffToken),
+      data: { name: "E2E Baseline Plan", fee: E2E_BASELINE_PLAN_FEE, validityType: "LIFETIME" },
+    }),
+  );
   const created = await unwrap<{ id: string }>(createRes);
   return created.id;
 }
@@ -217,15 +258,17 @@ export async function ensureTieredPlan(
   tier: "SILVER" | "GOLD" | "PLATINUM",
 ): Promise<string> {
   const name = `E2E ${tier} Plan`;
-  const listRes = await ctx.get("/api/v1/plans", { headers: authHeaders(staffToken) });
+  const listRes = await requestWithThrottleRetry(() => ctx.get("/api/v1/plans", { headers: authHeaders(staffToken) }));
   const plans = await unwrap<Array<{ id: string; name: string; isActive: boolean }>>(listRes);
   const existing = plans.find((p) => p.isActive && p.name === name);
   if (existing) return existing.id;
 
-  const createRes = await ctx.post("/api/v1/plans", {
-    headers: authHeaders(staffToken),
-    data: { name, tier, fee: E2E_BASELINE_PLAN_FEE, validityType: "LIFETIME" },
-  });
+  const createRes = await requestWithThrottleRetry(() =>
+    ctx.post("/api/v1/plans", {
+      headers: authHeaders(staffToken),
+      data: { name, tier, fee: E2E_BASELINE_PLAN_FEE, validityType: "LIFETIME" },
+    }),
+  );
   const created = await unwrap<{ id: string }>(createRes);
   return created.id;
 }
@@ -236,7 +279,9 @@ export async function createDraftMemberApi(
   staffToken: string,
   params: { fullName: string; mobile: string },
 ): Promise<string> {
-  const res = await ctx.post("/api/v1/members", { headers: authHeaders(staffToken), data: params });
+  const res = await requestWithThrottleRetry(() =>
+    ctx.post("/api/v1/members", { headers: authHeaders(staffToken), data: params }),
+  );
   const created = await unwrap<{ id: string }>(res);
   return created.id;
 }
@@ -258,10 +303,12 @@ const PHOTO_FIXTURE = path.join(__dirname, "..", "..", "fixtures", "photo.jpg");
 async function uploadRequiredDocumentsApi(ctx: APIRequestContext, actorToken: string, memberId: string): Promise<void> {
   const buffer = await readFile(PHOTO_FIXTURE);
   for (const type of ["PHOTO", "AADHAAR_FRONT"]) {
-    await ctx.post(`/api/v1/members/${memberId}/documents`, {
-      headers: authHeaders(actorToken),
-      multipart: { type, file: { name: "photo.jpg", mimeType: "image/jpeg", buffer } },
-    });
+    await requestWithThrottleRetry(() =>
+      ctx.post(`/api/v1/members/${memberId}/documents`, {
+        headers: authHeaders(actorToken),
+        multipart: { type, file: { name: "photo.jpg", mimeType: "image/jpeg", buffer } },
+      }),
+    );
   }
 }
 
@@ -272,20 +319,24 @@ export async function bringMemberToAwaitingPaymentApi(
   planId?: string,
 ): Promise<void> {
   planId ??= await ensureActivePlan(ctx, actorToken);
-  await ctx.patch(`/api/v1/members/${memberId}`, {
-    headers: authHeaders(actorToken),
-    data: {
-      planId,
-      addressLine: "123 E2E Test Street",
-      pincode: "110001",
-      declarationInfoCorrect: true,
-      declarationAcceptConstitution: true,
-      declarationAcceptPrivacyPolicy: true,
-      declarationAcceptTerms: true,
-    },
-  });
+  await requestWithThrottleRetry(() =>
+    ctx.patch(`/api/v1/members/${memberId}`, {
+      headers: authHeaders(actorToken),
+      data: {
+        planId,
+        addressLine: "123 E2E Test Street",
+        pincode: "110001",
+        declarationInfoCorrect: true,
+        declarationAcceptConstitution: true,
+        declarationAcceptPrivacyPolicy: true,
+        declarationAcceptTerms: true,
+      },
+    }),
+  );
   await uploadRequiredDocumentsApi(ctx, actorToken, memberId);
-  await ctx.post(`/api/v1/members/${memberId}/submit`, { headers: authHeaders(actorToken) });
+  await requestWithThrottleRetry(() =>
+    ctx.post(`/api/v1/members/${memberId}/submit`, { headers: authHeaders(actorToken) }),
+  );
 }
 
 /**
@@ -311,16 +362,20 @@ export async function createActiveMemberApi(
 
   // Already active from a previous run? Nothing left to do.
   const existing = await unwrap<{ status: string }>(
-    await ctx.get(`/api/v1/members/${memberId}`, { headers: authHeaders(staffToken) }),
+    await requestWithThrottleRetry(() => ctx.get(`/api/v1/members/${memberId}`, { headers: authHeaders(staffToken) })),
   );
   if (existing.status === "ACTIVE") return memberId;
 
-  await ctx.post(`/api/v1/members/${memberId}/claim`, { headers: authHeaders(claimerToken) });
+  await requestWithThrottleRetry(() =>
+    ctx.post(`/api/v1/members/${memberId}/claim`, { headers: authHeaders(claimerToken) }),
+  );
   await bringMemberToAwaitingPaymentApi(ctx, staffToken, memberId, planId);
-  await ctx.post(`/api/v1/members/${memberId}/payments`, {
-    headers: authHeaders(staffToken),
-    data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
-  });
+  await requestWithThrottleRetry(() =>
+    ctx.post(`/api/v1/members/${memberId}/payments`, {
+      headers: authHeaders(staffToken),
+      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
+    }),
+  );
 
   return memberId;
 }

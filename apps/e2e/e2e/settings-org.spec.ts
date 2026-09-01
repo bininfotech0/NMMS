@@ -75,21 +75,30 @@ test.describe("settings — admin", () => {
 
     const paymentRow = page.locator('div.rounded-xl.border.border-border.bg-card.p-4').filter({ hasText: "Payment Gateway" });
     await paymentRow.getByRole("button", { name: "Configure" }).click();
-    await page.getByLabel("Key ID").fill("rzp_test_e2e123456");
-    await page.getByLabel("Key Secret").fill("test_secret_e2e");
-    await page.getByLabel("Webhook Secret").fill("test_webhook_secret_e2e");
+    // Test and Live mode each render their own credentials form with an
+    // identically-labeled "Key ID"/"Key Secret" field (RazorpayModeCredentialsForm,
+    // one per mode) — getByLabel alone is ambiguous, so scope to Test mode's ids.
+    await page.locator("#rzp-test-key-id").fill("rzp_test_e2e123456");
+    await page.locator("#rzp-test-key-secret").fill("test_secret_e2e");
+    await page.locator("#rzp-test-webhook-secret").fill("test_webhook_secret_e2e");
     // The Webhook URL field has no htmlFor/id linkage to its Label — it's the
     // only readonly input on this form, so target it directly.
     await expect(page.locator("input[readonly]")).toHaveValue(/\/api\/v1\/webhooks\/razorpay\//);
-    await page.getByRole("button", { name: "Save Credentials" }).click();
-    await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
-    await expect(page.getByText("Configured", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Save test credentials" }).click();
+    // This form (RazorpayModeCredentialsForm) signals success via a toast
+    // only, unlike its sibling config forms which also show inline "Saved."
+    // text.
+    await expect(page.getByText("Test credentials saved")).toBeVisible();
+    // Scoped to the test-mode form specifically — live mode has its own
+    // separate (currently unconfigured) "Configured" badge slot too.
+    const testModeForm = paymentRow.locator("form").filter({ hasText: "test mode" });
+    await expect(testModeForm.getByText("Configured", { exact: true })).toBeVisible();
 
     // Collapse and re-expand — write-only fields must come back blank.
     await paymentRow.getByRole("button", { name: "Configure" }).click();
     await paymentRow.getByRole("button", { name: "Configure" }).click();
-    await expect(page.getByLabel("Key ID")).toHaveValue("");
-    await expect(page.getByLabel("Key Secret")).toHaveValue("");
+    await expect(page.locator("#rzp-test-key-id")).toHaveValue("");
+    await expect(page.locator("#rzp-test-key-secret")).toHaveValue("");
   });
 });
 

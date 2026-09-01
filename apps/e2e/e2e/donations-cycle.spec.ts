@@ -37,9 +37,13 @@ test.describe("donation cycle — positive", () => {
     await memberPage.waitForURL("**/member");
 
     await memberPage.goto("/member/donations");
-    // Online is enabled for this org, so the manual form starts collapsed
-    // behind this toggle.
-    await memberPage.getByRole("button", { name: "Sent it another way? Record it manually instead" }).click();
+    // If online donations are enabled for this org, the manual form starts
+    // collapsed behind this toggle — reveal it. If the payment gateway isn't
+    // configured, the manual form is already the only option shown.
+    const manualToggle = memberPage.getByRole("button", { name: "Sent it another way? Record it manually instead" });
+    if (await manualToggle.count()) {
+      await manualToggle.click();
+    }
     await memberPage.getByLabel("Amount").fill("500");
     await memberPage.getByLabel("Address (optional)").fill("12 MG Road, Pune");
     await memberPage.getByLabel("PAN (optional)").fill("ABCDE1234F");

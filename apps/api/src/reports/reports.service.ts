@@ -151,8 +151,12 @@ export class ReportsService {
     return members.map(this.toMemberRegisterRow);
   }
 
+  // Matches ApplicationsService.queue() (the Applications screen's own data
+  // source) — AWAITING_PAYMENT is the standard pending-payment state, plus
+  // any legacy SUBMITTED rows predating the form-first/payment-last redesign
+  // that are still awaiting a manual-override approve()/reject().
   async pendingApproval(user: AuthUser): Promise<MemberRegisterRow[]> {
-    return this.memberRegisterByStatus(user, "AWAITING_PAYMENT");
+    return this.memberRegisterByStatus(user, ["AWAITING_PAYMENT", "SUBMITTED"]);
   }
 
   async rejectedApplications(user: AuthUser): Promise<MemberRegisterRow[]> {
@@ -283,9 +287,16 @@ export class ReportsService {
     return monthKeys.map((month) => ({ month, amount: totals.get(month) ?? 0 }));
   }
 
-  private async memberRegisterByStatus(user: AuthUser, status: MemberStatus): Promise<MemberRegisterRow[]> {
+  private async memberRegisterByStatus(
+    user: AuthUser,
+    status: MemberStatus | MemberStatus[],
+  ): Promise<MemberRegisterRow[]> {
     const members = await this.prisma.member.findMany({
-      where: { organizationId: user.organizationId, status, ...buildJurisdictionWhere(user) },
+      where: {
+        organizationId: user.organizationId,
+        status: Array.isArray(status) ? { in: status } : status,
+        ...buildJurisdictionWhere(user),
+      },
       orderBy: { updatedAt: "desc" },
       include: { plan: true },
     });

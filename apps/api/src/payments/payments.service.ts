@@ -381,24 +381,29 @@ export class PaymentsService {
 
     if (member.status === "AWAITING_PAYMENT") {
       const activated = await this.prisma.member.findUniqueOrThrow({ where: { id: member.id } });
-      await this.notifications.notify({
-        type: "PAYMENT_RECEIPT",
-        organizationId: actor.organizationId,
-        memberName: member.fullName,
-        mobile: member.mobile,
-        email: member.email,
-        amount: payment.amount.toNumber(),
-        receiptNumber: payment.receiptNumber,
-      });
-      await this.notifications.notify({
-        type: "APPROVAL_WELCOME",
-        organizationId: actor.organizationId,
-        memberName: activated.fullName,
-        mobile: activated.mobile,
-        email: activated.email,
-        membershipNumber: activated.membershipNumber,
-      });
-      await this.referrals.awardPointsForApproval(member.id);
+      // Independent side effects (two notifications, one referral credit) —
+      // none depends on another's result, so run them concurrently rather
+      // than adding their latencies to the paying member/staff's response.
+      await Promise.all([
+        this.notifications.notify({
+          type: "PAYMENT_RECEIPT",
+          organizationId: actor.organizationId,
+          memberName: member.fullName,
+          mobile: member.mobile,
+          email: member.email,
+          amount: payment.amount.toNumber(),
+          receiptNumber: payment.receiptNumber,
+        }),
+        this.notifications.notify({
+          type: "APPROVAL_WELCOME",
+          organizationId: actor.organizationId,
+          memberName: activated.fullName,
+          mobile: activated.mobile,
+          email: activated.email,
+          membershipNumber: activated.membershipNumber,
+        }),
+        this.referrals.awardPointsForApproval(member.id),
+      ]);
     }
 
     return this.toResponse(payment);

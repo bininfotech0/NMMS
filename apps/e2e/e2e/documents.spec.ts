@@ -27,8 +27,13 @@ test.describe("documents — admin", () => {
     await page.getByRole("button", { name: "Upload" }).click();
     // "Upload Document" is also the trigger button's own label, so checking
     // it's gone would false-positive against that — the row appearing is a
-    // stronger, more direct signal the upload actually succeeded.
+    // stronger, more direct signal the upload actually succeeded. Search by
+    // this test's own unique name right away — the unfiltered list is
+    // sorted oldest-first and accumulates rows across every test/run against
+    // this shared dev database, so a brand-new upload can land past the
+    // first page long before the list itself is what's under test here.
     const row = page.getByRole("row", { name: new RegExp(name) });
+    await page.getByPlaceholder("Search by member or file name...").fill(name);
     await expect(row).toBeVisible();
 
     // Search filter.
