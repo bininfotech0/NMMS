@@ -114,11 +114,11 @@ test.describe("member registration wizard", () => {
     await expect(page.getByLabel("Referred by (optional)")).toBeVisible();
   });
 
-  test("full 10-step walkthrough with offline payment and document uploads ends in SUBMITTED", async ({ page }) => {
+  test("full 10-step walkthrough, submit then offline payment, ends ACTIVE with a membership number", async ({ page }) => {
     const mobile = uniqueMobile();
     await addDraftMember(page, "Full Cycle Wizard Member", mobile);
 
-    // Step 1 — Membership: plan is required for the Payment step to work.
+    // Step 1 — Membership: plan is required before the profile can be submitted.
     await expect(page.getByText("Step 1 of 10")).toBeVisible();
     await selectFirstOptionIfAvailable(page, "planId");
     await selectFirstOptionIfAvailable(page, "membershipCategoryId");
@@ -174,23 +174,9 @@ test.describe("member registration wizard", () => {
     await page.getByLabel("Skills").fill("Teaching");
     await page.getByRole("button", { name: "Save & Continue" }).click();
 
-    // Step 6 — Payment Collection (offline path)
+    // Step 6 — Identity & Documents (moved ahead of Payment — form now
+    // completes fully before the fee is collected)
     await expect(page.getByText("Step 6 of 10")).toBeVisible();
-    const offlineToggle = page.getByRole("button", { name: "Record an offline payment instead" });
-    if (await offlineToggle.count()) {
-      await offlineToggle.click();
-    }
-    await page.getByRole("button", { name: "Collect Payment" }).click();
-    await expect(page.getByText("Registration fee collected")).toBeVisible();
-    // The wizard's own member query needs its refetch to land before
-    // paymentBlocked flips false — wait for the button to actually be
-    // enabled rather than racing a click against that.
-    const continueAfterPayment = page.getByRole("button", { name: "Save & Continue" });
-    await expect(continueAfterPayment).toBeEnabled();
-    await continueAfterPayment.click();
-
-    // Step 7 — Identity & Documents
-    await expect(page.getByText("Step 7 of 10")).toBeVisible();
     await page.getByLabel("Aadhaar number").fill("123412341234");
     await page.getByLabel("PAN").fill("ABCDE1234F");
     for (const slot of DOCUMENT_SLOTS) {
@@ -201,8 +187,8 @@ test.describe("member registration wizard", () => {
     }
     await page.getByRole("button", { name: "Save & Continue" }).click();
 
-    // Step 8 — Nominee & Emergency Contact
-    await expect(page.getByText("Step 8 of 10")).toBeVisible();
+    // Step 7 — Nominee & Emergency Contact
+    await expect(page.getByText("Step 7 of 10")).toBeVisible();
     await page.locator("#emergencyContactName").fill("Emergency Contact");
     await page.locator("#emergencyContactMobile").fill(mobile);
     await page.locator("#emergencyContactRelationship").fill("Sibling");
@@ -210,8 +196,8 @@ test.describe("member registration wizard", () => {
     await page.locator("#nomineeRelationship").fill("Spouse");
     await page.getByRole("button", { name: "Save & Continue" }).click();
 
-    // Step 9 — Declaration & Signature
-    await expect(page.getByText("Step 9 of 10")).toBeVisible();
+    // Step 8 — Declaration & Signature
+    await expect(page.getByText("Step 8 of 10")).toBeVisible();
     await page.getByLabel("I declare that the information provided is correct.").check();
     await page.getByLabel("I accept the organization's constitution.").check();
     await page.getByLabel("I accept the privacy policy.").check();
@@ -220,17 +206,28 @@ test.describe("member registration wizard", () => {
     await page.getByLabel("Date").fill("2026-01-01");
     await page.getByRole("button", { name: "Save & Continue" }).click();
 
-    // Step 10 — Review & Submit
-    await expect(page.getByText("Step 10 of 10")).toBeVisible();
+    // Step 9 — Review & Submit: submitting moves DRAFT -> AWAITING_PAYMENT
+    // and auto-advances into the Payment step, rather than leaving the wizard.
+    await expect(page.getByText("Step 9 of 10")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Full Cycle" })).toBeVisible();
     await expect(page.getByText("Yes").first()).toBeVisible(); // declarations accepted
     await page.getByRole("button", { name: "Submit Application" }).click();
     await expect(page.getByText("Submit this application?")).toBeVisible();
     await page.getByRole("button", { name: "Submit", exact: true }).click();
-    await page.waitForURL("**/admin/members");
 
-    await page.getByPlaceholder("Search by name, ID, mobile, or email...").fill(mobile);
-    await expect(page.getByRole("table").getByText("Full Cycle")).toBeVisible();
-    await expect(page.getByRole("table").getByText("Submitted")).toBeVisible();
+    // Step 10 — Payment Collection (offline path): paying auto-activates the
+    // member immediately, no separate manual-approval step.
+    await expect(page.getByText("Step 10 of 10")).toBeVisible();
+    const offlineToggle = page.getByRole("button", { name: "Record an offline payment instead" });
+    if (await offlineToggle.count()) {
+      await offlineToggle.click();
+    }
+    await page.getByRole("button", { name: "Collect Payment" }).click();
+    await expect(page.getByText(/Membership active/)).toBeVisible();
+    await page.getByRole("button", { name: "View Member Profile" }).click();
+    await page.waitForURL(/\/admin\/members\/[^/]+\/profile/);
+
+    await expect(page.getByText("Active", { exact: true })).toBeVisible();
+    await expect(page.getByText(/^MEM-/).first()).toBeVisible();
   });
 });

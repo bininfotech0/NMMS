@@ -27,7 +27,11 @@ import { StepDeclaration } from "./steps/StepDeclaration";
 import { StepReview } from "./steps/StepReview";
 
 const TOTAL_STEPS = 10;
-const PAYMENT_STEP = 5;
+const REVIEW_STEP = 8;
+// Payment is the last step — the wizard collects and submits the full
+// profile first, then payment auto-activates the member with no separate
+// manual-review step in between.
+const PAYMENT_STEP = 9;
 
 export function MemberWizard() {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +50,12 @@ export function MemberWizard() {
   useEffect(() => {
     if (member && !loaded) {
       setForm(memberToWizardForm(member));
+      // Already submitted (or beyond) — the only step left to act on is
+      // Payment, so land there directly instead of forcing a click-through
+      // of the already-completed profile steps.
+      if (member.status !== "DRAFT") {
+        setCurrentStep(PAYMENT_STEP);
+      }
       setLoaded(true);
     }
   }, [member, loaded]);
@@ -62,9 +72,6 @@ export function MemberWizard() {
   }
 
   async function handleNext() {
-    if (currentStep === PAYMENT_STEP && member?.status === "DRAFT") {
-      return; // registration fee must be collected before continuing
-    }
     const validationError = getStepValidationError(currentStep, form);
     if (validationError) {
       setStepError(validationError);
@@ -98,7 +105,10 @@ export function MemberWizard() {
     const ok = await save();
     if (!ok) return;
     submitMember.mutate(id!, {
-      onSuccess: () => navigate("/admin/members"),
+      // Submission moves DRAFT → AWAITING_PAYMENT — advance into the payment
+      // step in place rather than leaving the wizard, since payment (which
+      // auto-activates the member) is the last thing left to do.
+      onSuccess: () => setCurrentStep(PAYMENT_STEP),
     });
     setConfirmSubmitOpen(false);
   }
@@ -108,9 +118,9 @@ export function MemberWizard() {
   }
 
   const stepProps = { form, setForm, memberId: id };
-  const isLastStep = currentStep === TOTAL_STEPS - 1;
+  const isReviewStep = currentStep === REVIEW_STEP;
+  const isPaymentStep = currentStep === PAYMENT_STEP;
   const isSaving = updateMember.isPending;
-  const paymentBlocked = currentStep === PAYMENT_STEP && member?.status === "DRAFT";
   const hasPhoto = documents.some((d) => d.type === "PHOTO");
   const hasIdProof = documents.some((d) => ID_PROOF_DOCUMENT_TYPES.includes(d.type));
   const missingDocsReason = !hasPhoto
@@ -118,7 +128,7 @@ export function MemberWizard() {
     : !hasIdProof
       ? "Upload an ID proof document (Identity & Documents step) before submitting"
       : null;
-  const canSubmit = member?.status === "PAYMENT_COLLECTED" && !missingDocsReason;
+  const canSubmit = member?.status === "DRAFT" && !missingDocsReason;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -143,11 +153,11 @@ export function MemberWizard() {
         {currentStep === 2 && <StepPersonal {...stepProps} />}
         {currentStep === 3 && <StepAddress {...stepProps} />}
         {currentStep === 4 && <StepEducation {...stepProps} />}
-        {currentStep === 5 && <StepPayment {...stepProps} />}
-        {currentStep === 6 && <StepDocuments {...stepProps} />}
-        {currentStep === 7 && <StepNominee {...stepProps} />}
-        {currentStep === 8 && <StepDeclaration {...stepProps} />}
-        {currentStep === 9 && <StepReview form={form} member={member ?? null} memberId={id} />}
+        {currentStep === 5 && <StepDocuments {...stepProps} />}
+        {currentStep === 6 && <StepNominee {...stepProps} />}
+        {currentStep === 7 && <StepDeclaration {...stepProps} />}
+        {currentStep === 8 && <StepReview form={form} member={member ?? null} memberId={id} />}
+        {currentStep === 9 && <StepPayment {...stepProps} />}
       </div>
 
       <div className="flex items-center justify-between">
@@ -156,34 +166,45 @@ export function MemberWizard() {
           Previous
         </Button>
         <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isSaving}
-            onClick={() => void save()}
-          >
-            {isSaving ? "Saving…" : "Save Draft"}
-          </Button>
-          {isLastStep ? (
+          {!isPaymentStep && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSaving}
+              onClick={() => void save()}
+            >
+              {isSaving ? "Saving…" : "Save Draft"}
+            </Button>
+          )}
+          {isReviewStep ? (
             <Button
               type="button"
               className="bg-brand-green hover:bg-brand-green/90"
               disabled={isSaving || submitMember.isPending || !canSubmit}
               title={
-                member?.status !== "PAYMENT_COLLECTED"
-                  ? "Collect the registration fee (Payment Collection step) before submitting"
+                member?.status !== "DRAFT"
+                  ? "This registration has already been submitted"
                   : (missingDocsReason ?? undefined)
               }
               onClick={handleOpenConfirmSubmit}
             >
               Submit Application
             </Button>
+          ) : isPaymentStep ? (
+            member?.status === "ACTIVE" && (
+              <Button
+                type="button"
+                className="bg-brand-green hover:bg-brand-green/90"
+                onClick={() => navigate(`/admin/members/${id}/profile`)}
+              >
+                View Member Profile
+              </Button>
+            )
           ) : (
             <Button
               type="button"
               className="bg-brand-green hover:bg-brand-green/90"
-              disabled={isSaving || paymentBlocked}
-              title={paymentBlocked ? "Collect the registration fee to continue" : undefined}
+              disabled={isSaving}
               onClick={handleNext}
             >
               {isSaving ? "Saving…" : "Save & Continue"}
@@ -197,7 +218,7 @@ export function MemberWizard() {
         open={confirmSubmitOpen}
         onOpenChange={setConfirmSubmitOpen}
         title="Submit this application?"
-        description="Once submitted, this application moves to the review queue and can no longer be edited unless a reviewer sends it back."
+        description="Once submitted, you'll move on to collecting the registration fee — paying it activates the membership immediately."
         confirmLabel="Submit"
         destructive={false}
         isPending={submitMember.isPending}

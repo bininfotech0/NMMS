@@ -32,6 +32,8 @@ function describeDedupeMatch(match: DedupeMatch): string {
 const STATUS_FILTERS: ("All" | MemberStatus)[] = [
   "All",
   "DRAFT",
+  "AWAITING_PAYMENT",
+  // Legacy statuses, kept as filters so staff can still find any stranded rows.
   "PAYMENT_COLLECTED",
   "SUBMITTED",
   "ACTIVE",
@@ -186,7 +188,7 @@ export function MembersList() {
         rowKey={(m) => m.id}
         onRowClick={(member) =>
           navigate(
-            member.status === "DRAFT" || member.status === "PAYMENT_COLLECTED"
+            member.status === "DRAFT" || member.status === "AWAITING_PAYMENT" || member.status === "PAYMENT_COLLECTED"
               ? `/admin/members/${member.id}/wizard`
               : `/admin/members/${member.id}/profile`,
           )
@@ -198,7 +200,7 @@ export function MembersList() {
         statusKey="status"
         quickActions={(member) => (
           <div className="flex gap-1 justify-end">
-            {(member.status === "DRAFT" || member.status === "PAYMENT_COLLECTED") && (
+            {(member.status === "DRAFT" || member.status === "AWAITING_PAYMENT" || member.status === "PAYMENT_COLLECTED") && (
               <Button
                 size="sm"
                 variant="ghost"

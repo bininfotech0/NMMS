@@ -416,17 +416,20 @@ export function wizardFormToUpdateDto(form: WizardFormState): UpdateMemberInput 
   };
 }
 
+// Payment moved to the last step (index 9) — the wizard now collects the
+// full profile and submits before payment, and payment auto-activates the
+// member with no separate manual-review step after it.
 export const WIZARD_STEP_TITLES = [
   "Membership",
   "Basic Information",
   "Personal Information",
   "Contact & Address",
   "Education & Occupation",
-  "Payment Collection",
   "Identity & Documents",
   "Nominee & Emergency Contact",
   "Declaration & Signature",
   "Review & Submit",
+  "Payment Collection",
 ] as const;
 
 export interface StepProps {
@@ -451,7 +454,7 @@ export function getStepValidationError(step: number, form: WizardFormState): str
       if (!form.addressLine.trim()) return "Address is required before continuing";
       if (!form.pincode.trim()) return "Pincode is required before continuing";
       return null;
-    case 8:
+    case 7:
       return form.declarationInfoCorrect &&
         form.declarationAcceptConstitution &&
         form.declarationAcceptPrivacyPolicy &&

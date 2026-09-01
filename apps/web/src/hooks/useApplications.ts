@@ -6,12 +6,15 @@ import { errorMessage } from "@/lib/toast-utils";
 
 export function useApplicationsQueue(enabled = true) {
   return useQuery({
-    queryKey: ["applications", "SUBMITTED"],
+    queryKey: ["applications", "AWAITING_PAYMENT"],
     queryFn: () => apiFetch<MemberResponse[]>("/applications"),
     enabled,
   });
 }
 
+// Kept for the manual-override activation path (legacy SUBMITTED rows
+// predating the form-first/payment-last redesign) — not used by the routine
+// Applications queue UI anymore, since payment now auto-activates.
 export function useApproveApplication() {
   const queryClient = useQueryClient();
   return useMutation({

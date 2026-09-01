@@ -242,17 +242,19 @@ export async function createDraftMemberApi(
 }
 
 /**
- * Fills the minimum required fields, collects an offline payment, and submits
- * — takes a member from DRAFT (or PAYMENT_COLLECTED) through to SUBMITTED.
- * `actorToken` must belong to whoever currently owns/can-edit the member
- * (its creator, or an ADMIN/SUPER_ADMIN).
+ * Fills the minimum required fields, uploads required documents, and submits
+ * — takes a member from DRAFT through to AWAITING_PAYMENT. Payment (which
+ * auto-activates the member — see PaymentsService.finalizePayment) is a
+ * separate step; call it yourself, or use createActiveMemberApi below for
+ * the full DRAFT-to-ACTIVE fixture. `actorToken` must belong to whoever
+ * currently owns/can-edit the member (its creator, or an ADMIN/SUPER_ADMIN).
  */
 const PHOTO_FIXTURE = path.join(__dirname, "..", "..", "fixtures", "photo.jpg");
 
 // MembersService.submit() requires at least one PHOTO and one ID-proof
 // document on file — upload the same fixture image under both slots rather
 // than duplicating multipart-request boilerplate at every call site that
-// needs a member past SUBMITTED.
+// needs a member past AWAITING_PAYMENT.
 async function uploadRequiredDocumentsApi(ctx: APIRequestContext, actorToken: string, memberId: string): Promise<void> {
   const buffer = await readFile(PHOTO_FIXTURE);
   for (const type of ["PHOTO", "AADHAAR_FRONT"]) {
@@ -263,7 +265,7 @@ async function uploadRequiredDocumentsApi(ctx: APIRequestContext, actorToken: st
   }
 }
 
-export async function bringMemberToSubmittedApi(
+export async function bringMemberToAwaitingPaymentApi(
   ctx: APIRequestContext,
   actorToken: string,
   memberId: string,
@@ -282,18 +284,15 @@ export async function bringMemberToSubmittedApi(
       declarationAcceptTerms: true,
     },
   });
-  await ctx.post(`/api/v1/members/${memberId}/payments`, {
-    headers: authHeaders(actorToken),
-    data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
-  });
   await uploadRequiredDocumentsApi(ctx, actorToken, memberId);
   await ctx.post(`/api/v1/members/${memberId}/submit`, { headers: authHeaders(actorToken) });
 }
 
 /**
  * Fast-path fixture: self-registers a member, claims it, fills the minimum
- * required fields, collects an offline payment, submits, and approves it —
- * i.e. runs the exact member lifecycle that member-registration-wizard.spec.ts
+ * required fields, submits, and pays the registration fee — payment
+ * auto-activates the member, with no separate manual-approval call — i.e.
+ * runs the exact member lifecycle that member-registration-wizard.spec.ts
  * and applications-lifecycle.spec.ts test via the UI, but over the API, for
  * specs that need an ACTIVE member as a precondition rather than as the thing
  * under test.
@@ -302,7 +301,7 @@ export async function createActiveMemberApi(
   ctx: APIRequestContext,
   params: { fullName: string; mobile: string; password: string; referralCode?: string },
   claimerToken: string,
-  approverToken: string,
+  staffToken: string,
   planId?: string,
 ): Promise<string> {
   const registered = await memberRegisterApi(ctx, params);
@@ -312,13 +311,16 @@ export async function createActiveMemberApi(
 
   // Already active from a previous run? Nothing left to do.
   const existing = await unwrap<{ status: string }>(
-    await ctx.get(`/api/v1/members/${memberId}`, { headers: authHeaders(approverToken) }),
+    await ctx.get(`/api/v1/members/${memberId}`, { headers: authHeaders(staffToken) }),
   );
   if (existing.status === "ACTIVE") return memberId;
 
   await ctx.post(`/api/v1/members/${memberId}/claim`, { headers: authHeaders(claimerToken) });
-  await bringMemberToSubmittedApi(ctx, approverToken, memberId, planId);
-  await ctx.post(`/api/v1/applications/${memberId}/approve`, { headers: authHeaders(approverToken) });
+  await bringMemberToAwaitingPaymentApi(ctx, staffToken, memberId, planId);
+  await ctx.post(`/api/v1/members/${memberId}/payments`, {
+    headers: authHeaders(staffToken),
+    data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
+  });
 
   return memberId;
 }

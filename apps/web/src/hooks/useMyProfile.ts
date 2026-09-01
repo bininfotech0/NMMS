@@ -55,7 +55,7 @@ export function useSubmitMyRegistration() {
     mutationFn: () => memberApiFetch<MemberResponse>("/members/me/submit", { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["members", "me"] });
-      toast.success("Registration submitted for review");
+      toast.success("Registration submitted — pay your fee to activate your membership");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to submit registration")),
   });

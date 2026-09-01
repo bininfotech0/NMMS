@@ -12,9 +12,9 @@ import { Role } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { NumberingService } from "../common/numbering.service";
 import { buildJurisdictionWhere } from "../common/scope.util";
-import { addMonths } from "../common/date.util";
 import { MembersService } from "../members/members.service";
 import { toMemberResponse } from "../members/member.mapper";
+import { activateMemberOnce } from "../members/member-activation.util";
 import { NotificationService } from "../notifications/notification.service";
 import { ReferralsService } from "../referrals/referrals.service";
 
@@ -35,11 +35,14 @@ export class ApplicationsService {
     private readonly referrals: ReferralsService,
   ) {}
 
+  // Registrations awaiting payment (the standard pre-activation state since
+  // the form-first/payment-last redesign) plus any legacy SUBMITTED rows
+  // predating it, so staff have one place to see and reject either kind.
   async queue(user: AuthUser): Promise<MemberResponse[]> {
     const members = await this.prisma.member.findMany({
       where: {
         organizationId: user.organizationId,
-        status: "SUBMITTED",
+        status: { in: ["AWAITING_PAYMENT", "SUBMITTED"] },
         ...buildJurisdictionWhere(user),
       },
       orderBy: { updatedAt: "asc" },
@@ -47,46 +50,23 @@ export class ApplicationsService {
     return members.map(toMemberResponse);
   }
 
-  // Fee was already collected before submission (see PaymentsService), so
-  // approval assigns the membership number and activates the member in one
-  // step — no separate APPROVED holding state in the persisted status. The
-  // StatusHistory trail still records the SUBMITTED → APPROVED → ACTIVE
-  // sequence for audit purposes.
+  // A manual/admin-override activation path, kept for legacy SUBMITTED rows
+  // predating the form-first/payment-last redesign (see PaymentsService,
+  // which now auto-activates a member straight from AWAITING_PAYMENT on
+  // successful payment — the standard path for every new registration).
   async approve(memberId: string, user: AuthUser): Promise<MemberResponse> {
     const member = await this.getSubmitted(memberId, user);
     this.assertCanApprove(user, member);
 
-    const membershipNumber = await this.numbering.nextMembershipNumber(user.organizationId);
-    const approvedAt = new Date();
-    const validUntil =
-      member.plan?.validityType === "MONTHS" && member.plan.validityMonths
-        ? addMonths(member.joiningDate ?? approvedAt, member.plan.validityMonths)
-        : null;
-
-    // Interactive transaction so the CAS check and the two StatusHistory
-    // writes are atomic: a concurrent duplicate approve() loses the race via
-    // updateMany matching zero rows (member no longer SUBMITTED) rather than
-    // both requests assigning a membership number.
+    // Interactive transaction so the CAS check, membership-number
+    // assignment, and StatusHistory write are atomic: a concurrent duplicate
+    // approve() loses the race cleanly (member no longer SUBMITTED) instead
+    // of both requests assigning a membership number.
     const updated = await this.prisma.$transaction(async (tx) => {
-      const cas = await tx.member.updateMany({
-        where: { id: member.id, status: "SUBMITTED" },
-        data: {
-          status: "ACTIVE",
-          membershipNumber,
-          validUntil,
-          approvedById: user.id,
-          approvedAt,
-        },
-      });
-      if (cas.count === 0) {
+      const activation = await activateMemberOnce(tx, this.numbering, member, member.plan, "SUBMITTED", user.id);
+      if (!activation) {
         throw new ConflictException("This member's status just changed — please refresh and try again");
       }
-      await tx.statusHistory.create({
-        data: { memberId: member.id, fromStatus: "SUBMITTED", toStatus: "APPROVED", actorId: user.id },
-      });
-      await tx.statusHistory.create({
-        data: { memberId: member.id, fromStatus: "APPROVED", toStatus: "ACTIVE", actorId: user.id },
-      });
       await this.referrals.awardBatchRewardForTier(
         tx,
         user.organizationId,
@@ -108,22 +88,26 @@ export class ApplicationsService {
     return toMemberResponse(updated);
   }
 
+  // Accepts AWAITING_PAYMENT (the standard pre-activation state — this is
+  // the fraud-prevention backstop now that payment auto-activates with no
+  // manual approval) as well as legacy SUBMITTED rows predating that redesign.
   async reject(memberId: string, dto: RejectMemberInput, user: AuthUser): Promise<MemberResponse> {
     const member = await this.prisma.member.findFirst({
       where: { id: memberId, organizationId: user.organizationId, ...buildJurisdictionWhere(user) },
     });
-    if (!member || member.status !== "SUBMITTED") {
-      throw new ConflictException("Only SUBMITTED members can be rejected");
+    if (!member || (member.status !== "AWAITING_PAYMENT" && member.status !== "SUBMITTED")) {
+      throw new ConflictException("Only AWAITING_PAYMENT or SUBMITTED members can be rejected");
     }
     this.assertCanApprove(user, member);
+    const fromStatus = member.status;
 
     // Compare-and-swap inside an interactive transaction: two concurrent
     // rejects both pass the status read above, but only one updateMany can
-    // match a SUBMITTED row — the loser fails cleanly instead of
-    // double-writing StatusHistory.
+    // match the row — the loser fails cleanly instead of double-writing
+    // StatusHistory.
     const updated = await this.prisma.$transaction(async (tx) => {
       const cas = await tx.member.updateMany({
-        where: { id: member.id, status: "SUBMITTED" },
+        where: { id: member.id, status: fromStatus },
         data: { status: "REJECTED" },
       });
       if (cas.count === 0) {
@@ -132,7 +116,7 @@ export class ApplicationsService {
       await tx.statusHistory.create({
         data: {
           memberId: member.id,
-          fromStatus: "SUBMITTED",
+          fromStatus,
           toStatus: "REJECTED",
           actorId: user.id,
           remarks: dto.remarks,

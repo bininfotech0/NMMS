@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
-  bringMemberToSubmittedApi,
+  E2E_BASELINE_PLAN_FEE,
+  bringMemberToAwaitingPaymentApi,
   createActiveMemberApi,
   createDraftMemberApi,
   memberRegisterApi,
@@ -9,36 +10,52 @@ import {
 } from "./support/api";
 import { AUTH_STATE, E2E_ADMIN, E2E_FIELD_EXECUTIVE, uniqueMobile, uniqueSuffix } from "./support/constants";
 
+function authHeaders(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
 test.describe("applications lifecycle — admin", () => {
   // Pinned explicitly rather than relying on `--project` at invocation time —
   // this file mixes two roles across its two describe blocks, so it must be
   // correct no matter which CLI --project flag (if any) wraps the run.
   test.use({ storageState: AUTH_STATE.admin });
 
-  test("approves a SUBMITTED member, who becomes ACTIVE with a membership number", async ({ page }) => {
-    const name = `Approve Me Member ${uniqueSuffix()}`;
+  test("paying an AWAITING_PAYMENT registration auto-activates it — no approval step or button", async ({ page }) => {
+    const name = `Auto Activate Member ${uniqueSuffix()}`;
     const apiCtx = await newApiContext();
     const admin = await staffLoginApi(apiCtx, E2E_ADMIN.email, E2E_ADMIN.password);
     const memberId = await createDraftMemberApi(apiCtx, admin.accessToken, { fullName: name, mobile: uniqueMobile() });
-    await bringMemberToSubmittedApi(apiCtx, admin.accessToken, memberId);
-    await apiCtx.dispose();
+    await bringMemberToAwaitingPaymentApi(apiCtx, admin.accessToken, memberId);
 
     await page.goto("/admin/applications");
     const row = page.getByRole("row", { name });
-    await row.getByRole("button", { name: "Approve" }).click();
-    await expect(row).toHaveCount(0);
+    await expect(row).toBeVisible();
+    // No manual approval action exists any more — only Reject, as a
+    // fraud-prevention backstop before payment.
+    await expect(row.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(row.getByRole("button", { name: "Reject" })).toBeVisible();
+
+    await apiCtx.post(`/api/v1/members/${memberId}/payments`, {
+      headers: authHeaders(admin.accessToken),
+      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
+    });
+    await apiCtx.dispose();
+
+    // Paid — the member drops out of the awaiting-payment queue entirely.
+    await page.goto("/admin/applications");
+    await expect(page.getByRole("row", { name })).toHaveCount(0);
 
     await page.goto(`/admin/members/${memberId}/profile`);
     await expect(page.getByText("Active", { exact: true })).toBeVisible();
     await expect(page.getByText(/^MEM-/).first()).toBeVisible();
   });
 
-  test("rejects a SUBMITTED member with required remarks", async ({ page }) => {
+  test("rejects an AWAITING_PAYMENT member with required remarks", async ({ page }) => {
     const name = `Reject Me Member ${uniqueSuffix()}`;
     const apiCtx = await newApiContext();
     const admin = await staffLoginApi(apiCtx, E2E_ADMIN.email, E2E_ADMIN.password);
     const memberId = await createDraftMemberApi(apiCtx, admin.accessToken, { fullName: name, mobile: uniqueMobile() });
-    await bringMemberToSubmittedApi(apiCtx, admin.accessToken, memberId);
+    await bringMemberToAwaitingPaymentApi(apiCtx, admin.accessToken, memberId);
     await apiCtx.dispose();
 
     await page.goto("/admin/applications");
@@ -97,52 +114,54 @@ test.describe("applications lifecycle — admin", () => {
       fullName: `Timeline Member ${uniqueSuffix()}`,
       mobile: uniqueMobile(),
     });
-    await bringMemberToSubmittedApi(apiCtx, admin.accessToken, memberId);
-    await apiCtx.post(`/api/v1/applications/${memberId}/approve`, {
-      headers: { Authorization: `Bearer ${admin.accessToken}` },
+    await bringMemberToAwaitingPaymentApi(apiCtx, admin.accessToken, memberId);
+    // Payment auto-activates — no separate approve() call any more.
+    await apiCtx.post(`/api/v1/members/${memberId}/payments`, {
+      headers: authHeaders(admin.accessToken),
+      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
     });
     await apiCtx.dispose();
 
     await page.goto(`/admin/members/${memberId}/profile`);
     await page.getByRole("button", { name: "Timeline" }).click();
     await expect(page.getByText("Status Timeline")).toBeVisible();
-    await expect(page.getByText("SUBMITTED").first()).toBeVisible();
-    await expect(page.getByText("ACTIVE").first()).toBeVisible();
+    await expect(page.getByText("Awaiting Payment").first()).toBeVisible();
+    await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
   });
 });
 
 test.describe("applications lifecycle — field executive", () => {
   test.use({ storageState: AUTH_STATE.fieldExecutive });
 
-  test("cannot approve a member they created directly (not self-registered)", async ({ page }) => {
+  test("cannot reject a member they created directly (not self-registered)", async ({ page }) => {
     const name = `FE Direct Member ${uniqueSuffix()}`;
     const apiCtx = await newApiContext();
     const fe = await staffLoginApi(apiCtx, E2E_FIELD_EXECUTIVE.email, E2E_FIELD_EXECUTIVE.password);
     const memberId = await createDraftMemberApi(apiCtx, fe.accessToken, { fullName: name, mobile: uniqueMobile() });
-    await bringMemberToSubmittedApi(apiCtx, fe.accessToken, memberId);
+    await bringMemberToAwaitingPaymentApi(apiCtx, fe.accessToken, memberId);
     await apiCtx.dispose();
 
     await page.goto("/admin/applications");
     const row = page.getByRole("row", { name });
-    await expect(row.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(row.getByRole("button", { name: "Reject" })).toHaveCount(0);
   });
 
-  test("can approve a self-registered member they claimed", async ({ page }) => {
+  test("can reject a self-registered member they claimed", async ({ page }) => {
     const name = `FE Claimed Member ${uniqueSuffix()}`;
     const apiCtx = await newApiContext();
     const fe = await staffLoginApi(apiCtx, E2E_FIELD_EXECUTIVE.email, E2E_FIELD_EXECUTIVE.password);
     const mobile = uniqueMobile();
     const registered = await memberRegisterApi(apiCtx, { fullName: name, mobile, password: "FeClaimed123pw" });
     const memberId = registered!.memberId;
-    await apiCtx.post(`/api/v1/members/${memberId}/claim`, {
-      headers: { Authorization: `Bearer ${fe.accessToken}` },
-    });
-    await bringMemberToSubmittedApi(apiCtx, fe.accessToken, memberId);
+    await apiCtx.post(`/api/v1/members/${memberId}/claim`, { headers: authHeaders(fe.accessToken) });
+    await bringMemberToAwaitingPaymentApi(apiCtx, fe.accessToken, memberId);
     await apiCtx.dispose();
 
     await page.goto("/admin/applications");
     const row = page.getByRole("row", { name });
-    await row.getByRole("button", { name: "Approve" }).click();
+    await row.getByRole("button", { name: "Reject" }).click();
+    await page.getByLabel("Reason for rejection").fill("Duplicate registration");
+    await page.getByRole("button", { name: "Reject Application" }).click();
     await expect(row).toHaveCount(0);
   });
 

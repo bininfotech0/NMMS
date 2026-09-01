@@ -22,8 +22,10 @@ function formatCurrency(amount: number) {
   );
 }
 
-// The registration fee must be collected here, before Submit — the backend
-// enforces this too (member.submit() requires PAYMENT_COLLECTED status).
+// The last step of the wizard — the application has already been submitted
+// (AWAITING_PAYMENT), and collecting the fee here auto-activates the member
+// immediately, with no separate manual-review step. The backend enforces the
+// AWAITING_PAYMENT precondition too (PaymentsService.assertPayable).
 export function StepPayment({ form, memberId }: StepProps) {
   const { data: member } = useMember(memberId);
   const { data: plans = [] } = usePlans();
@@ -48,7 +50,8 @@ export function StepPayment({ form, memberId }: StepProps) {
   const [error, setError] = useState<string | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
 
-  const alreadyCollected = member?.status !== undefined && member.status !== "DRAFT";
+  const activated = member?.status === "ACTIVE";
+  const notYetSubmitted = member?.status === "DRAFT";
 
   async function handleCollect(e: React.FormEvent) {
     e.preventDefault();
@@ -68,13 +71,15 @@ export function StepPayment({ form, memberId }: StepProps) {
     }
   }
 
-  if (alreadyCollected) {
+  if (activated) {
     const payment = payments[0];
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-brand-green/30 bg-brand-bg-soft py-10 text-center">
         <CheckCircle2 className="size-10 text-brand-green" />
         <div>
-          <p className="font-medium text-brand-green-dark">Registration fee collected</p>
+          <p className="font-medium text-brand-green-dark">
+            Membership active{member?.membershipNumber ? ` — #${member.membershipNumber}` : ""}
+          </p>
           {payment && (
             <p className="text-sm text-muted-foreground">
               Receipt {payment.receiptNumber} · {formatCurrency(payment.amount)} · {payment.mode}
@@ -83,6 +88,14 @@ export function StepPayment({ form, memberId }: StepProps) {
           )}
         </div>
       </div>
+    );
+  }
+
+  if (notYetSubmitted) {
+    return (
+      <p className="rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
+        Submit the application (Review & Submit step) before collecting payment.
+      </p>
     );
   }
 

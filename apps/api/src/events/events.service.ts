@@ -263,8 +263,8 @@ export class EventsService {
   // member has to have actually been activated at least once (ACTIVE/EXPIRED/
   // RENEWED) to participate. SUSPENDED/DECEASED/REJECTED can't reach this
   // code at all (blocked at auth), so this only needs to catch members who
-  // were never approved in the first place (DRAFT/SUBMITTED/PAYMENT_COLLECTED/
-  // APPROVED-but-not-yet-ACTIVE).
+  // were never activated in the first place (DRAFT/AWAITING_PAYMENT/
+  // SUBMITTED/PAYMENT_COLLECTED/APPROVED-but-not-yet-ACTIVE).
   private assertMemberEventEligible(status: string) {
     if (status !== "ACTIVE" && status !== "EXPIRED" && status !== "RENEWED") {
       throw new ConflictException("Your membership must be active to participate in events");

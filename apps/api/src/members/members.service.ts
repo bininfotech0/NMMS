@@ -28,25 +28,27 @@ import { toMemberResponse } from "./member.mapper";
 // treated as unrelated rather than a likely duplicate registration.
 const NAME_MATCH_THRESHOLD = 0.88;
 
-// Editable pre-submission — DRAFT while filling the form, PAYMENT_COLLECTED
-// after the registration fee is recorded but before the wizard's later steps
-// (documents/declaration/review) are saved. Open to whoever owns/is scoped
-// to the record (see findEditable) — typically the field executive who's
-// still actively filling it in.
-const EDITABLE_STATUSES = ["DRAFT", "PAYMENT_COLLECTED"] as const;
+// Editable pre-payment — DRAFT while filling the form, AWAITING_PAYMENT once
+// it's submitted but the fee hasn't been paid yet (payment now auto-activates,
+// so this is the last status where a correction doesn't require a reject).
+// Open to whoever owns/is scoped to the record (see findEditable) —
+// typically the field executive who's still actively filling it in.
+// PAYMENT_COLLECTED is legacy (pre-redesign: payment collected before
+// profile/documents) — still editable for any rows stranded in that status.
+const EDITABLE_STATUSES = ["DRAFT", "AWAITING_PAYMENT", "PAYMENT_COLLECTED"] as const;
 // ACTIVE/SUSPENDED/EXPIRED/RENEWED members can still have their profile
 // corrected by staff (e.g. a typo'd address or phone number) — by
 // ADMIN/SUPER_ADMIN, or by the field executive who created them (see
 // findOwned/findEditable — a non-owner FIELD_EXECUTIVE still can't reach a
 // record they didn't create, this only lifts the extra lock that used to
-// apply on top of ownership once the record left DRAFT/PAYMENT_COLLECTED).
+// apply on top of ownership once the record left DRAFT/AWAITING_PAYMENT).
 // EXPIRED/RENEWED are just as much "the member is already active in the org,
 // just needs an occasional correction" as ACTIVE itself — a lapsed or
 // renewed membership is not a reason to lock the member out of having their
 // own address/phone corrected.
-// SUBMITTED/APPROVED are included too — an admin reviewing an application
-// who spots an obvious typo can fix it without a full reject-and-resubmit
-// cycle.
+// SUBMITTED/APPROVED are legacy statuses from before the form-first/
+// payment-last redesign, kept editable for any rows still working through
+// the manual-override approval path (see ApplicationsService.approve/reject).
 const STAFF_ONLY_EDITABLE_STATUSES = [
   "ACTIVE",
   "SUSPENDED",
@@ -194,11 +196,11 @@ export class MembersService {
   async update(id: string, dto: UpdateMemberInput, user: AuthUser): Promise<MemberResponse> {
     const existing = await this.findEditable(id, user);
 
-    // Once the registration fee is collected, the plan/fee it was collected
-    // against must not silently drift — PAYMENT_COLLECTED/ACTIVE/SUSPENDED
-    // all stay editable for other profile fields, but changing what was
-    // actually paid for requires a new payment cycle (or a dedicated
-    // upgrade flow, not yet built), not a PATCH.
+    // Once submitted (AWAITING_PAYMENT) or beyond, the plan/fee the pending
+    // payment is quoted against must not silently drift — AWAITING_PAYMENT/
+    // ACTIVE/SUSPENDED all stay editable for other profile fields, but
+    // changing what's actually being paid for requires a new payment cycle
+    // (or a dedicated upgrade flow, not yet built), not a PATCH.
     if (existing.status !== "DRAFT") {
       const planChanged = dto.planId !== undefined && dto.planId !== existing.planId;
       const feeChanged =
@@ -206,7 +208,7 @@ export class MembersService {
         (dto.feeOverride ?? null) !== (existing.feeOverride?.toNumber() ?? null);
       if (planChanged || feeChanged) {
         throw new ConflictException(
-          "Cannot change the membership plan or fee after the registration fee has been collected",
+          "Cannot change the membership plan or fee once the registration has been submitted",
         );
       }
     }
@@ -291,12 +293,13 @@ export class MembersService {
   }
 
   // Self-service equivalent of submit() — a self-registered member finishing
-  // their own registration (selected a plan, paid, filled in their profile,
-  // uploaded documents). No jurisdiction/role check (the memberId comes from
-  // the verified member JWT, so the caller is inherently authorized for their
-  // own record), but the same PAYMENT_COLLECTED/required-fields/documents
-  // gate as staff submit — attributed to the member's own createdById (the
-  // system sentinel user MemberAuthService.register used), same convention
+  // their own registration (selected a plan, filled in their profile,
+  // uploaded documents — payment comes after this, see PaymentsService). No
+  // jurisdiction/role check (the memberId comes from the verified member JWT,
+  // so the caller is inherently authorized for their own record), but the
+  // same DRAFT/required-fields/documents gate as staff submit — attributed to
+  // the member's own createdById (the system sentinel user
+  // MemberAuthService.register used), same convention
   // PaymentsService.recordGatewayPaymentFromWebhook uses for a "received by"
   // with no staff actor in context.
   async submitMine(memberId: string): Promise<MemberResponse> {
@@ -305,10 +308,8 @@ export class MembersService {
   }
 
   private async submitInternal(existing: Member, actorId: string): Promise<MemberResponse> {
-    if (existing.status !== "PAYMENT_COLLECTED") {
-      throw new ConflictException(
-        "Cannot submit: the registration fee must be collected first (see /members/:id/payments)",
-      );
+    if (existing.status !== "DRAFT") {
+      throw new ConflictException("Cannot submit: complete the required profile fields first");
     }
 
     const missing = REQUIRED_FOR_SUBMIT.filter((field) => !existing[field]);
@@ -332,14 +333,14 @@ export class MembersService {
     // Compare-and-swap: a concurrent duplicate submit loses the race cleanly
     // instead of both requests succeeding and double-writing StatusHistory.
     const cas = await this.prisma.member.updateMany({
-      where: { id: existing.id, status: "PAYMENT_COLLECTED" },
-      data: { status: "SUBMITTED" },
+      where: { id: existing.id, status: "DRAFT" },
+      data: { status: "AWAITING_PAYMENT" },
     });
     if (cas.count === 0) {
       throw new ConflictException("This member's status just changed — please refresh and try again");
     }
     await this.prisma.statusHistory.create({
-      data: { memberId: existing.id, fromStatus: "PAYMENT_COLLECTED", toStatus: "SUBMITTED", actorId },
+      data: { memberId: existing.id, fromStatus: "DRAFT", toStatus: "AWAITING_PAYMENT", actorId },
     });
     const member = await this.prisma.member.findUniqueOrThrow({
       where: { id: existing.id },
@@ -585,8 +586,8 @@ export class MembersService {
     return member;
   }
 
-  // Editable by its creator or by an org admin, pre-submission (DRAFT or
-  // PAYMENT_COLLECTED — see EDITABLE_STATUSES). ACTIVE/SUSPENDED (and the
+  // Editable by its creator or by an org admin, pre-payment (DRAFT or
+  // AWAITING_PAYMENT — see EDITABLE_STATUSES). ACTIVE/SUSPENDED (and the
   // other STAFF_ONLY_EDITABLE_STATUSES) members are also editable by an
   // ADMIN/SUPER_ADMIN/FIELD_EXECUTIVE (see CAN_EDIT_ACTIVE_MEMBER) — findOwned
   // above already confines a FIELD_EXECUTIVE to records they created, so this
@@ -601,7 +602,7 @@ export class MembersService {
       STAFF_ONLY_EDITABLE_STATUSES.includes(member.status as (typeof STAFF_ONLY_EDITABLE_STATUSES)[number]);
     if (!preSubmissionEditable && !staffCorrectable) {
       throw new ConflictException(
-        "Only members in DRAFT or PAYMENT_COLLECTED status can be edited (ACTIVE/SUSPENDED members can be corrected by an admin)",
+        "Only members in DRAFT or AWAITING_PAYMENT status can be edited (ACTIVE/SUSPENDED members can be corrected by an admin)",
       );
     }
     return member;

@@ -58,11 +58,12 @@ export function MemberDashboard() {
   }
 
   if (member?.status !== "ACTIVE") {
-    // A self-registered member starts DRAFT with no plan or payment at all
-    // (unlike the staff wizard) — guide them through finishing it themselves
-    // instead of the generic "pending" message, which only applies once
-    // there's actually nothing left for the member to do but wait.
-    if (member?.status === "DRAFT" || member?.status === "PAYMENT_COLLECTED") {
+    // A self-registered member starts DRAFT with no plan at all (unlike the
+    // staff wizard) — guide them through finishing it themselves instead of
+    // the generic "pending" message, which only applies once there's
+    // actually nothing left for the member to do but wait. AWAITING_PAYMENT
+    // means the form is done and only payment (which auto-activates) remains.
+    if (member?.status === "DRAFT" || member?.status === "AWAITING_PAYMENT") {
       // Needs the full MemberResponse (addressLine, planId, etc.), not the
       // narrower login-time AuthMember snapshot storeMember falls back to.
       if (!profile) {
@@ -82,7 +83,7 @@ export function MemberDashboard() {
             Your membership status is currently <span className="font-medium">{member?.status}</span>.{" "}
             {lapsed
               ? "Contact your field executive to renew your plan and regain full access."
-              : "Once staff approve it, you'll get your own referral link and can start earning points."}
+              : "Contact your field executive to finish your registration — once it's active, you'll get your own referral link and can start earning points."}
           </p>
         </CardContent>
       </Card>

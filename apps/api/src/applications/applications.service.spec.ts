@@ -36,13 +36,12 @@ describe("ApplicationsService", () => {
 
       expect(result.status).toBe("ACTIVE");
       expect(result.membershipNumber).toBe("MEM-2026-00001");
-      // Two StatusHistory rows for the audit trail: SUBMITTED→APPROVED→ACTIVE.
-      expect(prisma.statusHistory.create).toHaveBeenCalledTimes(2);
-      expect(prisma.statusHistory.create).toHaveBeenNthCalledWith(1, {
-        data: expect.objectContaining({ fromStatus: "SUBMITTED", toStatus: "APPROVED" }),
-      });
-      expect(prisma.statusHistory.create).toHaveBeenNthCalledWith(2, {
-        data: expect.objectContaining({ fromStatus: "APPROVED", toStatus: "ACTIVE" }),
+      // A single StatusHistory row straight to ACTIVE — activateMemberOnce
+      // (shared with PaymentsService's auto-activation branch) no longer
+      // records a transient APPROVED hop.
+      expect(prisma.statusHistory.create).toHaveBeenCalledTimes(1);
+      expect(prisma.statusHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ fromStatus: "SUBMITTED", toStatus: "ACTIVE" }),
       });
       expect(notifications.notify).toHaveBeenCalledWith(
         expect.objectContaining({ type: "APPROVAL_WELCOME" }),

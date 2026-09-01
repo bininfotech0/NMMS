@@ -32,9 +32,14 @@ export class ReferralsService {
     private readonly planRewards: PlanRewardsService,
   ) {}
 
-  // Called from ApplicationsService.approve() right after a referred member
-  // becomes ACTIVE — the single choke point for every approval, mirroring how
-  // PaymentsService.finalizePayment() already fires NotificationService there.
+  // Called after a referred member's first activation — from
+  // PaymentsService.finalizePayment's automatic post-payment activation (the
+  // standard path since the form-first/payment-last redesign) and from
+  // ApplicationsService.approve() (kept as a manual-override activation path
+  // for legacy SUBMITTED rows predating that redesign). Both call sites
+  // guarantee single-fire via their own member-status CAS (see
+  // activateMemberOnce) before calling this — this function itself still has
+  // no idempotency guard of its own.
   async awardPointsForApproval(approvedMemberId: string): Promise<void> {
     const approvedMember = await this.prisma.member.findUnique({
       where: { id: approvedMemberId },

@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
-  bringMemberToSubmittedApi,
+  E2E_BASELINE_PLAN_FEE,
+  bringMemberToAwaitingPaymentApi,
   createActiveMemberApi,
   ensureTieredPlan,
   memberLoginApi,
@@ -52,7 +53,6 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   const { accessToken: referrerToken } = await memberLoginApi(apiCtx, referrerMobile, referrerPassword);
   const summaryRes = await apiCtx.get("/api/v1/referrals/me", { headers: authHeaders(referrerToken) });
   const referrerSummary = (await summaryRes.json()).data as { referralCode: string };
-  const expectedLink = `http://localhost/join?ref=${referrerSummary.referralCode}`;
 
   // 1. Referrer A logs into the member portal and copies their referral link.
   const memberAContext = await browser.newContext();
@@ -64,6 +64,9 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   await memberAPage.getByLabel("Password").fill(referrerPassword);
   await memberAPage.getByRole("button", { name: "Sign In" }).click();
   await memberAPage.waitForURL("**/member");
+  // Derived from the page's own origin rather than hardcoded, so this
+  // assertion holds under whatever baseURL the suite is actually run against.
+  const expectedLink = `${new URL(memberAPage.url()).origin}/join?ref=${referrerSummary.referralCode}`;
   await memberAPage.getByRole("button", { name: "Copy" }).click();
   const copiedLink = await memberAPage.evaluate(() => navigator.clipboard.readText());
   expect(copiedLink).toBe(expectedLink);
@@ -94,14 +97,18 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   await expect(fePage.getByText(refereeName)).toHaveCount(0);
   await feContext.close();
 
-  // 4. Bring the referee through payment/submit/approve (mechanics already
+  // 4. Bring the referee through submission/payment (mechanics already
   // covered by applications-lifecycle.spec.ts — API here keeps this test
   // focused on the referral-specific points/rank/reward assertions below).
+  // Paying auto-activates the referee — no separate approval call.
   const membersRes = await apiCtx.get("/api/v1/members", { headers: authHeaders(admin.accessToken) });
   const allMembers = (await membersRes.json()).data as Array<{ id: string; fullName: string }>;
   const refereeId = allMembers.find((m) => m.fullName === refereeName)!.id;
-  await bringMemberToSubmittedApi(apiCtx, fe.accessToken, refereeId);
-  await apiCtx.post(`/api/v1/applications/${refereeId}/approve`, { headers: authHeaders(fe.accessToken) });
+  await bringMemberToAwaitingPaymentApi(apiCtx, fe.accessToken, refereeId);
+  await apiCtx.post(`/api/v1/members/${refereeId}/payments`, {
+    headers: authHeaders(fe.accessToken),
+    data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
+  });
 
   // 5. Referrer A's Wallet reflects the new points from the referee's approval.
   await memberAPage.goto("/member/wallet");

@@ -4,10 +4,16 @@ import { PaymentsService } from "./payments.service";
 import { decimal, makeAuthUser, makeMember, makeMockPrisma } from "../test/fixtures";
 
 function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
-  const numbering = { nextReceiptNumber: jest.fn().mockResolvedValue("RCPT-2026-00001") };
+  const numbering = {
+    nextReceiptNumber: jest.fn().mockResolvedValue("RCPT-2026-00001"),
+    nextMembershipNumber: jest.fn().mockResolvedValue("MEM-2026-00001"),
+  };
   const membersService = { findOne: jest.fn() };
   const notifications = { notify: jest.fn().mockResolvedValue(undefined) };
-  const referrals = { awardBatchRewardForTier: jest.fn().mockResolvedValue(undefined) };
+  const referrals = {
+    awardBatchRewardForTier: jest.fn().mockResolvedValue(undefined),
+    awardPointsForApproval: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new PaymentsService(
     prisma as never,
     numbering as never,
@@ -21,12 +27,17 @@ function makeService(prisma: ReturnType<typeof makeMockPrisma>) {
 const monthsPlan = { validityType: "MONTHS", validityMonths: 12, fee: decimal(500) };
 
 describe("PaymentsService.recordPayment", () => {
-  it("collects the initial fee: DRAFT → PAYMENT_COLLECTED, sets joiningDate, notifies", async () => {
+  it("collects the initial fee: AWAITING_PAYMENT → ACTIVE, assigns membershipNumber, credits referrer, notifies", async () => {
     const prisma = makeMockPrisma();
-    const { service, notifications } = makeService(prisma);
-    const draft = makeMember({ status: "DRAFT", plan: monthsPlan, joiningDate: null });
-    prisma.member.findFirst.mockResolvedValue(draft);
+    const { service, notifications, referrals, numbering } = makeService(prisma);
+    const awaitingPayment = makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan, joiningDate: null });
+    prisma.member.findFirst.mockResolvedValue(awaitingPayment);
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.member.findUniqueOrThrow.mockResolvedValue({
+      ...awaitingPayment,
+      status: "ACTIVE",
+      membershipNumber: "MEM-2026-00001",
+    });
     prisma.payment.create.mockResolvedValue({
       id: "payment-1",
       memberId: "member-1",
@@ -44,15 +55,42 @@ describe("PaymentsService.recordPayment", () => {
 
     expect(result.amount).toBe(500);
     expect(prisma.member.updateMany).toHaveBeenCalledWith({
-      where: { id: "member-1", status: "DRAFT" },
-      data: expect.objectContaining({ status: "PAYMENT_COLLECTED" }),
+      where: { id: "member-1", status: "AWAITING_PAYMENT" },
+      data: { status: "ACTIVE" },
+    });
+    expect(numbering.nextMembershipNumber).toHaveBeenCalledWith("org-1");
+    expect(prisma.member.update).toHaveBeenCalledWith({
+      where: { id: "member-1" },
+      data: {
+        membershipNumber: "MEM-2026-00001",
+        validUntil: expect.any(Date),
+        joiningDate: expect.any(Date),
+        approvedById: user.id,
+        approvedAt: expect.any(Date),
+      },
     });
     expect(prisma.statusHistory.create).toHaveBeenCalledWith({
-      data: { memberId: "member-1", fromStatus: "DRAFT", toStatus: "PAYMENT_COLLECTED", actorId: user.id },
+      data: { memberId: "member-1", fromStatus: "AWAITING_PAYMENT", toStatus: "ACTIVE", actorId: user.id },
     });
+    expect(referrals.awardBatchRewardForTier).toHaveBeenCalled();
     expect(notifications.notify).toHaveBeenCalledWith(expect.objectContaining({ type: "PAYMENT_RECEIPT" }));
-    // A renewal payment must never fire for the initial-fee branch.
+    expect(notifications.notify).toHaveBeenCalledWith(expect.objectContaining({ type: "APPROVAL_WELCOME" }));
+    expect(referrals.awardPointsForApproval).toHaveBeenCalledWith("member-1");
+  });
+
+  it("throws and does not double-credit if the member's status changed before the activation CAS lands", async () => {
+    const prisma = makeMockPrisma();
+    const { service, referrals } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan }));
+    // Another concurrent call (webhook vs. verify-callback) already activated this member.
+    prisma.member.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.recordPayment("member-1", { amount: 500, mode: "CASH" }, makeAuthUser()),
+    ).rejects.toThrow(ConflictException);
     expect(prisma.member.update).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(referrals.awardPointsForApproval).not.toHaveBeenCalled();
   });
 
   it("records a renewal payment for an ACTIVE member: CAS'd back to ACTIVE, extends validUntil, records RENEWED audit trail, no notify", async () => {
@@ -87,7 +125,7 @@ describe("PaymentsService.recordPayment", () => {
       data: { memberId: "member-1", fromStatus: "RENEWED", toStatus: "ACTIVE", actorId: user.id },
     });
     expect(notifications.notify).not.toHaveBeenCalled();
-    // The old direct-update path must not fire for a renewal.
+    // The auto-activation direct-update path must not fire for a renewal.
     expect(prisma.member.update).not.toHaveBeenCalled();
   });
 
@@ -184,7 +222,7 @@ describe("PaymentsService.recordPayment", () => {
   it("refuses a manual payment whose amount doesn't match the member's fee (₹1 registration blocked)", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "DRAFT", plan: monthsPlan }));
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan }));
 
     await expect(service.recordPayment("member-1", { amount: 1, mode: "CASH" }, makeAuthUser())).rejects.toThrow(
       ConflictException,
@@ -197,9 +235,10 @@ describe("PaymentsService.recordPayment", () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
     prisma.member.findFirst.mockResolvedValue(
-      makeMember({ status: "DRAFT", plan: monthsPlan, feeOverride: decimal(450) }),
+      makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan, feeOverride: decimal(450) }),
     );
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ status: "ACTIVE" }));
     prisma.payment.create.mockResolvedValue({
       id: "payment-override-1",
       memberId: "member-1",
@@ -216,7 +255,7 @@ describe("PaymentsService.recordPayment", () => {
     expect(result.amount).toBe(450);
   });
 
-  it.each(["SUBMITTED", "APPROVED", "REJECTED", "SUSPENDED", "DECEASED"])(
+  it.each(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "SUSPENDED", "DECEASED"])(
     "refuses to record a payment for a %s member",
     async (status) => {
       const prisma = makeMockPrisma();
@@ -231,7 +270,7 @@ describe("PaymentsService.recordPayment", () => {
   it("refuses to record a payment when no plan is assigned yet", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "DRAFT", plan: null }));
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "AWAITING_PAYMENT", plan: null }));
     await expect(service.recordPayment("member-1", { amount: 500, mode: "CASH" }, makeAuthUser())).rejects.toThrow(
       ConflictException,
     );
@@ -240,8 +279,8 @@ describe("PaymentsService.recordPayment", () => {
   it("loses a concurrent double-payment race cleanly via the CAS guard, without creating a payment row", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "DRAFT", plan: monthsPlan }));
-    // Another request already flipped DRAFT → PAYMENT_COLLECTED first.
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan }));
+    // Another request already activated this member first.
     prisma.member.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(service.recordPayment("member-1", { amount: 500, mode: "CASH" }, makeAuthUser())).rejects.toThrow(
@@ -252,12 +291,13 @@ describe("PaymentsService.recordPayment", () => {
 });
 
 describe("PaymentsService.recordGatewayPayment", () => {
-  it("records a Razorpay payment with mode ONLINE and the gateway ids, DRAFT → PAYMENT_COLLECTED", async () => {
+  it("records a Razorpay payment with mode ONLINE and the gateway ids, AWAITING_PAYMENT → ACTIVE", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
     prisma.payment.findUnique.mockResolvedValue(null); // no existing record yet
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "DRAFT", plan: monthsPlan }));
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan }));
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ status: "ACTIVE" }));
     prisma.payment.create.mockResolvedValue({
       id: "payment-online-1",
       memberId: "member-1",
@@ -281,6 +321,10 @@ describe("PaymentsService.recordGatewayPayment", () => {
 
     expect(result.mode).toBe("ONLINE");
     expect(result.gatewayPaymentId).toBe("pay_XYZ");
+    expect(prisma.member.updateMany).toHaveBeenCalledWith({
+      where: { id: "member-1", status: "AWAITING_PAYMENT" },
+      data: { status: "ACTIVE" },
+    });
     expect(prisma.payment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -327,8 +371,9 @@ describe("PaymentsService.recordGatewayPayment", () => {
     const { service } = makeService(prisma);
     // Idempotency check passes (no row yet)...
     prisma.payment.findUnique.mockResolvedValueOnce(null);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "DRAFT", plan: monthsPlan }));
+    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan }));
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ status: "ACTIVE" }));
     // ...but another concurrent request (verify callback vs webhook) won the insert.
     prisma.payment.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
@@ -367,9 +412,10 @@ describe("PaymentsService.recordGatewayPaymentFromWebhook", () => {
     const { service } = makeService(prisma);
     prisma.payment.findUnique.mockResolvedValue(null);
     prisma.member.findFirst.mockResolvedValue(
-      makeMember({ status: "DRAFT", plan: monthsPlan, createdById: "field-exec-7" }),
+      makeMember({ status: "AWAITING_PAYMENT", plan: monthsPlan, createdById: "field-exec-7" }),
     );
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
+    prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ status: "ACTIVE" }));
     prisma.payment.create.mockResolvedValue({
       id: "payment-online-2",
       memberId: "member-1",

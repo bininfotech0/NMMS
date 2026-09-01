@@ -675,7 +675,9 @@ export function MemberProfile() {
           </div>
         </div>
         <div className="flex gap-2">
-          {(member.status === "DRAFT" || member.status === "PAYMENT_COLLECTED") && (
+          {(member.status === "DRAFT" ||
+            member.status === "AWAITING_PAYMENT" ||
+            member.status === "PAYMENT_COLLECTED") && (
             <Button variant="outline" asChild>
               <Link to={`/admin/members/${id}/wizard`}>
                 <Pencil className="size-4" />

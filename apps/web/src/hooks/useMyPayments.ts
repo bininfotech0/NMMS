@@ -41,7 +41,7 @@ export function useVerifyMyPaymentGateway() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["members", "me"] });
       queryClient.invalidateQueries({ queryKey: ["members", "me", "payments"] });
-      toast.success("Payment received");
+      toast.success("Payment received — your membership is now active!");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to verify payment")),
   });

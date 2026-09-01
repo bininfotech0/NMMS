@@ -271,7 +271,19 @@ model FeatureFlag {
 
 enum MemberStatus {
   DRAFT
+  // Legacy: registration used to require payment before the profile/document
+  // steps, landing here once the fee was collected. Retired from the active
+  // flow (payment now comes last, see AWAITING_PAYMENT) but kept in the enum
+  // for existing rows/StatusHistory.
   PAYMENT_COLLECTED
+  // Profile/documents/declarations complete and submitted; fee not yet paid.
+  // Payment auto-activates a member straight to ACTIVE — no manual approval
+  // step in between (see PaymentsService.finalizePayment).
+  AWAITING_PAYMENT
+  // Legacy: used to mean "paid + profile complete, awaiting staff review"
+  // before the form-first/payment-last redesign. Retired from the active
+  // flow but kept for existing rows; ApplicationsService.approve()/reject()
+  // still accept it as a manual-override path for rows predating the change.
   SUBMITTED
   // Legacy: was the intermediate step of the old two-level approval workflow.
   // Retired from the active flow (single-level approval goes SUBMITTED →

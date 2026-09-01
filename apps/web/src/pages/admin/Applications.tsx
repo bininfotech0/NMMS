@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Check, UserCheck, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -15,31 +16,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { ApiError } from "@/lib/api-client";
-import { useApplicationsQueue, useApproveApplication, useRejectApplication } from "@/hooks/useApplications";
+import { useApplicationsQueue, useRejectApplication } from "@/hooks/useApplications";
 import { useClaimMember, useUnclaimedReferrals } from "@/hooks/useMembers";
 import { useAuthStore } from "@/stores/auth";
 import { Role, type MemberResponse } from "@nmms/shared";
 
-// ADMIN/SUPER_ADMIN approve or reject anything. A FIELD_EXECUTIVE can too,
-// but only a self-registered member they've personally claimed (see the
-// Unclaimed Referrals section below) — the backend enforces this; this is
-// just the matching UI gate so the buttons only appear when they'd succeed.
-const CAN_APPROVE_ANY = [Role.ADMIN, Role.SUPER_ADMIN];
+// ADMIN/SUPER_ADMIN can reject anything. A FIELD_EXECUTIVE can too, but only
+// a self-registered member they've personally claimed (see the Unclaimed
+// Referrals section below) — the backend enforces this; this is just the
+// matching UI gate so the button only appears when it'd succeed. There's no
+// "approve" here anymore — payment auto-activates a registration once it's
+// complete, so review before that point is limited to rejecting (fraud
+// prevention) rather than approving.
+const CAN_REVIEW_ANY = [Role.ADMIN, Role.SUPER_ADMIN];
 const CAN_CLAIM = [Role.FIELD_EXECUTIVE, Role.ADMIN, Role.SUPER_ADMIN];
 
 function canReviewMember(role: Role | undefined, member: MemberResponse): boolean {
   if (!role) return false;
-  if (CAN_APPROVE_ANY.includes(role)) return true;
+  if (CAN_REVIEW_ANY.includes(role)) return true;
   return role === Role.FIELD_EXECUTIVE && member.selfRegistered;
 }
 
 export function Applications() {
+  const navigate = useNavigate();
   const [rejectTarget, setRejectTarget] = useState<MemberResponse | null>(null);
 
   const user = useAuthStore((state) => state.user);
   const { data: queue = [], isLoading, isError, error } = useApplicationsQueue();
-
-  const approve = useApproveApplication();
 
   const forbidden = isError && error instanceof ApiError && error.status === 403;
   const canClaim = !!user && CAN_CLAIM.includes(user.role);
@@ -78,7 +81,7 @@ export function Applications() {
         <div>
           <h1 className="font-heading text-2xl font-bold">Applications</h1>
           <p className="text-sm text-muted-foreground">
-            {queue.length} application{queue.length === 1 ? "" : "s"} awaiting review
+            {queue.length} registration{queue.length === 1 ? "" : "s"} awaiting payment
           </p>
         </div>
         <ExportCsvButton filename="applications.csv" rows={exportRows} />
@@ -92,40 +95,30 @@ export function Applications() {
         isLoading={isLoading}
         isError={isError}
         errorMessage={forbidden ? "You don't have permission to review applications." : "Failed to load applications."}
-        emptyMessage="No applications to review."
+        emptyMessage="No registrations awaiting payment."
         rowKey={(m) => m.id}
+        onRowClick={(member) => navigate(`/admin/members/${member.id}/profile`)}
         searchable
         searchPlaceholder="Search by name or mobile..."
         searchKeys={["fullName", "mobile"]}
         statusKey="status"
         pageSize={25}
         quickActions={(member) => {
-          const canApprove = member.status === "SUBMITTED" && canReviewMember(user?.role, member);
-          const canReject = canApprove;
+          const canReject =
+            (member.status === "AWAITING_PAYMENT" || member.status === "SUBMITTED") &&
+            canReviewMember(user?.role, member);
+          if (!canReject) return null;
           return (
             <div className="flex justify-end gap-2">
-              {canApprove && (
-                <Button
-                  size="sm"
-                  className="bg-brand-green hover:bg-brand-green/90"
-                  disabled={approve.isPending}
-                  onClick={() => approve.mutate(member.id)}
-                >
-                  <Check className="size-4" />
-                  Approve
-                </Button>
-              )}
-              {canReject && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setRejectTarget(member)}
-                >
-                  <X className="size-4" />
-                  Reject
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setRejectTarget(member)}
+              >
+                <X className="size-4" />
+                Reject
+              </Button>
             </div>
           );
         }}
@@ -137,9 +130,9 @@ export function Applications() {
 }
 
 // Self-registrations via a member's referral link (/join?ref=...), waiting
-// for a Field Executive to confirm them in person before payment collection
-// and approval proceed. Claiming reassigns the member to the claiming staff
-// user, after which it behaves like any other field-executive-created member.
+// for a Field Executive to confirm them in person before the registration
+// proceeds. Claiming reassigns the member to the claiming staff user, after
+// which it behaves like any other field-executive-created member.
 function UnclaimedReferralsCard() {
   const { data: unclaimed = [], isLoading } = useUnclaimedReferrals();
   const claim = useClaimMember();

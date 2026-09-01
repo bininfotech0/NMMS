@@ -8,6 +8,8 @@ const STATUS_STYLES: Record<string, string> = {
 
   // Member lifecycle statuses (see @nmms/shared memberStatusSchema)
   DRAFT: "bg-muted text-muted-foreground border-transparent",
+  AWAITING_PAYMENT: "bg-brand-gold/15 text-brand-brown border-transparent",
+  // Legacy statuses, retired from the active form-first/payment-last flow.
   PAYMENT_COLLECTED: "bg-blue-500/10 text-blue-700 border-transparent",
   SUBMITTED: "bg-brand-gold/15 text-brand-brown border-transparent",
   // Legacy status, retired from the active one-level approval flow.

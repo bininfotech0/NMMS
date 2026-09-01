@@ -14,7 +14,10 @@ import { PrismaService } from "../prisma/prisma.service";
 import { buildJurisdictionWhere } from "../common/scope.util";
 
 const MONTHS_BACK = 12;
-const APPLICATION_FUNNEL_STATUSES = ["SUBMITTED", "VERIFIED", "APPROVED", "REJECTED"];
+// AWAITING_PAYMENT is the standard pre-activation state since the
+// form-first/payment-last redesign; SUBMITTED/VERIFIED/APPROVED are legacy
+// (pre-redesign) statuses that may still have historical counts.
+const APPLICATION_FUNNEL_STATUSES = ["AWAITING_PAYMENT", "SUBMITTED", "VERIFIED", "APPROVED", "REJECTED"];
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -149,7 +152,7 @@ export class ReportsService {
   }
 
   async pendingApproval(user: AuthUser): Promise<MemberRegisterRow[]> {
-    return this.memberRegisterByStatus(user, "SUBMITTED");
+    return this.memberRegisterByStatus(user, "AWAITING_PAYMENT");
   }
 
   async rejectedApplications(user: AuthUser): Promise<MemberRegisterRow[]> {

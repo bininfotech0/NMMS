@@ -16,6 +16,7 @@ import { buildJurisdictionWhere } from "../common/scope.util";
 import { addMonths } from "../common/date.util";
 import { MembersService } from "../members/members.service";
 import { toMemberResponse } from "../members/member.mapper";
+import { activateMemberOnce } from "../members/member-activation.util";
 import { NotificationService } from "../notifications/notification.service";
 import { ReferralsService } from "../referrals/referrals.service";
 
@@ -41,9 +42,9 @@ export class PaymentsService {
   ) {}
 
   // A payment can be recorded in two contexts:
-  //  - DRAFT: the initial registration fee, collected before submission (see
-  //    the spec's Payment Collection step) — moves the member to
-  //    PAYMENT_COLLECTED so it can then be submitted.
+  //  - AWAITING_PAYMENT: the initial registration fee, collected after the
+  //    member has already completed and submitted their profile/documents —
+  //    auto-activates the member straight to ACTIVE, no manual approval step.
   //  - ACTIVE: a renewal/additional payment — extends validUntil, no status
   //    change (the member is already active).
   async recordPayment(
@@ -75,10 +76,10 @@ export class PaymentsService {
 
   // Financial control for the manual cash/UPI path: a member's registration
   // or renewal must be paid at the exact effective fee (feeOverride if set,
-  // else the plan fee). Without this, a ₹1 "payment" would mark a member
-  // PAYMENT_COLLECTED and complete their registration. The gateway path is
-  // exempt — its amount is fixed server-side at order-creation time and
-  // re-fetched from Razorpay at verify time, never client-supplied.
+  // else the plan fee). Without this, a ₹1 "payment" would auto-activate the
+  // member. The gateway path is exempt — its amount is fixed server-side at
+  // order-creation time and re-fetched from Razorpay at verify time, never
+  // client-supplied.
   private assertManualAmountMatchesFee(member: MemberWithPlan, amount: number): void {
     if (!member.plan) {
       throw new ConflictException("Member has no current membership plan");
@@ -280,9 +281,9 @@ export class PaymentsService {
   }
 
   private assertPayable(member: MemberWithPlan): void {
-    if (member.status !== "DRAFT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
+    if (member.status !== "AWAITING_PAYMENT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
       throw new ConflictException(
-        "Payments can only be recorded for a DRAFT member (initial registration fee) or an ACTIVE/EXPIRED member (renewal)",
+        "Payments can only be recorded for an AWAITING_PAYMENT member (initial registration fee) or an ACTIVE/EXPIRED member (renewal)",
       );
     }
     if (!member.plan) {
@@ -303,14 +304,18 @@ export class PaymentsService {
     const paidAt = new Date();
 
     const payment = await this.prisma.$transaction(async (tx) => {
-      if (member.status === "DRAFT") {
-        const cas = await tx.member.updateMany({
-          where: { id: member.id, status: "DRAFT" },
-          data: { status: "PAYMENT_COLLECTED", joiningDate: member.joiningDate ?? paidAt },
-        });
-        if (cas.count === 0) {
+      if (member.status === "AWAITING_PAYMENT") {
+        const activation = await activateMemberOnce(tx, this.numbering, member, member.plan, "AWAITING_PAYMENT", actor.id);
+        if (!activation) {
           throw new ConflictException("This member's status just changed — please refresh and try again");
         }
+        await this.referrals.awardBatchRewardForTier(
+          tx,
+          actor.organizationId,
+          member.id,
+          (member.plan?.tier as PlanTier | null) ?? null,
+          member.referralPointsBalance,
+        );
       } else {
         // member.status is ACTIVE or EXPIRED here (assertPayable's guard) — a
         // renewal payment always lands the member back on ACTIVE, resetting
@@ -359,16 +364,7 @@ export class PaymentsService {
         },
       });
 
-      if (member.status === "DRAFT") {
-        await tx.statusHistory.create({
-          data: {
-            memberId: member.id,
-            fromStatus: "DRAFT",
-            toStatus: "PAYMENT_COLLECTED",
-            actorId: actor.id,
-          },
-        });
-      } else {
+      if (member.status !== "AWAITING_PAYMENT") {
         // Real status jumps straight to ACTIVE (never persists as RENEWED,
         // exactly like APPROVED never persists in ApplicationsService.approve),
         // but the audit trail records every renewal, which it didn't before.
@@ -383,7 +379,8 @@ export class PaymentsService {
       return created;
     });
 
-    if (member.status === "DRAFT") {
+    if (member.status === "AWAITING_PAYMENT") {
+      const activated = await this.prisma.member.findUniqueOrThrow({ where: { id: member.id } });
       await this.notifications.notify({
         type: "PAYMENT_RECEIPT",
         organizationId: actor.organizationId,
@@ -393,6 +390,15 @@ export class PaymentsService {
         amount: payment.amount.toNumber(),
         receiptNumber: payment.receiptNumber,
       });
+      await this.notifications.notify({
+        type: "APPROVAL_WELCOME",
+        organizationId: actor.organizationId,
+        memberName: activated.fullName,
+        mobile: activated.mobile,
+        email: activated.email,
+        membershipNumber: activated.membershipNumber,
+      });
+      await this.referrals.awardPointsForApproval(member.id);
     }
 
     return this.toResponse(payment);
@@ -430,10 +436,10 @@ export class PaymentsService {
   }
 
   // "Outstanding" now covers every payment context recordPayment() accepts:
-  // DRAFT members still owing their initial registration fee, ACTIVE members
-  // renewing within 30 days, and EXPIRED members (MemberExpiryScheduler has
-  // already flipped them, so they'd otherwise vanish from this queue instead
-  // of showing up more urgently).
+  // AWAITING_PAYMENT members still owing their initial registration fee,
+  // ACTIVE members renewing within 30 days, and EXPIRED members
+  // (MemberExpiryScheduler has already flipped them, so they'd otherwise
+  // vanish from this queue instead of showing up more urgently).
   async outstanding(user: AuthUser): Promise<MemberResponse[]> {
     const renewalWindow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const members = await this.prisma.member.findMany({
@@ -441,7 +447,7 @@ export class PaymentsService {
         organizationId: user.organizationId,
         ...buildJurisdictionWhere(user),
         OR: [
-          { status: "DRAFT" },
+          { status: "AWAITING_PAYMENT" },
           { status: "ACTIVE", validUntil: { lte: renewalWindow } },
           { status: "EXPIRED" },
         ],

@@ -5,7 +5,14 @@ import { indianMobileSchema, indianPincodeSchema } from "./validators";
 
 export const memberStatusSchema = z.enum([
   "DRAFT",
+  // Legacy: registration used to require payment before profile/documents;
+  // retired now that payment is the last step (see AWAITING_PAYMENT), kept for old rows.
   "PAYMENT_COLLECTED",
+  // Profile/documents/declarations complete and submitted; fee not yet paid.
+  // Payment auto-activates straight to ACTIVE — no manual approval step.
+  "AWAITING_PAYMENT",
+  // Legacy: used to mean "paid + profile complete, awaiting staff review"
+  // before the form-first/payment-last redesign; kept for old rows.
   "SUBMITTED",
   // Legacy: retired from the active (one-level approval) flow, kept for old rows.
   "VERIFIED",

@@ -306,7 +306,7 @@ describe("MembersService.update", () => {
 
 describe("MembersService.submit", () => {
   const completeDraft = makeMember({
-    status: "PAYMENT_COLLECTED",
+    status: "DRAFT",
     createdById: "fe-1",
     fullName: "Test Member",
     mobile: "9800000000",
@@ -319,38 +319,41 @@ describe("MembersService.submit", () => {
     declarationAcceptTerms: true,
   });
 
-  it("submits a PAYMENT_COLLECTED member with all required fields present", async () => {
+  it("submits a DRAFT member with all required fields present — moves to AWAITING_PAYMENT", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
     prisma.member.findFirst.mockResolvedValue(completeDraft);
     prisma.memberDocument.findFirst.mockResolvedValue({ id: "doc-1" });
     prisma.member.updateMany.mockResolvedValue({ count: 1 });
-    prisma.member.findUniqueOrThrow.mockResolvedValue({ ...completeDraft, status: "SUBMITTED" });
+    prisma.member.findUniqueOrThrow.mockResolvedValue({ ...completeDraft, status: "AWAITING_PAYMENT" });
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
     const result = await service.submit("member-1", user);
 
-    expect(result.status).toBe("SUBMITTED");
+    expect(result.status).toBe("AWAITING_PAYMENT");
     expect(prisma.statusHistory.create).toHaveBeenCalledWith({
-      data: { memberId: "member-1", fromStatus: "PAYMENT_COLLECTED", toStatus: "SUBMITTED", actorId: "fe-1" },
+      data: { memberId: "member-1", fromStatus: "DRAFT", toStatus: "AWAITING_PAYMENT", actorId: "fe-1" },
     });
   });
 
-  it("refuses to submit a DRAFT member — payment must be collected first", async () => {
-    const prisma = makeMockPrisma();
-    const { service } = makeService(prisma);
-    prisma.member.findFirst.mockResolvedValue(makeMember({ status: "DRAFT", createdById: "fe-1" }));
+  it.each(["AWAITING_PAYMENT", "PAYMENT_COLLECTED", "SUBMITTED"])(
+    "refuses to submit a %s member — only DRAFT can be submitted (payment now comes after)",
+    async (status) => {
+      const prisma = makeMockPrisma();
+      const { service } = makeService(prisma);
+      prisma.member.findFirst.mockResolvedValue(makeMember({ status, createdById: "fe-1" }));
 
-    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.submit("member-1", user)).rejects.toThrow(ConflictException);
-    expect(prisma.member.updateMany).not.toHaveBeenCalled();
-  });
+      const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
+      await expect(service.submit("member-1", user)).rejects.toThrow(ConflictException);
+      expect(prisma.member.updateMany).not.toHaveBeenCalled();
+    },
+  );
 
   it("refuses to submit when required fields are missing", async () => {
     const prisma = makeMockPrisma();
     const { service } = makeService(prisma);
     prisma.member.findFirst.mockResolvedValue(
-      makeMember({ status: "PAYMENT_COLLECTED", createdById: "fe-1", planId: null }),
+      makeMember({ status: "DRAFT", createdById: "fe-1", planId: null }),
     );
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });

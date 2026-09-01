@@ -19,12 +19,13 @@ function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-// A self-registered member starts DRAFT with no plan or payment at all
-// (unlike a staff-created one) — MemberDashboard hands them into
+// A self-registered member starts DRAFT with no plan at all (unlike a
+// staff-created one) — MemberDashboard hands them into
 // MemberCompleteRegistration's 3-step flow instead of a generic "pending"
-// message. This spec drives that flow directly, since it's this session's
-// own addition and applications-lifecycle.spec.ts only covers the
-// staff-driven wizard path.
+// message: Plan -> finish profile (documents + declarations) + submit ->
+// pay (auto-activates, no manual approval). This spec drives that flow
+// directly, since it's this session's own addition and
+// applications-lifecycle.spec.ts only covers the staff-driven wizard path.
 
 // Both positive-cycle tests below register interactively through the real
 // /join UI form — see armThrottleRetry's own comment for why that needs its
@@ -34,7 +35,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("self-service member registration cycle — positive", () => {
-  test("register -> select plan -> fee collected -> upload docs -> submit for review", async ({ page }) => {
+  test("register -> select plan -> finish profile -> submit -> pay -> active", async ({ page }) => {
     const apiCtx = await newApiContext();
     const admin = await staffLoginApi(apiCtx, E2E_ADMIN.email, E2E_ADMIN.password);
     await ensureActivePlan(apiCtx, admin.accessToken);
@@ -54,31 +55,18 @@ test.describe("self-service member registration cycle — positive", () => {
     await expect(page.getByText("Step 1 of 3")).toBeVisible();
     await expect(page.getByText("Choose your membership plan")).toBeVisible();
 
-    // 2. Select the seeded baseline plan -> planId set -> Step 2 of 3.
+    // 2. Select the seeded baseline plan -> planId set -> Step 2 of 3
+    // (finish profile — payment is now the last step, not this one).
     await page.getByRole("button", { name: /E2E Baseline Plan/ }).click();
     await expect(page.getByText("Step 2 of 3")).toBeVisible();
-    await expect(page.getByText("Pay your registration fee")).toBeVisible();
-    await expect(page.getByText(`₹${E2E_BASELINE_PLAN_FEE}`)).toBeVisible();
+    await expect(page.getByText("Finish your profile")).toBeVisible();
 
-    // 3. Staff collects the fee in person — same escape hatch a stuck
-    // self-service member has in real use. (The online-checkout path is a
-    // hosted Razorpay iframe outside this app's own DOM and isn't something
-    // reliably driven from a browser e2e context; it's covered by manual/live
-    // verification instead.) DRAFT -> PAYMENT_COLLECTED -> reload -> Step 3.
+    // 3. Address, via the member's own profile-update endpoint — MyProfile's
+    // full form is exercised elsewhere; this step only cares that the
+    // checklist reacts to it being filled in.
     const membersRes = await apiCtx.get("/api/v1/members", { headers: authHeaders(admin.accessToken) });
     const allMembers = (await membersRes.json()).data as Array<{ id: string; fullName: string }>;
     const memberId = allMembers.find((m) => m.fullName === fullName)!.id;
-    await apiCtx.post(`/api/v1/members/${memberId}/payments`, {
-      headers: authHeaders(admin.accessToken),
-      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
-    });
-    await page.reload();
-    await expect(page.getByText("Step 3 of 3")).toBeVisible();
-    await expect(page.getByText("Finish your profile")).toBeVisible();
-
-    // 4. Address, via the member's own profile-update endpoint — MyProfile's
-    // full form is exercised elsewhere; this step only cares that the
-    // checklist reacts to it being filled in.
     const { accessToken: memberToken } = await memberLoginApi(apiCtx, mobile, password);
     const addressPatchRes = await apiCtx.patch("/api/v1/members/me", {
       headers: authHeaders(memberToken),
@@ -91,14 +79,14 @@ test.describe("self-service member registration cycle — positive", () => {
     // accessible role is "link".
     await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
 
-    // 5. Photo + ID proof, through the real (hidden) file inputs.
+    // 4. Photo + ID proof, through the real (hidden) file inputs.
     const fileInputs = page.locator('input[type="file"]');
     await fileInputs.nth(0).setInputFiles(PHOTO_FIXTURE);
     await expect(page.getByRole("button", { name: "Replace" })).toBeVisible();
     await fileInputs.nth(1).setInputFiles(PHOTO_FIXTURE);
     await expect(page.getByRole("button", { name: "Add another" })).toBeVisible();
 
-    // 6. Declarations + submit.
+    // 5. Declarations + submit -> AWAITING_PAYMENT -> Step 3 of 3 (payment).
     for (const label of [
       "I declare the information provided is true and correct",
       "I accept the organization's constitution",
@@ -108,11 +96,26 @@ test.describe("self-service member registration cycle — positive", () => {
       await page.getByText(label, { exact: true }).locator('input[type="checkbox"]').check();
     }
     await page.locator("#declarationPlace").fill("New Delhi");
-    await page.getByRole("button", { name: "Submit for Review" }).click();
+    await page.getByRole("button", { name: "Continue to Payment" }).click();
+    await expect(page.getByText("Step 3 of 3")).toBeVisible();
+    await expect(page.getByText("Pay your registration fee")).toBeVisible();
 
-    // 7. SUBMITTED falls out of MemberCompleteRegistration entirely — back to
-    // the generic pending-review message.
-    await expect(page.getByText("Registration pending review")).toBeVisible();
+    // 6. Staff collects the fee in person — same escape hatch a stuck
+    // self-service member has in real use. (The online-checkout path is a
+    // hosted Razorpay iframe outside this app's own DOM and isn't something
+    // reliably driven from a browser e2e context; it's covered by manual/live
+    // verification instead.) Paying auto-activates the member immediately —
+    // no separate manual-approval step.
+    await apiCtx.post(`/api/v1/members/${memberId}/payments`, {
+      headers: authHeaders(admin.accessToken),
+      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
+    });
+    await apiCtx.dispose();
+
+    // 7. ACTIVE falls out of MemberCompleteRegistration entirely — the full
+    // member dashboard (referral link, etc.) renders instead.
+    await page.reload();
+    await expect(page.getByText("Your referral link")).toBeVisible();
   });
 });
 
@@ -175,8 +178,10 @@ test.describe("self-service member registration cycle — negative", () => {
   });
 
   // Same member walked through both submit-gate rejections in sequence —
-  // fee-not-collected first, then documents-missing once the fee clears.
-  test("submit gate: rejects before the fee is collected, then rejects missing documents once it is", async () => {
+  // missing profile fields first, then missing documents once those clear.
+  // Payment is no longer a submit precondition (it now comes after submit,
+  // and auto-activates — see the positive-cycle test above).
+  test("submit gate: rejects missing required fields, then rejects missing documents once they're filled", async () => {
     const apiCtx = await newApiContext();
     const admin = await staffLoginApi(apiCtx, E2E_ADMIN.email, E2E_ADMIN.password);
     const planId = await ensureActivePlan(apiCtx, admin.accessToken);
@@ -191,20 +196,13 @@ test.describe("self-service member registration cycle — negative", () => {
       data: { planId },
     });
 
-    const beforeFee = await apiCtx.post("/api/v1/members/me/submit", {
+    const beforeFields = await apiCtx.post("/api/v1/members/me/submit", {
       headers: authHeaders(registered!.accessToken),
     });
-    expect(beforeFee.status()).toBe(409);
-    const beforeFeeBody = await beforeFee.json();
-    expect(beforeFeeBody.message ?? JSON.stringify(beforeFeeBody)).toMatch(/fee must be collected first/i);
+    expect(beforeFields.status()).toBe(409);
+    const beforeFieldsBody = await beforeFields.json();
+    expect(beforeFieldsBody.message ?? JSON.stringify(beforeFieldsBody)).toMatch(/missing/i);
 
-    const membersRes = await apiCtx.get("/api/v1/members", { headers: authHeaders(admin.accessToken) });
-    const allMembers = (await membersRes.json()).data as Array<{ id: string; fullName: string }>;
-    const memberId = allMembers.find((m) => m.fullName === "Submit Gate Member")!.id;
-    await apiCtx.post(`/api/v1/members/${memberId}/payments`, {
-      headers: authHeaders(admin.accessToken),
-      data: { amount: E2E_BASELINE_PLAN_FEE, mode: "CASH" },
-    });
     // Every other REQUIRED_FOR_SUBMIT field, so the next submit call is
     // rejected specifically for missing documents rather than these.
     await apiCtx.patch("/api/v1/members/me", {
@@ -219,11 +217,11 @@ test.describe("self-service member registration cycle — negative", () => {
       },
     });
 
-    const afterFee = await apiCtx.post("/api/v1/members/me/submit", {
+    const afterFields = await apiCtx.post("/api/v1/members/me/submit", {
       headers: authHeaders(registered!.accessToken),
     });
-    expect(afterFee.status()).toBe(409);
-    const afterFeeBody = await afterFee.json();
-    expect(afterFeeBody.message ?? JSON.stringify(afterFeeBody)).toMatch(/upload a passport photo/i);
+    expect(afterFields.status()).toBe(409);
+    const afterFieldsBody = await afterFields.json();
+    expect(afterFieldsBody.message ?? JSON.stringify(afterFieldsBody)).toMatch(/upload a passport photo/i);
   });
 });

@@ -30,19 +30,20 @@ function formatCurrency(amount: number) {
 }
 
 // A self-registered member starts DRAFT with no plan at all — this guides
-// them through the three steps needed to reach SUBMITTED without staff
-// involvement: pick a plan, pay the fee online, then finish their profile
-// (documents + declarations) and submit for review. Rendered by
+// them through the three steps needed to activate their own membership with
+// no staff involvement: pick a plan, finish their profile (documents +
+// declarations) and submit, then pay the fee online — payment auto-activates
+// the membership immediately, no manual review step. Rendered by
 // MemberDashboard in place of the generic "pending" message while status is
-// DRAFT or PAYMENT_COLLECTED.
+// DRAFT or AWAITING_PAYMENT.
 export function MemberCompleteRegistration({ member }: { member: MemberResponse }) {
   if (member.status === "DRAFT" && !member.planId) {
     return <PlanStep />;
   }
   if (member.status === "DRAFT" && member.planId) {
-    return <PayFeeStep member={member} />;
+    return <FinishProfileStep member={member} />;
   }
-  return <FinishProfileStep member={member} />;
+  return <PayFeeStep member={member} />;
 }
 
 function StepShell({
@@ -164,7 +165,11 @@ function PayFeeStep({ member }: { member: MemberResponse }) {
   }
 
   return (
-    <StepShell step={2} title="Pay your registration fee" description={`You've chosen ${member.planName ?? "a plan"}.`}>
+    <StepShell
+      step={3}
+      title="Pay your registration fee"
+      description="Your registration is submitted — pay the fee to activate your membership."
+    >
       {plan && (
         <div className="mb-4 flex items-center justify-between rounded-lg bg-brand-bg-soft px-4 py-3">
           <span className="text-sm font-medium">Amount due</span>
@@ -234,9 +239,9 @@ function FinishProfileStep({ member }: { member: MemberResponse }) {
 
   return (
     <StepShell
-      step={3}
+      step={2}
       title="Finish your profile"
-      description="A few more details, then submit your registration for review."
+      description="A few more details, then continue to pay your registration fee."
     >
       <div className="space-y-5">
         <div className="flex items-center justify-between rounded-lg border border-border p-3">
@@ -343,7 +348,7 @@ function FinishProfileStep({ member }: { member: MemberResponse }) {
           disabled={submitRegistration.isPending || updateProfile.isPending || !allDeclarationsAccepted}
           className="bg-brand-green hover:bg-brand-green/90"
         >
-          {submitRegistration.isPending ? "Submitting…" : "Submit for Review"}
+          {submitRegistration.isPending ? "Submitting…" : "Continue to Payment"}
         </Button>
       </div>
     </StepShell>
