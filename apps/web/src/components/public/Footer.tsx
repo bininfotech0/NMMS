@@ -13,7 +13,7 @@ export function Footer() {
           {organization.phone} · {organization.email}
         </p>
         <p className="mt-6 text-xs text-white/50">
-          © {new Date().getFullYear()} {organization.legalName}. All rights reserved. V1
+          © {new Date().getFullYear()} {organization.legalName}. All rights reserved. (V1)
           <br />
           CIN: {organization.cin} · {organization.roc}
         </p>
