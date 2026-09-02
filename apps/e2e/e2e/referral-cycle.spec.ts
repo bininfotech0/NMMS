@@ -27,12 +27,18 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   const fe = await staffLoginApi(apiCtx, E2E_FIELD_EXECUTIVE.email, E2E_FIELD_EXECUTIVE.password);
 
   // Org settings are real, shared DB state another test/run can leave
-  // changed (e.g. settings-org.spec.ts's own points-per-referral coverage) —
-  // pin the value this test's "+10" assertion depends on rather than
-  // assuming whatever's ambient.
+  // changed (e.g. settings-org.spec.ts's own points-per-referral coverage,
+  // or any other manual/API poking at the same row) — pin every field this
+  // test's flow depends on (program must be on and uncapped, not just the
+  // "+10" points-per-referral value) rather than assuming whatever's ambient.
   await apiCtx.patch("/api/v1/org", {
     headers: authHeaders(admin.accessToken),
-    data: { pointsPerApprovedReferral: 10 },
+    data: {
+      referralProgramEnabled: true,
+      pointsPerApprovedReferral: 10,
+      referralPointsCapPerMember: null,
+      referralRequireActiveReferrerPlan: true,
+    },
   });
 
   // A SILVER-tier plan so the referrer's own activation grants their Silver

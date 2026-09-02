@@ -318,7 +318,7 @@ function MemberRegisterTable({
   return (
     <div className="space-y-3">
       <div className="flex justify-end"><ExportCsvButton filename={filename} rows={data} /></div>
-      <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.id} emptyMessage="No records." />
+      <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} preserveOrder exportable={false} rowKey={(r) => r.id} emptyMessage="No records." />
     </div>
   );
 }
@@ -336,7 +336,7 @@ function PaymentCollectionTable() {
   return (
     <div className="space-y-3">
       <div className="flex justify-end"><ExportCsvButton filename="payment-collection.csv" rows={data} /></div>
-      <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} exportable={false} rowKey={(r) => r.id} emptyMessage="No payments." />
+      <DataGrid columns={columns} data={data} isLoading={isLoading} isError={isError} preserveOrder exportable={false} rowKey={(r) => r.id} emptyMessage="No payments." />
     </div>
   );
 }

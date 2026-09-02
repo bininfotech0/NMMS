@@ -134,6 +134,7 @@ export function Payments() {
           data={paymentsWithMemberName}
           isLoading={paymentsLoading}
           isError={paymentsError}
+          preserveOrder
           errorMessage="Failed to load payments."
           emptyMessage="No payments recorded yet."
           rowKey={(p) => p.id}

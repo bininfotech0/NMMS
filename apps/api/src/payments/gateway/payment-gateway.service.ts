@@ -52,9 +52,9 @@ export class PaymentGatewayService {
     if (!member) {
       throw new NotFoundException("Member not found");
     }
-    if (member.status !== "DRAFT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
+    if (member.status !== "AWAITING_PAYMENT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
       throw new ConflictException(
-        "Payments can only be recorded for a DRAFT member (initial registration fee) or an ACTIVE/EXPIRED member (renewal)",
+        "Payments can only be recorded for an AWAITING_PAYMENT member (initial registration fee) or an ACTIVE/EXPIRED member (renewal)",
       );
     }
     if (!member.plan) {
@@ -70,9 +70,9 @@ export class PaymentGatewayService {
   // only ever pay for themselves). Same eligibility rule as getPayableMember.
   private async getPayableMemberForSelf(memberId: string) {
     const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId }, include: { plan: true } });
-    if (member.status !== "DRAFT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
+    if (member.status !== "AWAITING_PAYMENT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
       throw new ConflictException(
-        "Payments can only be made while your registration is in DRAFT (initial fee) or once ACTIVE/EXPIRED (renewal)",
+        "Payments can only be made once your registration is AWAITING_PAYMENT (initial fee) or once ACTIVE/EXPIRED (renewal)",
       );
     }
     if (!member.plan) {

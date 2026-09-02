@@ -166,6 +166,7 @@ export function Notices() {
         data={notices}
         isLoading={isLoading}
         isError={isError}
+        preserveOrder
         errorMessage="Failed to load notices."
         emptyMessage="No notices created yet."
         rowKey={(notice) => notice.id}

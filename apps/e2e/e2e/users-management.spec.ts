@@ -97,6 +97,11 @@ test.describe("users management — admin (super-admin protection)", () => {
 
   test("cannot edit or reset the password of an existing SUPER_ADMIN", async ({ page }) => {
     await page.goto("/admin/users");
+    // With many users accumulated (this suite's own Add User tests, run
+    // repeatedly), the seed super-admin row can fall off page 1 under the
+    // default sort — search first, same pagination-safety pattern as
+    // documents.spec.ts.
+    await page.getByPlaceholder("Search by email...").fill("admin@example.com");
     // "admin@example.com" is a substring of "e2e-admin@example.com" too — the
     // email <span> itself (not the cell, which also mixes in avatar initials
     // text) has this as its exact full text only for the seed super-admin row.

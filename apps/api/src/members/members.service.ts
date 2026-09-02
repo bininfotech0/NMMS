@@ -468,13 +468,20 @@ export class MembersService {
   }
 
   // The queue Field Executives (and admins) work from — self-registered
-  // members nobody has claimed yet.
+  // members nobody has claimed yet. Deliberately not status-scoped: claim()
+  // itself only requires selfRegistered + still-system-attributed, and under
+  // the form-first/payment-last workflow a self-registered member can reach
+  // AWAITING_PAYMENT or even ACTIVE entirely through self-service before any
+  // staff ever looks at them — an earlier DRAFT-only filter here meant such a
+  // member became permanently invisible to this queue (and thus unclaimable
+  // through the UI, and permanently absent from any Field Executive's
+  // jurisdiction-scoped views) the moment they submitted, despite still
+  // genuinely being unclaimed.
   async findUnclaimedReferrals(organizationId: string): Promise<MemberResponse[]> {
     const members = await this.prisma.member.findMany({
       where: {
         organizationId,
         selfRegistered: true,
-        status: "DRAFT",
         createdBy: { isSystem: true },
       },
       orderBy: { createdAt: "asc" },

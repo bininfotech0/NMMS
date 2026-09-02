@@ -34,7 +34,20 @@ export async function armThrottleRetry(page: Page): Promise<void> {
     }
     // Only extend when we're actually about to take the slow path — tests
     // that never collide with the throttle keep the suite's normal 45s cap.
+    // test.setTimeout() only raises the *overall* test budget, though — it
+    // does nothing for the page's own default navigation timeout, which is a
+    // separate, shorter clock (Playwright's built-in 30s here, since neither
+    // playwright.config.ts nor any spec overrides it). A page.waitForURL()
+    // immediately following the click this route just intercepted would
+    // still time out on its own well before this route's ~61s wait below
+    // finishes, even though the test itself now has budget to spare — so
+    // extend the page's default navigation timeout too, retroactively
+    // covering every waitForURL() call for the rest of this test with no
+    // per-call-site changes needed. (expect()'s own default timeout is a
+    // third, independent clock — playwright.config.ts pins it explicitly, so
+    // it can only be raised per-assertion, not from here.)
     test.setTimeout(Math.max(test.info().timeout, THROTTLE_RETRY_TEST_TIMEOUT_MS));
+    page.setDefaultNavigationTimeout(THROTTLE_RETRY_TEST_TIMEOUT_MS);
     const resetHeader = response.headers()["x-ratelimit-reset"];
     const resetSeconds = resetHeader ? Number(resetHeader) : 60;
     const waitMs = (Number.isFinite(resetSeconds) ? resetSeconds : 60) * 1000 + 1000;

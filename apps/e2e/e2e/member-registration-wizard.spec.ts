@@ -218,11 +218,16 @@ test.describe("member registration wizard", () => {
     // Step 10 — Payment Collection (offline path): paying auto-activates the
     // member immediately, no separate manual-approval step.
     await expect(page.getByText("Step 10 of 10")).toBeVisible();
+    // Which of the toggle or the form itself renders first depends on the
+    // gateway-status fetch settling — wait for whichever one appears rather
+    // than racing a same-tick count() against that in-flight request.
     const offlineToggle = page.getByRole("button", { name: "Record an offline payment instead" });
-    if (await offlineToggle.count()) {
+    const collectButton = page.getByRole("button", { name: "Collect Payment" });
+    await offlineToggle.or(collectButton).first().waitFor({ state: "visible" });
+    if (await offlineToggle.isVisible()) {
       await offlineToggle.click();
     }
-    await page.getByRole("button", { name: "Collect Payment" }).click();
+    await collectButton.click();
     await expect(page.getByText(/Membership active/)).toBeVisible();
     await page.getByRole("button", { name: "View Member Profile" }).click();
     await page.waitForURL(/\/admin\/members\/[^/]+\/profile/);

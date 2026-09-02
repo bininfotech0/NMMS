@@ -39,9 +39,14 @@ test.describe("donation cycle — positive", () => {
     await memberPage.goto("/member/donations");
     // If online donations are enabled for this org, the manual form starts
     // collapsed behind this toggle — reveal it. If the payment gateway isn't
-    // configured, the manual form is already the only option shown.
+    // configured, the manual form is already the only option shown. Which of
+    // the two actually renders depends on the gateway-status fetch settling
+    // first — wait for whichever one appears rather than racing a same-tick
+    // count() against that in-flight request.
     const manualToggle = memberPage.getByRole("button", { name: "Sent it another way? Record it manually instead" });
-    if (await manualToggle.count()) {
+    const modeField = memberPage.getByLabel("How did you send it?");
+    await manualToggle.or(modeField).first().waitFor({ state: "visible" });
+    if (await manualToggle.isVisible()) {
       await manualToggle.click();
     }
     await memberPage.getByLabel("Amount").fill("500");
@@ -63,6 +68,18 @@ test.describe("donation cycle — positive", () => {
     await row.getByRole("button", { name: "Approve" }).click();
     await fePage.getByRole("alertdialog").getByRole("button", { name: "Approve" }).click();
     await expect(row).toHaveCount(0); // default tab filters to PENDING
+
+    // 2b. Staff can also open the receipt from the Approved tab (admin
+    // receipt page — mirrors the Payments module's admin+member receipt pair).
+    await fePage.getByRole("button", { name: "Approved", exact: true }).click();
+    const approvedRow = fePage.getByRole("row", { name: new RegExp(fullName) });
+    await expect(approvedRow).toBeVisible();
+    await approvedRow.getByRole("link").click();
+    await fePage.waitForURL(/\/donations\/[^/]+\/receipt/);
+    await expect(fePage.getByText(fullName)).toBeVisible();
+    await expect(fePage.getByText("12 MG Road, Pune")).toBeVisible();
+    await expect(fePage.getByText("ABCDE1234F")).toBeVisible();
+    await fePage.getByRole("link", { name: "Back to Profile" }).click();
     await feContext.close();
 
     // 3. Member sees Approved + a receipt with the donor details they gave.

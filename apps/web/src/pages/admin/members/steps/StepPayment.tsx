@@ -30,7 +30,7 @@ export function StepPayment({ form, memberId }: StepProps) {
   const { data: member } = useMember(memberId);
   const { data: plans = [] } = usePlans();
   const { data: payments = [] } = useMemberPayments(memberId);
-  const { data: gatewayStatus } = useGatewayStatus();
+  const { data: gatewayStatus, isLoading: gatewayLoading } = useGatewayStatus();
   const recordPayment = useRecordPayment();
   const onlineAvailable = gatewayStatus?.enabled ?? false;
 
@@ -118,7 +118,7 @@ export function StepPayment({ form, memberId }: StepProps) {
         <SharePaymentLinkButton memberId={memberId} memberName={member?.fullName} className="flex-1" />
       </div>
 
-      {onlineAvailable && !showManualForm ? (
+      {gatewayLoading ? null : onlineAvailable && !showManualForm ? (
         <button
           type="button"
           onClick={() => setShowManualForm(true)}

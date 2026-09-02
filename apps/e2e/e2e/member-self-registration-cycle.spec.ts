@@ -10,7 +10,7 @@ import {
   staffLoginApi,
 } from "./support/api";
 import { armThrottleRetry } from "./support/throttle-retry";
-import { E2E_ADMIN, uniqueAadhaar, uniqueMobile, uniqueSuffix } from "./support/constants";
+import { E2E_ADMIN, THROTTLE_RETRY_TEST_TIMEOUT_MS, uniqueAadhaar, uniqueMobile, uniqueSuffix } from "./support/constants";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PHOTO_FIXTURE = path.join(__dirname, "..", "fixtures", "photo.jpg");
@@ -51,7 +51,9 @@ test.describe("self-service member registration cycle — positive", () => {
     await page.getByLabel("Aadhaar number").fill(uniqueAadhaar(mobile));
     await page.getByLabel("Create a password").fill(password);
     await page.getByRole("button", { name: "Join now" }).click();
-    await page.waitForURL("**/member");
+    // Same armThrottleRetry latency risk as the negative-cycle test below —
+    // this click's request can be held pending for up to ~61s.
+    await page.waitForURL("**/member", { timeout: THROTTLE_RETRY_TEST_TIMEOUT_MS });
     await expect(page.getByText("Step 1 of 3")).toBeVisible();
     await expect(page.getByText("Choose your membership plan")).toBeVisible();
 
@@ -135,7 +137,14 @@ test.describe("self-service member registration cycle — negative", () => {
     await page.getByLabel("Aadhaar number").fill(uniqueAadhaar(uniqueMobile()));
     await page.getByLabel("Create a password").fill("SecondComer123pw");
     await page.getByRole("button", { name: "Join now" }).click();
-    await expect(page.getByText(/already registered/i)).toBeVisible();
+    // This click goes through armThrottleRetry's route interceptor, which can
+    // hold the underlying request pending for up to ~61s if it collides with
+    // the server's throttle window. That's covered by this test's own
+    // extended test.setTimeout (set inside armThrottleRetry once a 429 is
+    // actually hit), but expect()'s own default timeout (10s, playwright.config.ts)
+    // is a separate, shorter budget that setTimeout doesn't extend — give this
+    // specific assertion the same longer allowance explicitly.
+    await expect(page.getByText(/already registered/i)).toBeVisible({ timeout: THROTTLE_RETRY_TEST_TIMEOUT_MS });
     await expect(page).toHaveURL(/\/join$/);
   });
 

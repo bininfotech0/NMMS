@@ -165,6 +165,7 @@ export function Documents() {
         data={filtered}
         isLoading={isLoading}
         isError={isError}
+        preserveOrder
         errorMessage="Failed to load documents."
         emptyMessage={documents.length === 0 ? "No documents uploaded yet." : "No documents match your filters."}
         rowKey={(d) => d.id}

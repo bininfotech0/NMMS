@@ -105,7 +105,7 @@ function DonationForm() {
   const [error, setError] = useState<string | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
   const submitDonation = useSubmitDonation();
-  const { data: gatewayStatus } = useMyDonationGatewayStatus();
+  const { data: gatewayStatus, isLoading: gatewayLoading } = useMyDonationGatewayStatus();
   const createOrder = useCreateMyDonationOrder();
   const verifyPayment = useVerifyMyDonationGatewayPayment();
   const [payingOnline, setPayingOnline] = useState(false);
@@ -232,7 +232,7 @@ function DonationForm() {
 
         {error && (!onlineAvailable || showManualForm ? null : <p className="text-sm text-destructive">{error}</p>)}
 
-        {onlineAvailable && !showManualForm ? (
+        {gatewayLoading ? null : onlineAvailable && !showManualForm ? (
           <button
             type="button"
             onClick={() => setShowManualForm(true)}

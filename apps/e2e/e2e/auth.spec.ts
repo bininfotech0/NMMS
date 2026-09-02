@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { memberLoginApi, newApiContext } from "./support/api";
 import { armThrottleRetry } from "./support/throttle-retry";
-import { SEED_SUPER_ADMIN, uniqueAadhaar, uniqueMobile } from "./support/constants";
+import { SEED_SUPER_ADMIN, THROTTLE_RETRY_TEST_TIMEOUT_MS, uniqueAadhaar, uniqueMobile } from "./support/constants";
 
 // The default project has no storageState, so every test here starts from a
 // clean, unauthenticated browser context.
@@ -28,7 +28,12 @@ test.describe("staff login", () => {
     await page.getByLabel("Email").fill(SEED_SUPER_ADMIN.email);
     await page.getByLabel("Password").fill("definitely-wrong-password");
     await page.getByRole("button", { name: "Sign In" }).click();
-    await expect(page.getByText(/invalid|incorrect|unauthorized/i)).toBeVisible();
+    // This click goes through armThrottleRetry's route interceptor, which can
+    // hold the underlying request pending for up to ~61s if it collides with
+    // the server's throttle window — longer than expect()'s own configured
+    // default (10s, playwright.config.ts), which armThrottleRetry's own
+    // timeout extensions don't cover (see its comment for why).
+    await expect(page.getByText(/invalid|incorrect|unauthorized/i)).toBeVisible({ timeout: THROTTLE_RETRY_TEST_TIMEOUT_MS });
     await expect(page).toHaveURL(/\/admin\/login$/);
   });
 
@@ -52,7 +57,9 @@ test.describe("member login", () => {
     await page.getByLabel("Mobile number").fill("9999999999");
     await page.getByLabel("Password").fill("wrong-password");
     await page.getByRole("button", { name: "Sign In" }).click();
-    await expect(page.getByText(/invalid|incorrect|unauthorized/i)).toBeVisible();
+    // Same armThrottleRetry latency risk as the staff-login negative test
+    // above — see that test's comment.
+    await expect(page.getByText(/invalid|incorrect|unauthorized/i)).toBeVisible({ timeout: THROTTLE_RETRY_TEST_TIMEOUT_MS });
     await expect(page).toHaveURL(/\/login$/);
   });
 

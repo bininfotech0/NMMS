@@ -60,6 +60,16 @@ interface DataGridProps<T> {
   compact?: boolean;
   stickyHeader?: boolean;
   quickActions?: (item: T) => React.ReactNode;
+  // Most feeds this component was originally built against order createdAt
+  // ascending (oldest first), so the no-sort-applied branch below reverses
+  // them to show the newest row on page 1. A growing number of endpoints
+  // (donations, documents, withdrawals, KYC, notices, referral rewards,
+  // members list, payment history) already return their intended display
+  // order themselves (typically createdAt/updatedAt desc) — reversing those
+  // pushes a just-created row onto a later page instead, the exact bug this
+  // component's default sort was meant to prevent. Pass true for any feed
+  // whose backend ordering is already the order you want shown by default.
+  preserveOrder?: boolean;
 }
 
 export function DataGrid<T extends Record<string, unknown>>({
@@ -85,6 +95,7 @@ export function DataGrid<T extends Record<string, unknown>>({
   compact = false,
   stickyHeader = false,
   quickActions,
+  preserveOrder = false,
 }: DataGridProps<T>) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -118,16 +129,17 @@ export function DataGrid<T extends Record<string, unknown>>({
             : String(aVal).localeCompare(String(bVal));
         return sortDir === "asc" ? cmp : -cmp;
       });
-    } else {
-      // Every list endpoint this feeds from orders createdAt ascending
-      // (oldest first) — with no explicit sort applied, show newest first so
-      // a just-created/edited row lands on page 1 instead of being pushed
-      // onto a later page behind everything already in the table.
+    } else if (!preserveOrder) {
+      // Assumes the feed orders createdAt ascending (oldest first) — with no
+      // explicit sort applied, show newest first so a just-created/edited row
+      // lands on page 1 instead of being pushed onto a later page behind
+      // everything already in the table. Feeds that already arrive in their
+      // intended display order pass preserveOrder to skip this.
       result.reverse();
     }
 
     return result;
-  }, [data, search, searchKeys, sortKey, sortDir]);
+  }, [data, search, searchKeys, sortKey, sortDir, preserveOrder]);
 
   const totalPages = useMemo(() => {
     if (serverPagination && total != null) return Math.ceil(total / pageSize);

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Check, HandCoins } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Check, HandCoins, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -147,6 +148,7 @@ export function Donations() {
         data={donations}
         isLoading={isLoading}
         isError={isError}
+        preserveOrder
         errorMessage="Failed to load donations."
         emptyMessage="No donations found."
         rowKey={(d) => d.id}
@@ -154,24 +156,36 @@ export function Donations() {
         searchPlaceholder="Search by donor name..."
         searchKeys={["memberName"]}
         pageSize={25}
-        quickActions={(d) =>
-          d.status === "PENDING" ? (
-            <div className="flex justify-end gap-2">
-              <Button size="sm" variant="outline" onClick={() => setApproveTarget(d)}>
-                <Check className="size-4" />
-                Approve
+        quickActions={(d) => {
+          if (d.status === "PENDING") {
+            return (
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setApproveTarget(d)}>
+                  <Check className="size-4" />
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setRejectTarget(d)}
+                >
+                  Reject
+                </Button>
+              </div>
+            );
+          }
+          if (d.status === "APPROVED" && d.receiptNumber) {
+            return (
+              <Button size="sm" variant="outline" asChild>
+                <Link to={`/admin/members/${d.memberId}/donations/${d.id}/receipt`}>
+                  <Printer className="size-4" />
+                </Link>
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setRejectTarget(d)}
-              >
-                Reject
-              </Button>
-            </div>
-          ) : null
-        }
+            );
+          }
+          return null;
+        }}
       />
 
       <ConfirmDialog

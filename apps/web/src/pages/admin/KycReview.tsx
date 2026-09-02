@@ -129,6 +129,7 @@ export function KycReview() {
         data={submissions}
         isLoading={isLoading}
         isError={isError}
+        preserveOrder
         errorMessage="Failed to load KYC submissions."
         emptyMessage="No KYC submissions found."
         rowKey={(s) => s.memberId ?? s.memberName ?? ""}

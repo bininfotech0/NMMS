@@ -96,6 +96,7 @@ export function ReferralRewards() {
         data={rewards}
         isLoading={isLoading}
         isError={isError}
+        preserveOrder
         errorMessage="Failed to load rewards."
         emptyMessage="No rewards found."
         rowKey={(reward) => reward.id}

@@ -11,6 +11,7 @@ import { MemberEditPage } from "@/pages/admin/members/MemberEditPage";
 import { MemberProfile } from "@/pages/admin/members/MemberProfile";
 import { MemberCard } from "@/pages/admin/members/MemberCard";
 import { PaymentReceiptPage } from "@/pages/admin/members/PaymentReceiptPage";
+import { DonationReceiptPage } from "@/pages/admin/members/DonationReceiptPage";
 import { VerifyCard } from "@/pages/public/VerifyCard";
 import { JoinViaReferral } from "@/pages/public/JoinViaReferral";
 import { Applications } from "@/pages/admin/Applications";
@@ -135,6 +136,7 @@ function App() {
           <Route path="members/:id/profile" element={<MemberProfile />} />
           <Route path="members/:id/card" element={<MemberCard />} />
           <Route path="members/:id/payments/:paymentId/receipt" element={<PaymentReceiptPage />} />
+          <Route path="members/:id/donations/:donationId/receipt" element={<DonationReceiptPage />} />
           <Route path="applications" element={<Applications />} />
           <Route path="membership" element={<MembershipPlans />} />
           <Route path="payments" element={<Payments />} />

@@ -183,6 +183,7 @@ export function MembersList() {
         data={filtered}
         isLoading={isLoading}
         isError={isError}
+        preserveOrder
         errorMessage="Failed to load members."
         emptyMessage={query ? "No members match your search." : "No members registered yet."}
         rowKey={(m) => m.id}

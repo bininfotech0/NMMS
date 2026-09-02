@@ -153,6 +153,7 @@ export function WithdrawalRequests() {
         data={requests}
         isLoading={isLoading}
         isError={isError}
+        preserveOrder
         errorMessage="Failed to load withdrawal requests."
         emptyMessage="No withdrawal requests found."
         rowKey={(r) => r.id}

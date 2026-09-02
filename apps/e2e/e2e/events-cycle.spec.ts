@@ -43,6 +43,11 @@ test.describe("events — admin", () => {
     await page.getByLabel("Target quantity").fill("100");
     await page.getByLabel("Points reward").fill("50");
     await page.getByRole("button", { name: "Create Event" }).click();
+    // Every run creates an event with this same fixed "Starts at" date, and
+    // the list isn't sorted by creation time — search by the unique title so
+    // this assertion doesn't depend on where this row happens to land among
+    // every other same-dated event accumulated by previous runs.
+    await page.getByPlaceholder("Search by title...").fill(title);
     await expect(page.getByRole("row", { name: new RegExp(title) })).toBeVisible();
   });
 
@@ -54,6 +59,10 @@ test.describe("events — admin", () => {
     await page.getByLabel("Starts at").fill("2027-02-01T09:00");
     await page.getByRole("button", { name: "Create Event" }).click();
 
+    // Every run of this test creates an event with this same fixed date, and
+    // the list isn't sorted by creation time — search by the unique title
+    // rather than assuming this row lands within the first page.
+    await page.getByPlaceholder("Search by title...").fill(title);
     const row = page.getByRole("row", { name: new RegExp(title) });
     await row.getByRole("button", { name: "Manage" }).click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
@@ -83,6 +92,10 @@ test.describe("events — full evidence cycle (approve)", () => {
     await adminPage.getByLabel("Target description").fill("Collect 50 signatures");
     await adminPage.getByLabel("Points reward").fill("30");
     await adminPage.getByRole("button", { name: "Create Event" }).click();
+    // Every run of this test creates an event with this same fixed date, and
+    // the list isn't sorted by creation time — search by the unique title
+    // rather than assuming this row lands within the first page.
+    await adminPage.getByPlaceholder("Search by title...").fill(title);
     await expect(adminPage.getByRole("row", { name: new RegExp(title) })).toBeVisible();
 
     // Member registers and submits evidence.
@@ -133,6 +146,10 @@ test.describe("events — reject and resubmission gap", () => {
     await adminPage.getByLabel("Target description").fill("Distribute 20 food kits");
     await adminPage.getByLabel("Points reward").fill("15");
     await adminPage.getByRole("button", { name: "Create Event" }).click();
+    // Every run of this test creates an event with this same fixed date, and
+    // the list isn't sorted by creation time — search by the unique title
+    // rather than assuming this row lands within the first page.
+    await adminPage.getByPlaceholder("Search by title...").fill(title);
 
     const { context: memberContext, page: memberPage } = await createMemberSession(browser, `Reject Member ${uniqueSuffix()}`);
     await memberPage.goto("/member/events");
@@ -190,6 +207,10 @@ test.describe("events — remove registration", () => {
     await page.getByLabel("Starts at").fill("2027-04-01T09:00");
     await page.getByRole("button", { name: "Create Event" }).click();
 
+    // Every run of this test creates an event with this same fixed date, and
+    // the list isn't sorted by creation time — search by the unique title
+    // rather than assuming this row lands within the first page.
+    await page.getByPlaceholder("Search by title...").fill(title);
     const row = page.getByRole("row", { name: new RegExp(title) });
     await row.getByRole("button", { name: "Manage" }).click();
     await page.locator("#add-member").selectOption({ index: 1 });

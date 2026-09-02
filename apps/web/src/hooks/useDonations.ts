@@ -165,6 +165,14 @@ export function useDonationsAdminList(status?: DonationStatus) {
   });
 }
 
+export function useDonation(id: string | null) {
+  return useQuery({
+    queryKey: ["donations", "admin", "detail", id],
+    queryFn: () => apiFetch<DonationResponse>(`/donations/${id}`),
+    enabled: id !== null,
+  });
+}
+
 export function useApproveDonation() {
   const queryClient = useQueryClient();
   return useMutation({
