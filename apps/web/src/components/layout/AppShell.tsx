@@ -48,7 +48,7 @@ function buildSections(applicationsBadge: number | undefined, userRole: Role): S
         { key: "applications", label: "Applications", to: "/admin/applications", icon: ClipboardCheck, badgeCount: applicationsBadge },
         { key: "membership", label: "Membership Plans", to: "/admin/membership", icon: IdCard },
         { key: "referral-rewards", label: "Referral Rewards", to: "/admin/referral-rewards", icon: Gift },
-        { key: "kyc", label: "KYC Review", to: "/admin/kyc", icon: UserCheck },
+        { key: "kyc", label: "KYC & Payout Details", to: "/admin/kyc", icon: UserCheck },
       ],
     },
     {

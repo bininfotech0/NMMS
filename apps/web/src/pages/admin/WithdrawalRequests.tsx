@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, Landmark, RefreshCw, Send } from "lucide-react";
+import { Landmark, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,25 +14,22 @@ import {
 } from "@/components/ui/sheet";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ApiError } from "@/lib/api-client";
 import {
   useAdminWithdrawals,
-  useApproveWithdrawal,
   useCheckPayoutStatus,
   useInitiatePayout,
   useMarkWithdrawalPaid,
   usePayoutGatewayStatus,
-  useRejectWithdrawal,
 } from "@/hooks/useWithdrawals";
 import type { WithdrawalRequestResponse, WithdrawalStatus } from "@nmms/shared";
 
 const TABS: { label: string; value: WithdrawalStatus | undefined }[] = [
-  { label: "Pending", value: "PENDING" },
+  { label: "Pending (legacy)", value: "PENDING" },
   { label: "Approved", value: "APPROVED" },
   { label: "Processing", value: "PAYOUT_PROCESSING" },
   { label: "Payout Failed", value: "PAYOUT_FAILED" },
-  { label: "Rejected", value: "REJECTED" },
+  { label: "Rejected (legacy)", value: "REJECTED" },
   { label: "Paid", value: "PAID" },
   { label: "All", value: undefined },
 ];
@@ -47,15 +44,12 @@ const STATUS_STYLES: Record<WithdrawalStatus, string> = {
 };
 
 export function WithdrawalRequests() {
-  const [status, setStatus] = useState<WithdrawalStatus | undefined>("PENDING");
+  const [status, setStatus] = useState<WithdrawalStatus | undefined>("APPROVED");
   const { data: requests = [], isLoading, isError } = useAdminWithdrawals(status);
-  const approve = useApproveWithdrawal();
   const initiatePayout = useInitiatePayout();
   const checkPayoutStatus = useCheckPayoutStatus();
   const { data: gatewayStatus } = usePayoutGatewayStatus();
-  const [rejectTarget, setRejectTarget] = useState<WithdrawalRequestResponse | null>(null);
   const [payTarget, setPayTarget] = useState<WithdrawalRequestResponse | null>(null);
-  const [approveTarget, setApproveTarget] = useState<WithdrawalRequestResponse | null>(null);
 
   const columns: DataGridColumn<WithdrawalRequestResponse>[] = useMemo(
     () => [
@@ -127,7 +121,7 @@ export function WithdrawalRequests() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-heading text-2xl font-bold">Withdrawal Requests</h1>
-          <p className="text-sm text-muted-foreground">Review and process member withdrawal requests</p>
+          <p className="text-sm text-muted-foreground">Requests are approved automatically. Send payouts or record manual payments here.</p>
         </div>
         <ExportCsvButton filename="withdrawal-requests.csv" rows={exportRows} />
       </div>
@@ -163,22 +157,6 @@ export function WithdrawalRequests() {
         pageSize={25}
         quickActions={(r) => (
           <div className="flex justify-end gap-2">
-            {r.status === "PENDING" && (
-              <>
-                <Button size="sm" variant="outline" onClick={() => setApproveTarget(r)}>
-                  <Check className="size-4" />
-                  Approve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setRejectTarget(r)}
-                >
-                  Reject
-                </Button>
-              </>
-            )}
             {r.status === "APPROVED" && (
               <>
                 {gatewayStatus?.enabled && (
@@ -195,14 +173,6 @@ export function WithdrawalRequests() {
                 <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
                   <Landmark className="size-4" />
                   Mark Paid
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setRejectTarget(r)}
-                >
-                  Reject
                 </Button>
               </>
             )}
@@ -240,84 +210,8 @@ export function WithdrawalRequests() {
         )}
       />
 
-      <ConfirmDialog
-        open={approveTarget !== null}
-        onOpenChange={(open) => !open && setApproveTarget(null)}
-        title="Approve this withdrawal?"
-        description={
-          approveTarget
-            ? `${approveTarget.memberName} will be approved for ₹${approveTarget.netAmount}. You can still reject before marking it paid.`
-            : ""
-        }
-        confirmLabel="Approve"
-        destructive={false}
-        isPending={approve.isPending}
-        onConfirm={() => {
-          if (!approveTarget) return;
-          approve.mutate(approveTarget.id, { onSuccess: () => setApproveTarget(null) });
-        }}
-      />
-
-      <RejectSheet target={rejectTarget} onOpenChange={(open) => !open && setRejectTarget(null)} />
       <MarkPaidSheet target={payTarget} onOpenChange={(open) => !open && setPayTarget(null)} />
     </div>
-  );
-}
-
-function RejectSheet({
-  target,
-  onOpenChange,
-}: {
-  target: WithdrawalRequestResponse | null;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const rejectWithdrawal = useRejectWithdrawal();
-  const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!target) return;
-    setError(null);
-    try {
-      await rejectWithdrawal.mutateAsync({ id: target.id, note });
-      setNote("");
-      onOpenChange(false);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
-    }
-  }
-
-  return (
-    <Sheet open={target !== null} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Reject withdrawal</SheetTitle>
-          <SheetDescription>
-            {target ? `${target.memberName}'s request for ₹${target.netAmount} will be rejected.` : ""}
-          </SheetDescription>
-        </SheetHeader>
-        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
-          <div className="space-y-1.5">
-            <Label htmlFor="reject-note">Reason</Label>
-            <textarea
-              id="reject-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={3}
-              required
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <SheetFooter className="px-0">
-            <Button type="submit" variant="destructive" disabled={rejectWithdrawal.isPending}>
-              {rejectWithdrawal.isPending ? "Rejecting…" : "Reject Request"}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
   );
 }
 

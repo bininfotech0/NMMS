@@ -47,8 +47,8 @@ const EDITABLE_STATUSES = ["DRAFT", "AWAITING_PAYMENT", "PAYMENT_COLLECTED"] as 
 // renewed membership is not a reason to lock the member out of having their
 // own address/phone corrected.
 // SUBMITTED/APPROVED are legacy statuses from before the form-first/
-// payment-last redesign, kept editable for any rows still working through
-// the manual-override approval path (see ApplicationsService.approve/reject).
+// payment-last redesign, kept editable so existing registrations can still
+// be corrected and paid.
 const STAFF_ONLY_EDITABLE_STATUSES = [
   "ACTIVE",
   "SUSPENDED",

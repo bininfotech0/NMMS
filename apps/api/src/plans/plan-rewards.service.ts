@@ -16,9 +16,9 @@ export interface ReferralPointRuleResponse {
 }
 
 // Resolves plan-tier-aware points for the two existing earning paths (event
-// evidence approval, referral approval) and owns admin CRUD for the rule
+// evidence submission, referral approval) and owns admin CRUD for the rule
 // tables that drive them — see ReferralsService.awardPointsForApproval and
-// EventsService.reviewEvidence.
+// EventsService.submitEvidence.
 @Injectable()
 export class PlanRewardsService {
   constructor(private readonly prisma: PrismaService) {}

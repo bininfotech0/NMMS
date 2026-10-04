@@ -26,8 +26,8 @@ export function useUpdateMyProfile() {
 
 // --- Self-service registration completion --------------------------------
 // A self-registered member starts DRAFT with no plan at all (unlike the
-// staff wizard) — these let them finish on their own: pick a plan, pay, then
-// submit for staff review. See MembersService.selectMyPlan/submitMine.
+// staff wizard) — these let them finish on their own: pick a plan and pay.
+// Payment activates the membership. See MembersService.selectMyPlan/submitMine.
 
 export function useMyAvailablePlans() {
   return useQuery({

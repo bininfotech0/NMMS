@@ -27,9 +27,9 @@ import type { ReferralLedgerEntryResponse, WalletSummaryResponse, WithdrawalStat
 
 const STAT_CARDS: { key: keyof WalletSummaryResponse; label: string; isAmount?: boolean }[] = [
   { key: "earnedPoints", label: "Earned Points" },
-  { key: "pendingReviewPoints", label: "Awaiting Review" },
+  { key: "pendingReviewPoints", label: "Legacy Pending Points" },
   { key: "pendingPoints", label: "Withdrawal Pending" },
-  { key: "approvedPoints", label: "Withdrawal Approved" },
+  { key: "approvedPoints", label: "Ready for payout" },
   { key: "convertedPoints", label: "Converted Points" },
   { key: "availableBalancePoints", label: "Available Balance (pts)" },
   { key: "withdrawnAmount", label: "Withdrawn Amount", isAmount: true },
@@ -51,7 +51,7 @@ const LEDGER_STATUS_STYLES: Partial<Record<ReferralLedgerEntryResponse["status"]
   REJECTED: "bg-red-100 text-red-700",
 };
 const LEDGER_STATUS_LABELS: Partial<Record<ReferralLedgerEntryResponse["status"], string>> = {
-  PENDING: "Pending review",
+  PENDING: "Pending review (legacy)",
   REJECTED: "Not approved",
 };
 

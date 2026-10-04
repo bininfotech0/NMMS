@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, HandCoins, Printer } from "lucide-react";
+import { HandCoins, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -16,24 +16,20 @@ import {
 } from "@/components/ui/sheet";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { PayDonationOnlineButton } from "@/components/donations/PayDonationOnlineButton";
 import { ShareDonationLinkButton } from "@/components/donations/ShareDonationLinkButton";
 import { ApiError } from "@/lib/api-client";
 import {
-  useApproveDonation,
   useDonationGatewayStatus,
   useDonationsAdminList,
   useRecordDonationDirect,
-  useRejectDonation,
 } from "@/hooks/useDonations";
 import { useMembers } from "@/hooks/useMembers";
 import type { DonationMode, DonationResponse, DonationStatus, ManualDonationMode } from "@nmms/shared";
 
 const TABS: { label: string; value: DonationStatus | undefined }[] = [
-  { label: "Pending", value: "PENDING" },
   { label: "Approved", value: "APPROVED" },
-  { label: "Rejected", value: "REJECTED" },
+  { label: "Rejected (legacy)", value: "REJECTED" },
   { label: "All", value: undefined },
 ];
 
@@ -51,11 +47,8 @@ const MODE_OPTIONS: { value: ManualDonationMode; label: string }[] = [
 ];
 
 export function Donations() {
-  const [status, setStatus] = useState<DonationStatus | undefined>("PENDING");
+  const [status, setStatus] = useState<DonationStatus | undefined>(undefined);
   const { data: donations = [], isLoading, isError } = useDonationsAdminList(status);
-  const approve = useApproveDonation();
-  const [rejectTarget, setRejectTarget] = useState<DonationResponse | null>(null);
-  const [approveTarget, setApproveTarget] = useState<DonationResponse | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
 
   const columns: DataGridColumn<DonationResponse>[] = useMemo(
@@ -116,7 +109,7 @@ export function Donations() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-heading text-2xl font-bold">Donations</h1>
-          <p className="text-sm text-muted-foreground">Review member-submitted donations or record one received directly</p>
+          <p className="text-sm text-muted-foreground">Browse donations or record one received directly</p>
         </div>
         <div className="flex gap-2">
           <ExportCsvButton filename="donations.csv" rows={exportRows} />
@@ -157,24 +150,6 @@ export function Donations() {
         searchKeys={["memberName"]}
         pageSize={25}
         quickActions={(d) => {
-          if (d.status === "PENDING") {
-            return (
-              <div className="flex justify-end gap-2">
-                <Button size="sm" variant="outline" onClick={() => setApproveTarget(d)}>
-                  <Check className="size-4" />
-                  Approve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setRejectTarget(d)}
-                >
-                  Reject
-                </Button>
-              </div>
-            );
-          }
           if (d.status === "APPROVED" && d.receiptNumber) {
             return (
               <Button size="sm" variant="outline" asChild>
@@ -188,84 +163,8 @@ export function Donations() {
         }}
       />
 
-      <ConfirmDialog
-        open={approveTarget !== null}
-        onOpenChange={(open) => !open && setApproveTarget(null)}
-        title="Approve this donation?"
-        description={
-          approveTarget
-            ? `${approveTarget.memberName} will be credited reward points and a receipt will be issued for ₹${approveTarget.amount}.`
-            : ""
-        }
-        confirmLabel="Approve"
-        destructive={false}
-        isPending={approve.isPending}
-        onConfirm={() => {
-          if (!approveTarget) return;
-          approve.mutate(approveTarget.id, { onSuccess: () => setApproveTarget(null) });
-        }}
-      />
-
-      <RejectSheet target={rejectTarget} onOpenChange={(open) => !open && setRejectTarget(null)} />
       <RecordDonationSheet open={recordOpen} onOpenChange={setRecordOpen} />
     </div>
-  );
-}
-
-function RejectSheet({
-  target,
-  onOpenChange,
-}: {
-  target: DonationResponse | null;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const rejectDonation = useRejectDonation();
-  const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!target) return;
-    setError(null);
-    try {
-      await rejectDonation.mutateAsync({ id: target.id, note });
-      setNote("");
-      onOpenChange(false);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
-    }
-  }
-
-  return (
-    <Sheet open={target !== null} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Reject donation</SheetTitle>
-          <SheetDescription>
-            {target ? `${target.memberName}'s donation of ₹${target.amount} will be rejected.` : ""}
-          </SheetDescription>
-        </SheetHeader>
-        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
-          <div className="space-y-1.5">
-            <Label htmlFor="reject-note">Reason</Label>
-            <textarea
-              id="reject-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={3}
-              required
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <SheetFooter className="px-0">
-            <Button type="submit" variant="destructive" disabled={rejectDonation.isPending}>
-              {rejectDonation.isPending ? "Rejecting…" : "Reject Donation"}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
   );
 }
 

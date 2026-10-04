@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { KycResponse, KycStatus, PayoutMethod, SubmitKycInput } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -59,13 +59,8 @@ export class KycService {
     return this.toKycResponse(updated, settings);
   }
 
-  // Lets staff enter/correct a member's payout details on their behalf (e.g.
-  // a member without internet access, or one who mis-typed something) —
-  // ADMIN/SUPER_ADMIN only (see KycAdminController), same as reviewing KYC.
-  // Deliberately reuses submitKyc's own "always resets to PENDING" behavior
-  // rather than auto-verifying: an admin entering the data and an admin
-  // verifying it stay two distinct, separately-audited actions, even when
-  // it's the same admin doing both back to back.
+  // Lets Admin/Super Admin staff enter or correct payout details on a member
+  // behalf. Saved details are verified automatically, like member submissions.
   async updateKycAsAdmin(memberId: string, organizationId: string, dto: SubmitKycInput): Promise<KycResponse> {
     const member = await this.findScoped(memberId, organizationId);
     const updated = await this.prisma.member.update({
@@ -79,11 +74,10 @@ export class KycService {
   private payoutUpdateData(dto: SubmitKycInput): Prisma.MemberUncheckedUpdateInput {
     const data: Prisma.MemberUncheckedUpdateInput = {
       payoutMethod: dto.payoutMethod,
-      // kycStatus always moves to PENDING on submit — including from VERIFIED,
-      // since changing payout destination must force re-review (see plan).
-      kycStatus: "PENDING",
+      // Updating payout details saves a verified submission without a manual review.
+      kycStatus: "VERIFIED",
       kycReviewedById: null,
-      kycReviewedAt: null,
+      kycReviewedAt: new Date(),
       kycReviewNote: null,
     };
 
@@ -118,32 +112,6 @@ export class KycService {
     const member = await this.findScoped(memberId, organizationId);
     const settings = await this.getSettings(organizationId);
     return this.toKycResponse(member, settings, true);
-  }
-
-  async verify(memberId: string, organizationId: string, reviewerId: string): Promise<KycResponse> {
-    const member = await this.findScoped(memberId, organizationId);
-    if (member.kycStatus !== "PENDING") {
-      throw new ConflictException("Only a PENDING KYC submission can be verified");
-    }
-    const updated = await this.prisma.member.update({
-      where: { id: memberId },
-      data: { kycStatus: "VERIFIED", kycReviewedById: reviewerId, kycReviewedAt: new Date(), kycReviewNote: null },
-    });
-    const settings = await this.getSettings(organizationId);
-    return this.toKycResponse(updated, settings, true);
-  }
-
-  async reject(memberId: string, organizationId: string, reviewerId: string, note: string): Promise<KycResponse> {
-    const member = await this.findScoped(memberId, organizationId);
-    if (member.kycStatus !== "PENDING") {
-      throw new ConflictException("Only a PENDING KYC submission can be rejected");
-    }
-    const updated = await this.prisma.member.update({
-      where: { id: memberId },
-      data: { kycStatus: "REJECTED", kycReviewedById: reviewerId, kycReviewedAt: new Date(), kycReviewNote: note },
-    });
-    const settings = await this.getSettings(organizationId);
-    return this.toKycResponse(updated, settings, true);
   }
 
   async revealBankAccountNumber(memberId: string, organizationId: string): Promise<{ bankAccountNumber: string }> {

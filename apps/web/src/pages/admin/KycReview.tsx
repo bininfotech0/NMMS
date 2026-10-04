@@ -18,17 +18,15 @@ import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { ApiError } from "@/lib/api-client";
 import {
   useAdminKycList,
-  useRejectKyc,
   useRevealBankAccount,
   useUpdateKycAsAdmin,
-  useVerifyKyc,
 } from "@/hooks/useKyc";
 import type { KycResponse, KycStatus, PayoutMethod } from "@nmms/shared";
 
 const TABS: { label: string; value: KycStatus | undefined }[] = [
-  { label: "Pending", value: "PENDING" },
-  { label: "Verified", value: "VERIFIED" },
-  { label: "Rejected", value: "REJECTED" },
+  { label: "Pending (legacy)", value: "PENDING" },
+  { label: "Verified automatically", value: "VERIFIED" },
+  { label: "Rejected (legacy)", value: "REJECTED" },
   { label: "Not Submitted", value: "NOT_SUBMITTED" },
   { label: "All", value: undefined },
 ];
@@ -41,7 +39,7 @@ const STATUS_STYLES: Record<KycStatus, string> = {
 };
 
 export function KycReview() {
-  const [status, setStatus] = useState<KycStatus | undefined>("PENDING");
+  const [status, setStatus] = useState<KycStatus | undefined>("VERIFIED");
   const { data: submissions = [], isLoading, isError } = useAdminKycList(status);
   const [detailTarget, setDetailTarget] = useState<KycResponse | null>(null);
 
@@ -102,8 +100,8 @@ export function KycReview() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold">KYC Review</h1>
-          <p className="text-sm text-muted-foreground">Verify member identity and payout details</p>
+          <h1 className="font-heading text-2xl font-bold">KYC & Payout Details</h1>
+          <p className="text-sm text-muted-foreground">View and update member details. Submissions are verified automatically.</p>
         </div>
         <ExportCsvButton filename="kyc-review.csv" rows={exportRows} />
       </div>
@@ -156,18 +154,12 @@ function KycDetailSheet({
   target: KycResponse | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const verifyKyc = useVerifyKyc();
-  const rejectKyc = useRejectKyc();
   const revealBankAccount = useRevealBankAccount();
-  const [rejectNote, setRejectNote] = useState("");
-  const [showReject, setShowReject] = useState(false);
   const [revealedNumber, setRevealedNumber] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
-    setRejectNote("");
-    setShowReject(false);
     setRevealedNumber(null);
     setEditing(false);
     setError(null);
@@ -180,31 +172,6 @@ function KycDetailSheet({
       setRevealedNumber(result.bankAccountNumber);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to reveal account number");
-    }
-  }
-
-  async function handleVerify() {
-    if (!target?.memberId) return;
-    setError(null);
-    try {
-      await verifyKyc.mutateAsync(target.memberId);
-      reset();
-      onOpenChange(false);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
-    }
-  }
-
-  async function handleReject(e: React.FormEvent) {
-    e.preventDefault();
-    if (!target?.memberId) return;
-    setError(null);
-    try {
-      await rejectKyc.mutateAsync({ memberId: target.memberId, note: rejectNote });
-      reset();
-      onOpenChange(false);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     }
   }
 
@@ -292,46 +259,8 @@ function KycDetailSheet({
 
               {error && <p className="text-sm text-destructive">{error}</p>}
 
-              {target?.kycStatus === "PENDING" && !showReject && (
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    disabled={verifyKyc.isPending}
-                    onClick={handleVerify}
-                    className="bg-brand-green hover:bg-brand-green/90"
-                  >
-                    {verifyKyc.isPending ? "Verifying…" : "Verify"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setShowReject(true)}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              )}
-
-              {target?.kycStatus === "PENDING" && showReject && (
-                <form onSubmit={handleReject} className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="kyc-reject-note">Reason for rejection</Label>
-                    <textarea
-                      id="kyc-reject-note"
-                      value={rejectNote}
-                      onChange={(e) => setRejectNote(e.target.value)}
-                      rows={3}
-                      required
-                      className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                    />
-                  </div>
-                  <SheetFooter className="px-0">
-                    <Button type="submit" variant="destructive" disabled={rejectKyc.isPending}>
-                      {rejectKyc.isPending ? "Rejecting…" : "Confirm Rejection"}
-                    </Button>
-                  </SheetFooter>
-                </form>
+              {target?.kycStatus === "PENDING" && (
+                <p className="text-sm text-muted-foreground">Legacy submission. New KYC submissions are verified automatically.</p>
               )}
 
               {target?.kycStatus === "REJECTED" && target.kycReviewNote && (
@@ -384,8 +313,7 @@ function EditPayoutForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Entering payout details on the member's behalf sends this back to PENDING for review, even if it was
-        previously verified.
+        Saving payout details automatically verifies the updated submission.
       </p>
       <div className="flex gap-2">
         <Button

@@ -1,13 +1,8 @@
 import { z } from "zod";
 import { memberStatusSchema } from "./member";
 
-export const rejectMemberSchema = z.object({
-  remarks: z.string().min(1),
-});
-export type RejectMemberInput = z.infer<typeof rejectMemberSchema>;
-
-// Same shape as rejectMemberSchema — used for suspend/reactivate/mark-deceased,
-// which all require a remark for the audit trail (StatusHistory.remarks).
+// Used for suspend/reactivate/mark-deceased; each requires a remark for the
+// audit trail (StatusHistory.remarks).
 export const lifecycleActionSchema = z.object({
   remarks: z.string().min(1),
 });

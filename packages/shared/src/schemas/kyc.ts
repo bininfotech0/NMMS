@@ -63,11 +63,6 @@ export const kycResponseSchema = z.object({
 });
 export type KycResponse = z.infer<typeof kycResponseSchema>;
 
-export const rejectKycSchema = z.object({
-  note: z.string().min(1),
-});
-export type RejectKycInput = z.infer<typeof rejectKycSchema>;
-
 export const revealBankAccountResponseSchema = z.object({
   bankAccountNumber: z.string(),
 });

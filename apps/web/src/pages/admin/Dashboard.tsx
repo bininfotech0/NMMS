@@ -20,7 +20,8 @@ export function Dashboard() {
     return {
       totalMembers: reportData.totalMembers ?? 0,
       activeMembers: reportData.statusBreakdown?.ACTIVE ?? 0,
-      pendingApprovals: reportData.statusBreakdown?.SUBMITTED ?? 0,
+      pendingApprovals:
+        (reportData.statusBreakdown?.AWAITING_PAYMENT ?? 0) + (reportData.statusBreakdown?.SUBMITTED ?? 0),
       monthlyRegistrations: (reportData.monthlyGrowth ?? []).slice(-1)[0]?.members ?? 0,
       totalCollections: reportData.totalCollection ?? 0,
       monthlyCollection: reportData.monthlyCollection ?? 0,

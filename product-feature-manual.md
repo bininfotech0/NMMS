@@ -53,7 +53,7 @@ records they personally created).
 
 ### Dashboard
 - **Dashboard** (`/admin`, the landing page) — stat cards (total/active
-  members, pending approvals, collections), a membership growth chart,
+  members, registrations awaiting payment, collections), a membership growth chart,
   status and plan-tier breakdowns, recent activity, and quick-action
   shortcuts. Field Executives see the same page scoped to their own
   jurisdiction, titled "Field Executive Dashboard."
@@ -61,12 +61,9 @@ records they personally created).
 ### Membership
 - **Members** (`/admin/members`) — search, view, create, and edit every
   member in the org; edit active members' details.
-- **Applications** (`/admin/applications`) — review registrations that are
-  awaiting payment (new and self-registered); **reject** with a reason if
-  needed (fraud prevention) — there's no manual approval step, since paying
-  the registration fee automatically activates the membership; **suspend**,
-  **reactivate**, or **mark deceased** an existing member (lifecycle
-  actions).
+- **Applications** (`/admin/applications`) — track registrations awaiting
+  payment. Payment activates memberships automatically. Admins can **suspend**,
+  **reactivate**, or **mark deceased** an existing member (lifecycle actions).
 - **Membership Plans** (`/admin/membership`) — create/edit plans and tiers
   members enroll in.
 - **Referral Rewards** (`/admin/referral-rewards`) — track and fulfill the
@@ -74,22 +71,23 @@ records they personally created).
   milestone (Bronze/Silver/Gold/Platinum), filterable by Pending/Fulfilled/
   All. Point-rule and cap *configuration* lives in Settings → Referral
   Program, not here.
-- **KYC Review** (`/admin/kyc`) — review and approve/reject member-submitted
-  KYC (Aadhaar, PAN, bank/UPI details), per org-configurable requirements.
+- **KYC & Payout Details** (`/admin/kyc`) — view and update member-submitted
+  identity and payout details. KYC submissions are verified automatically; configured
+  completeness requirements still apply before withdrawals.
 
 ### Finance
 - **Payments** (`/admin/payments`) — record and track joining/renewal fee
   payments; see who owes money; **upgrade a member's plan**.
-- **Withdrawals** (`/admin/withdrawals`) — review and process members'
-  wallet withdrawal requests (subject to org-configured min/max amount,
-  frequency limit, and charge rules).
-- **Donations** (`/admin/donations`) — record and manage donations; issue
-  donation receipts; a percentage of each donation can convert to referral
-  points per org settings.
+- **Withdrawals** (`/admin/withdrawals`) — process automatically approved
+  wallet withdrawal requests by sending payouts or recording manual payments
+  (subject to org-configured min/max amount, frequency limit, and charge rules).
+- **Donations** (`/admin/donations`) — browse donations, issue receipts, or
+  record donations received directly. Member-submitted donations are recorded
+  immediately; a percentage can convert to referral points per org settings.
 
 ### Operations
-- **Events** (`/admin/events`) — create events, manage registrations, and
-  review event-based rewards.
+- **Events** (`/admin/events`) — create events and manage registrations. Member
+  evidence submissions complete automatically and award configured points.
 - **Documents** (`/admin/documents`) — manage member-uploaded documents
   (identity docs, photos, etc.), including AI-assisted OCR auto-fill for
   identity documents.
@@ -138,11 +136,8 @@ see the whole org.
   referral link with no Field Executive attached, any Field Executive (or
   Admin/Super Admin) can claim them into their own jurisdiction
   (`/admin/members` → unclaimed referrals).
-- **Reject applications** — but *only* for self-registered members they
-  have personally claimed; the API enforces this even though the endpoint is
-  open to their role (`ApplicationsService.assertCanApprove`). There's no
-  approval step to perform — a member's own registration fee payment
-  activates them automatically.
+- **Track registrations awaiting payment** in their jurisdiction. Payment
+  activates memberships automatically.
 - **Reset a member's portal password** (for members in their jurisdiction).
 - **View summary reports** scoped to their own jurisdiction
   (`SUMMARY_ROLES` includes Field Executive; detailed reviewer reports do
@@ -153,13 +148,12 @@ see the whole org.
   count of members under them with an outstanding fee.
 
 ### Not available to Field Executive
-- Membership Plans, KYC Review, Withdrawals (all Admin/Super Admin only).
-- Reviewer-level Reports, Notices publishing, Events reviewer actions,
+- Membership Plans, KYC & Payout Details, Withdrawals (all Admin/Super Admin only).
+- Reviewer-level Reports, Notices publishing,
   Referral fulfillment, Users, Settings (including its Integrations/Lookups
   tabs), Audit Logs.
 - Promoting a member to Field Executive (Admin/Super Admin only).
-- Approving/rejecting/suspending/reactivating members outside their own
-  claimed jurisdiction.
+- Suspending/reactivating members outside their own claimed jurisdiction.
 
 ---
 
@@ -188,8 +182,7 @@ scoped to their own record only.
   visitor lands with a referrer pre-filled, picks a plan, fills in their
   profile and required documents, and submits — then pays the registration
   fee, which **activates their membership immediately** (no manual staff
-  review in between). Staff can still reject a submitted-but-unpaid
-  registration from the Applications queue as a fraud-prevention check.
+  review in between). Registrations activate when the joining fee is paid.
 - **Staff-created** — a Field Executive or Admin registers the member
   directly (walking them through the same profile-then-payment order in the
   admin wizard), skipping the public flow.

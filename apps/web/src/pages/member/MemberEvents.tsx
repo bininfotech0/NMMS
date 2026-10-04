@@ -17,8 +17,8 @@ const COMPLETION_STYLES: Record<string, string> = {
 
 const COMPLETION_LABELS: Record<string, string> = {
   NOT_SUBMITTED: "Not submitted",
-  PENDING_REVIEW: "Pending review",
-  APPROVED: "Approved",
+  PENDING_REVIEW: "Legacy pending review",
+  APPROVED: "Completed",
   REJECTED: "Rejected",
 };
 
@@ -110,7 +110,7 @@ function EventCard({ event }: { event: MyEventSummary }) {
                 <p className="text-muted-foreground">Target: {event.targetQuantity}</p>
               )}
               {event.pointsReward > 0 && (
-                <p className="text-muted-foreground">Reward: {event.pointsReward} points on approval</p>
+                <p className="text-muted-foreground">Reward: {event.pointsReward} points when evidence is submitted</p>
               )}
             </div>
           </div>

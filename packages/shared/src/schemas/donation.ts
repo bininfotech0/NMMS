@@ -18,8 +18,8 @@ export const donationStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type DonationStatus = z.infer<typeof donationStatusSchema>;
 
 // Member self-submission — a claim about money already sent outside the app,
-// awaiting Field Executive/Admin confirmation. Same shape reused for staff's
-// direct-record action (a donation received in person, auto-approved).
+// recorded immediately. Same shape reused for staff's direct-record action
+// (a donation received in person).
 export const submitDonationSchema = z.object({
   amount: z.number().positive(),
   mode: manualDonationModeSchema,
@@ -35,12 +35,6 @@ export type SubmitDonationInput = z.infer<typeof submitDonationSchema>;
 
 export const recordDonationSchema = submitDonationSchema;
 export type RecordDonationInput = z.infer<typeof recordDonationSchema>;
-
-// Reject-only — approve takes no body, mirrors reviewWithdrawalSchema.
-export const reviewDonationSchema = z.object({
-  note: z.string().min(1),
-});
-export type ReviewDonationInput = z.infer<typeof reviewDonationSchema>;
 
 export const donationResponseSchema = z.object({
   id: z.string(),

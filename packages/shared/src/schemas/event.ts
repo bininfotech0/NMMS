@@ -81,12 +81,6 @@ export const submitEventEvidenceSchema = z.object({
 });
 export type SubmitEventEvidenceInput = z.infer<typeof submitEventEvidenceSchema>;
 
-export const reviewEventEvidenceSchema = z.object({
-  approved: z.boolean(),
-  note: z.string().nullish(),
-});
-export type ReviewEventEvidenceInput = z.infer<typeof reviewEventEvidenceSchema>;
-
 export const eventResponseSchema = z.object({
   id: z.string(),
   title: z.string(),

@@ -43,7 +43,7 @@ export function useCreateWithdrawalRequest() {
       memberApiFetch<WithdrawalRequestResponse>("/withdrawals/me", { method: "POST", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["withdrawals", "me"] });
-      toast.success("Withdrawal request submitted");
+      toast.success("Withdrawal request approved — payout is ready");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to submit withdrawal request")),
   });
@@ -65,34 +65,6 @@ export function useAdminWithdrawal(id: string | null) {
     queryKey: ["withdrawals", "admin", id],
     queryFn: () => apiFetch<WithdrawalRequestResponse>(`/withdrawals/${id}`),
     enabled: id !== null,
-  });
-}
-
-export function useApproveWithdrawal() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiFetch<WithdrawalRequestResponse>(`/withdrawals/${id}/approve`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["withdrawals", "admin"] });
-      toast.success("Withdrawal approved");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to approve withdrawal")),
-  });
-}
-
-export function useRejectWithdrawal() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, note }: { id: string; note: string }) =>
-      apiFetch<WithdrawalRequestResponse>(`/withdrawals/${id}/reject`, {
-        method: "POST",
-        body: JSON.stringify({ note }),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["withdrawals", "admin"] });
-      toast.success("Withdrawal rejected");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to reject withdrawal")),
   });
 }
 

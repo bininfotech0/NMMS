@@ -7,13 +7,12 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { KycService } from "./kyc.service";
-import { RejectKycDto } from "./dto/reject-kyc.dto";
 import { SubmitKycDto } from "./dto/submit-kyc.dto";
 
 const CAN_MANAGE_KYC: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 
-// Staff review queue: list/inspect KYC submissions, verify/reject, and
-// reveal a member's full bank account number for making a manual transfer.
+// Staff can inspect/update KYC and payout details, and reveal a member's
+// full bank account number for a manual transfer.
 @ApiTags("kyc")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -33,26 +32,12 @@ export class KycAdminController {
     return this.kycService.getForAdmin(memberId, user.organizationId);
   }
 
-  // Lets staff enter/correct a member's payout details directly (e.g. a
-  // member without internet access, or a typo staff spotted while reviewing)
-  // — always lands back in PENDING for a (possibly separate) review, same as
-  // a member's own self-submission.
+  // Lets staff enter or correct payout details for a member who needs help.
+  // The updated details are verified automatically.
   @Put(":memberId")
   @Roles(...CAN_MANAGE_KYC)
   update(@Param("memberId") memberId: string, @Body() dto: SubmitKycDto, @CurrentUser() user: AuthUser) {
     return this.kycService.updateKycAsAdmin(memberId, user.organizationId, dto);
-  }
-
-  @Post(":memberId/verify")
-  @Roles(...CAN_MANAGE_KYC)
-  verify(@Param("memberId") memberId: string, @CurrentUser() user: AuthUser) {
-    return this.kycService.verify(memberId, user.organizationId, user.id);
-  }
-
-  @Post(":memberId/reject")
-  @Roles(...CAN_MANAGE_KYC)
-  reject(@Param("memberId") memberId: string, @Body() dto: RejectKycDto, @CurrentUser() user: AuthUser) {
-    return this.kycService.reject(memberId, user.organizationId, user.id, dto.note);
   }
 
   @Post(":memberId/reveal-bank-account")

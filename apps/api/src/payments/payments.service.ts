@@ -281,9 +281,9 @@ export class PaymentsService {
   }
 
   private assertPayable(member: MemberWithPlan): void {
-    if (member.status !== "AWAITING_PAYMENT" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
+    if (member.status !== "AWAITING_PAYMENT" && member.status !== "SUBMITTED" && member.status !== "ACTIVE" && member.status !== "EXPIRED") {
       throw new ConflictException(
-        "Payments can only be recorded for an AWAITING_PAYMENT member (initial registration fee) or an ACTIVE/EXPIRED member (renewal)",
+        "Payments can only be recorded before activation (initial fee) or for an ACTIVE/EXPIRED member (renewal)",
       );
     }
     if (!member.plan) {
@@ -304,8 +304,8 @@ export class PaymentsService {
     const paidAt = new Date();
 
     const payment = await this.prisma.$transaction(async (tx) => {
-      if (member.status === "AWAITING_PAYMENT") {
-        const activation = await activateMemberOnce(tx, this.numbering, member, member.plan, "AWAITING_PAYMENT", actor.id);
+      if (member.status === "AWAITING_PAYMENT" || member.status === "SUBMITTED") {
+        const activation = await activateMemberOnce(tx, this.numbering, member, member.plan, member.status, actor.id);
         if (!activation) {
           throw new ConflictException("This member's status just changed — please refresh and try again");
         }
@@ -364,7 +364,7 @@ export class PaymentsService {
         },
       });
 
-      if (member.status !== "AWAITING_PAYMENT") {
+      if (member.status !== "AWAITING_PAYMENT" && member.status !== "SUBMITTED") {
         // Real status jumps straight to ACTIVE (never persists as RENEWED,
         // exactly like APPROVED never persists in ApplicationsService.approve),
         // but the audit trail records every renewal, which it didn't before.
@@ -379,7 +379,7 @@ export class PaymentsService {
       return created;
     });
 
-    if (member.status === "AWAITING_PAYMENT") {
+    if (member.status === "AWAITING_PAYMENT" || member.status === "SUBMITTED") {
       const activated = await this.prisma.member.findUniqueOrThrow({ where: { id: member.id } });
       // Independent side effects (two notifications, one referral credit) —
       // none depends on another's result, so run them concurrently rather

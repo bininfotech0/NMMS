@@ -132,13 +132,8 @@ export class ReferralsService {
     return Math.max(0, Math.min(points, cap - alreadyEarned));
   }
 
-  // Called from EventsService.submitEvidence when a member (re)submits
-  // evidence — locks in the points value at submission time (not recomputed
-  // at review time, so a mid-review rule change never silently alters an
-  // already-submitted amount). Does NOT touch Member.referralPointsBalance —
-  // that stays the lifetime *approved* total until resolveEventEvidence
-  // credits it, so WithdrawalsService's available-balance math is untouched
-  // by points still awaiting review.
+  // Legacy writer retained for old pending-review ledger rows. New evidence
+  // is immediately accepted and credited through creditEventPoints.
   async recordPendingEventPoints(
     organizationId: string,
     memberId: string,
@@ -167,11 +162,9 @@ export class ReferralsService {
     }
   }
 
-  // Called from EventsService.reviewEvidence for both the approve and reject
-  // branches — the analogous choke point to awardPointsForApproval's credit,
-  // just resolving a PENDING row created by recordPendingEventPoints instead
-  // of crediting fresh. No-ops if there's no PENDING row (e.g. a 0-point
-  // event never got one). Deliberately not gated by
+  // Legacy resolver retained for historical event ledger rows. New evidence
+  // is accepted and credited in one transaction by creditEventPoints.
+  // Deliberately not gated by
   // OrgSettings.referralProgramEnabled (that toggle governs the
   // self-referral/link feature specifically; event-based points are a
   // separate earning channel into the same balance/batch/reward system).
@@ -201,10 +194,8 @@ export class ReferralsService {
     });
   }
 
-  // Shared by the referral-approval path, resolveEventEvidence, and
-  // DonationsService: appends a ledger row (already-credited APPROVED — the
-  // PENDING donation/event-evidence window is handled by the caller before
-  // this is invoked) and increments the cached balance. Points no longer
+  // Shared by referral approval, event evidence submission, and DonationsService:
+  // appends an already-credited APPROVED ledger row and increments the cached balance. Points no longer
   // drive volunteer batch/rewards — see awardBatchRewardForTier — so this
   // purely tracks the wallet used for withdrawals and the leaderboard.
   private async creditPoints(
@@ -232,6 +223,51 @@ export class ReferralsService {
     });
   }
 
+  async creditEventPoints(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    memberId: string,
+    points: number,
+    eventRegistrationId: string,
+  ): Promise<void> {
+    const existingApproved = await tx.referralPointsLedger.findFirst({
+      where: {
+        organizationId,
+        relatedEventRegistrationId: eventRegistrationId,
+        reason: "EVENT_TARGET_COMPLETED",
+        status: "APPROVED",
+      },
+    });
+    if (existingApproved) return;
+
+    const existing = await tx.referralPointsLedger.findFirst({
+      where: {
+        organizationId,
+        relatedEventRegistrationId: eventRegistrationId,
+        reason: "EVENT_TARGET_COMPLETED",
+        status: { in: ["PENDING", "REJECTED"] },
+      },
+    });
+    if (existing) {
+      const pointsToCredit = existing.status === "PENDING" ? existing.points : points;
+      const cas = await tx.referralPointsLedger.updateMany({
+        where: { id: existing.id, status: existing.status },
+        data: { status: "APPROVED", points: pointsToCredit },
+      });
+      if (cas.count === 0 || pointsToCredit <= 0) return;
+      await tx.member.update({
+        where: { id: memberId },
+        data: { referralPointsBalance: { increment: pointsToCredit } },
+      });
+      return;
+    }
+
+    if (points <= 0) return;
+    await this.creditPoints(tx, organizationId, memberId, points, "EVENT_TARGET_COMPLETED", {
+      relatedEventRegistrationId: eventRegistrationId,
+    });
+  }
+
   // Called from DonationsService.recordDirect (staff already vouches for
   // receipt in person, so there's no PENDING window at all — unlike a member
   // self-submission, see recordPendingDonationPoints below) — the
@@ -253,15 +289,8 @@ export class ReferralsService {
     });
   }
 
-  // Called from DonationsService.submitMine when a member self-submits a
-  // donation — locks in the points value now (amount * donationPointsPercent
-  // at submission time), same reasoning as recordPendingEventPoints: a later
-  // change to donationPointsPercent must never silently alter an
-  // already-submitted amount. Does NOT touch Member.referralPointsBalance —
-  // see resolveDonation below. Unlike recordPendingEventPoints, a donation
-  // is never resubmitted after rejection (a rejected one is terminal; the
-  // member submits a brand-new donation instead), so this is a plain create,
-  // no existing-row upsert branch needed.
+  // Legacy writer retained for old pending donation ledger rows. New
+  // donations are recorded and credited immediately in one transaction.
   async recordPendingDonationPoints(
     organizationId: string,
     memberId: string,
@@ -283,10 +312,8 @@ export class ReferralsService {
     });
   }
 
-  // Called from DonationsService.approve/reject — the donation-channel
-  // analogue of resolveEventEvidence, resolving the PENDING row created by
-  // recordPendingDonationPoints. No-ops if there's no PENDING row (e.g. a
-  // 0-point donation — donationPointsPercent = 0 — never got one).
+  // Legacy resolver retained for historical donation ledger rows. New
+  // donations are recorded and credited immediately in one transaction.
   async resolveDonation(
     organizationId: string,
     memberId: string,

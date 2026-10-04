@@ -237,7 +237,7 @@ type ReportKey =
 
 const REPORT_LABELS: Record<ReportKey, string> = {
   "member-register": "Member Register",
-  "pending-approval": "Pending Approval",
+  "pending-approval": "Awaiting Payment",
   "rejected-applications": "Rejected Applications",
   "payment-collection": "Payment Collection",
   renewals: "Membership Renewal",

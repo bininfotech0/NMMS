@@ -78,7 +78,7 @@ export function ExecutiveDashboard({
     return [
       { label: "Total Members", value: summary.totalMembers.toLocaleString(), trend: `+${summary.monthlyRegistrations} this month`, trendUp: summary.monthlyRegistrations > 0 },
       { label: "Active Members", value: summary.activeMembers.toLocaleString(), trend: `${activePct.toFixed(1)}% active`, trendUp: activePct >= 50 },
-      { label: "Pending Approval", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
+      { label: "Awaiting Payment", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
       { label: "Total Collections", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: summary.monthlyCollection > 0 },
     ];
   }, [summary]);
@@ -238,7 +238,7 @@ export function ExecutiveDashboard({
             <AlertCircle className="size-5 text-amber-600 shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                {summary.pendingApprovals} application{summary.pendingApprovals === 1 ? "" : "s"} awaiting review
+                {summary.pendingApprovals} registration{summary.pendingApprovals === 1 ? "" : "s"} awaiting payment
               </p>
               <p className="text-xs text-amber-600 dark:text-amber-400">
                 {summary.expiringThisMonth} memberships expiring this month

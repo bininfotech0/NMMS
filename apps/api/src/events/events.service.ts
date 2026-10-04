@@ -312,11 +312,10 @@ export class EventsService {
     if (!registration) {
       throw new NotFoundException("You are not registered for this event");
     }
-    // One approval per registration — resubmitting after APPROVED would create
-    // a second PENDING ledger row and let the member farm the event's points
-    // repeatedly (see ReferralsService.recordPendingEventPoints).
+    // Evidence is accepted automatically once per registration, preventing
+    // repeat submissions from earning event points multiple times.
     if (registration.completionStatus === "APPROVED") {
-      throw new ConflictException("Your evidence has already been approved — it cannot be resubmitted");
+      throw new ConflictException("Your evidence has already been accepted — it cannot be resubmitted");
     }
     if (!dto.note && !file) {
       throw new BadRequestException("Provide a note or a photo as evidence");
@@ -351,69 +350,30 @@ export class EventsService {
       };
     }
 
-    const updated = await this.prisma.eventRegistration.update({
-      where: { id: registration.id },
-      data: {
-        evidenceNote: dto.note ?? registration.evidenceNote,
-        quantityAchieved: dto.quantityAchieved ?? registration.quantityAchieved,
-        completionStatus: "PENDING_REVIEW",
-        ...fileFields,
-      },
-      include: { member: { select: { fullName: true, mobile: true } } },
-    });
-
-    // Lock in the points value now, at submission time — see
-    // ReferralsService.recordPendingEventPoints for why review time doesn't
-    // recompute it.
     const tier = await this.planRewards.getMemberTier(member.id);
     const points = await this.planRewards.computeEventPoints(member.organizationId, eventId, tier);
-    await this.referrals.recordPendingEventPoints(member.organizationId, member.id, registration.id, points);
-
-    return this.toRegistrationResponse(updated);
-  }
-
-  // --- Staff evidence review -----------------------------------------------
-
-  async listPendingReview(eventId: string, user: AuthUser): Promise<EventRegistrationResponse[]> {
-    await this.findScoped(eventId, user.organizationId);
-    const registrations = await this.prisma.eventRegistration.findMany({
-      where: { eventId, completionStatus: "PENDING_REVIEW" },
-      include: { member: { select: { fullName: true, mobile: true } } },
-      orderBy: { registeredAt: "asc" },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.eventRegistration.updateMany({
+        where: { id: registration.id, completionStatus: registration.completionStatus },
+        data: {
+          evidenceNote: dto.note ?? registration.evidenceNote,
+          quantityAchieved: dto.quantityAchieved ?? registration.quantityAchieved,
+          completionStatus: "APPROVED",
+          reviewedById: null,
+          reviewedAt: null,
+          reviewNote: null,
+          ...fileFields,
+        },
+      });
+      if (cas.count === 0) {
+        throw new ConflictException("Your evidence was submitted at the same time as another update — refresh and try again");
+      }
+      await this.referrals.creditEventPoints(tx, member.organizationId, member.id, points, registration.id);
+      return tx.eventRegistration.findUniqueOrThrow({
+        where: { id: registration.id },
+        include: { member: { select: { fullName: true, mobile: true } } },
+      });
     });
-    return registrations.map((r) => this.toRegistrationResponse(r));
-  }
-
-  async reviewEvidence(
-    eventId: string,
-    registrationId: string,
-    approved: boolean,
-    note: string | undefined,
-    user: AuthUser,
-  ): Promise<EventRegistrationResponse> {
-    await this.findScoped(eventId, user.organizationId); // 404s if the event doesn't exist / isn't in this org
-    const registration = await this.prisma.eventRegistration.findFirst({
-      where: { id: registrationId, eventId },
-    });
-    if (!registration) {
-      throw new NotFoundException("Registration not found");
-    }
-    if (registration.completionStatus !== "PENDING_REVIEW") {
-      throw new ConflictException("Only submissions pending review can be approved or rejected");
-    }
-
-    const updated = await this.prisma.eventRegistration.update({
-      where: { id: registration.id },
-      data: {
-        completionStatus: approved ? "APPROVED" : "REJECTED",
-        reviewedById: user.id,
-        reviewedAt: new Date(),
-        reviewNote: note ?? null,
-      },
-      include: { member: { select: { fullName: true, mobile: true } } },
-    });
-
-    await this.referrals.resolveEventEvidence(user.organizationId, registration.memberId, registration.id, approved);
 
     return this.toRegistrationResponse(updated);
   }

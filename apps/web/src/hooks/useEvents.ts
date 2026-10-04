@@ -130,16 +130,6 @@ export function useUnregisterMember(eventId: string) {
   });
 }
 
-// --- Staff evidence review --------------------------------------------------
-
-export function usePendingEvidence(eventId: string | null) {
-  return useQuery({
-    queryKey: ["events", eventId, "registrations", "pending-review"],
-    queryFn: () => apiFetch<EventRegistrationResponse[]>(`/events/${eventId}/registrations/pending-review`),
-    enabled: eventId !== null,
-  });
-}
-
 // Same pattern as useDocumentImageUrl (useDocuments.ts) — the download route
 // needs a Bearer token, so a plain <img src> can't be used directly.
 export function useEvidenceFileUrl(eventId: string | null, registrationId: string | null): string | null {
@@ -173,23 +163,6 @@ export function useEvidenceFileUrl(eventId: string | null, registrationId: strin
   }, [eventId, registrationId]);
 
   return url;
-}
-
-export function useReviewEvidence(eventId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ registrationId, approved, note }: { registrationId: string; approved: boolean; note?: string }) =>
-      apiFetch<EventRegistrationResponse>(`/events/${eventId}/registrations/${registrationId}/review`, {
-        method: "POST",
-        body: JSON.stringify({ approved, note }),
-      }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["events", eventId, "registrations"] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      toast.success(variables.approved ? "Submission approved — points awarded" : "Submission rejected");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to review submission")),
-  });
 }
 
 // --- Member self-service -----------------------------------------------------
@@ -239,7 +212,7 @@ export function useSubmitEventEvidence() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["member-events"] });
-      toast.success("Evidence submitted for review");
+      toast.success("Evidence accepted — points credited");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to submit evidence")),
   });

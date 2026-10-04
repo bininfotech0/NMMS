@@ -16,7 +16,6 @@ import { toWithdrawalResponse } from "./withdrawal.mapper";
 // Statuses whose points may be rejected back to the member (a payout has not
 // been initiated yet). Once PAYOUT_PROCESSING the funds are in-flight and the
 // request can only resolve to PAID or PAYOUT_FAILED.
-const OPEN_STATUSES = ["PENDING", "APPROVED"] as const;
 // Statuses that lock points against new requests. PAYOUT_PROCESSING is
 // included so a member can't create a second request on top of an in-flight
 // payout and double-spend the same points if both succeed.
@@ -195,6 +194,7 @@ export class WithdrawalsService {
           payoutBankIfscCode: member.bankIfscCode,
           payoutBankName: member.bankName,
           payoutUpiId: member.upiId,
+          status: "APPROVED",
         },
       });
     });
@@ -215,36 +215,6 @@ export class WithdrawalsService {
   async adminGet(id: string, organizationId: string): Promise<WithdrawalRequestResponse> {
     const row = await this.findScoped(id, organizationId);
     return toWithdrawalResponse(row);
-  }
-
-  async approve(id: string, organizationId: string, reviewerId: string): Promise<WithdrawalRequestResponse> {
-    const request = await this.findScoped(id, organizationId);
-    await this.assertMemberPayoutEligible(request.memberId);
-    const cas = await this.prisma.withdrawalRequest.updateMany({
-      where: { id, organizationId, status: "PENDING" },
-      data: { status: "APPROVED", reviewedById: reviewerId, reviewedAt: new Date(), reviewNote: null },
-    });
-    if (cas.count === 0) {
-      throw new ConflictException("This request is no longer pending — please refresh and try again");
-    }
-    return this.adminGet(id, organizationId);
-  }
-
-  async reject(
-    id: string,
-    organizationId: string,
-    reviewerId: string,
-    note: string,
-  ): Promise<WithdrawalRequestResponse> {
-    await this.findScoped(id, organizationId);
-    const cas = await this.prisma.withdrawalRequest.updateMany({
-      where: { id, organizationId, status: { in: [...OPEN_STATUSES] } },
-      data: { status: "REJECTED", reviewedById: reviewerId, reviewedAt: new Date(), reviewNote: note },
-    });
-    if (cas.count === 0) {
-      throw new ConflictException("Only a pending or approved request can be rejected");
-    }
-    return this.adminGet(id, organizationId);
   }
 
   async markPaid(

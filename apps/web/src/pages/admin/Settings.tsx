@@ -67,7 +67,7 @@ const INTEGRATION_INFO: Record<FeatureFlagKey, { label: string; description: str
   },
   PAYMENT_GATEWAY_PAYOUTS: {
     label: "Payout Gateway (RazorpayX)",
-    description: "Automatically send approved withdrawals via RazorpayX instead of marking them paid by hand.",
+    description: "Send approved withdrawals via RazorpayX, or mark them paid manually.",
   },
   WHATSAPP_NOTIFY: {
     label: "WhatsApp Notifications",

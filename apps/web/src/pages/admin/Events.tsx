@@ -33,7 +33,6 @@ import {
   useEvidenceFileUrl,
   useRegisterMember,
   useRemoveEventBanner,
-  useReviewEvidence,
   useSetAttendance,
   useUnregisterMember,
   useUpdateEvent,
@@ -655,7 +654,7 @@ function RegistrationsSheet({
                       </TableCell>
                       {hasTarget && (
                         <TableCell>
-                          <EvidenceCell eventId={eventId} registration={r} canManage={canManage} />
+                          <EvidenceCell eventId={eventId} registration={r} />
                         </TableCell>
                       )}
                       {canManage && (
@@ -718,15 +717,12 @@ const COMPLETION_STYLES: Record<string, string> = {
 function EvidenceCell({
   eventId,
   registration,
-  canManage,
 }: {
   eventId: string | null;
   registration: EventRegistrationResponse;
-  canManage: boolean;
 }) {
   const [viewing, setViewing] = useState(false);
   const fileUrl = useEvidenceFileUrl(viewing ? eventId : null, viewing ? registration.id : null);
-  const reviewEvidence = useReviewEvidence(eventId ?? "");
 
   return (
     <div className="flex flex-col items-start gap-1.5">
@@ -757,30 +753,7 @@ function EvidenceCell({
           )}
         </>
       )}
-      {canManage && registration.completionStatus === "PENDING_REVIEW" && (
-        <div className="flex gap-1.5 pt-1">
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-brand-green text-brand-green hover:bg-brand-green/10"
-            disabled={reviewEvidence.isPending}
-            onClick={() => reviewEvidence.mutate({ registrationId: registration.id, approved: true })}
-          >
-            <Check className="size-3.5" />
-            Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-destructive hover:text-destructive"
-            disabled={reviewEvidence.isPending}
-            onClick={() => reviewEvidence.mutate({ registrationId: registration.id, approved: false })}
-          >
-            <X className="size-3.5" />
-            Reject
-          </Button>
-        </div>
-      )}
+
     </div>
   );
 }

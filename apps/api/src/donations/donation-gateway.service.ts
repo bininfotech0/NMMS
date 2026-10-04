@@ -14,10 +14,9 @@ type DonorDetails = { donorAddress?: string | null; donorPan?: string | null };
 // createOrder/verifyAndRecord — the same RazorpayProvider and PAYMENT_GATEWAY
 // integration config power both, just recording into Donation instead of
 // Payment. Unlike a self-submitted offline donation, a gateway-verified one
-// skips the PENDING/Field-Executive-review window entirely: Razorpay's own
-// signature + order-status check IS the verification, so it's created
-// straight to APPROVED with points credited immediately — mirroring how
-// PaymentsService.recordGatewayPayment never goes through staff review either.
+// is recorded immediately: Razorpay's own
+// signature + order-status check validates payment, so the donation and any
+// reward points are recorded immediately.
 //
 // Also supports a staff-facilitated variant (createOrderForMember /
 // verifyAndRecordForMember): a Field Executive/Admin visiting a donor in

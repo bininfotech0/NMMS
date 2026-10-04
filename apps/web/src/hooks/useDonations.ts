@@ -30,7 +30,7 @@ export function useSubmitDonation() {
       memberApiFetch<DonationResponse>("/donations/me", { method: "POST", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["donations", "me"] });
-      toast.success("Donation submitted for review");
+      toast.success("Donation recorded — receipt and points are available now");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to submit donation")),
   });
@@ -156,7 +156,7 @@ export function useCreateDonationPaymentLink(memberId: string) {
   });
 }
 
-// --- Staff, org-wide review ----------------------------------------------
+// --- Staff donation management -------------------------------------------
 
 export function useDonationsAdminList(status?: DonationStatus) {
   return useQuery({
@@ -173,27 +173,3 @@ export function useDonation(id: string | null) {
   });
 }
 
-export function useApproveDonation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiFetch<DonationResponse>(`/donations/${id}/approve`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["donations"] });
-      toast.success("Donation approved — points awarded");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to approve donation")),
-  });
-}
-
-export function useRejectDonation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, note }: { id: string; note: string }) =>
-      apiFetch<DonationResponse>(`/donations/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["donations"] });
-      toast.success("Donation rejected");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to reject donation")),
-  });
-}

@@ -58,11 +58,10 @@ export const withdrawalRequestResponseSchema = z.object({
 });
 export type WithdrawalRequestResponse = z.infer<typeof withdrawalRequestResponseSchema>;
 
-// The spec's six wallet fields — see WithdrawalsService.getWalletSummary.
-// pendingPoints/approvedPoints reflect open WithdrawalRequest locks, not
-// activity-level review status; pendingReviewPoints (added later) is the
-// separate "event evidence awaiting staff review" total from
-// ReferralPointsLedger — it never overlaps with earnedPoints until approved.
+// Wallet totals — see WithdrawalsService.getWalletSummary. pendingPoints and
+// approvedPoints reflect open WithdrawalRequest locks. pendingReviewPoints
+// counts legacy unapproved event ledger rows; new event points are credited
+// when evidence is submitted.
 export const walletSummaryResponseSchema = z.object({
   earnedPoints: z.number(),
   pendingPoints: z.number(),
@@ -74,11 +73,6 @@ export const walletSummaryResponseSchema = z.object({
   pendingReviewPoints: z.number(),
 });
 export type WalletSummaryResponse = z.infer<typeof walletSummaryResponseSchema>;
-
-export const reviewWithdrawalSchema = z.object({
-  note: z.string().min(1),
-});
-export type ReviewWithdrawalInput = z.infer<typeof reviewWithdrawalSchema>;
 
 export const markWithdrawalPaidSchema = z.object({
   paymentReference: z.string().nullish(),

@@ -7,7 +7,6 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { WithdrawalsService } from "./withdrawals.service";
-import { ReviewWithdrawalDto } from "./dto/review-withdrawal.dto";
 import { MarkWithdrawalPaidDto } from "./dto/mark-withdrawal-paid.dto";
 import { PayoutGatewayService } from "./gateway/payout-gateway.service";
 
@@ -39,18 +38,6 @@ export class WithdrawalsAdminController {
   @Roles(...CAN_MANAGE_WITHDRAWALS)
   get(@Param("id") id: string, @CurrentUser() user: AuthUser) {
     return this.withdrawalsService.adminGet(id, user.organizationId);
-  }
-
-  @Post(":id/approve")
-  @Roles(...CAN_MANAGE_WITHDRAWALS)
-  approve(@Param("id") id: string, @CurrentUser() user: AuthUser) {
-    return this.withdrawalsService.approve(id, user.organizationId, user.id);
-  }
-
-  @Post(":id/reject")
-  @Roles(...CAN_MANAGE_WITHDRAWALS)
-  reject(@Param("id") id: string, @Body() dto: ReviewWithdrawalDto, @CurrentUser() user: AuthUser) {
-    return this.withdrawalsService.reject(id, user.organizationId, user.id, dto.note);
   }
 
   @Post(":id/mark-paid")

@@ -13,7 +13,6 @@ import { CreateEventDto } from "./dto/create-event.dto";
 import { UpdateEventDto } from "./dto/update-event.dto";
 import { RegisterMemberDto } from "./dto/register-member.dto";
 import { SetAttendanceDto } from "./dto/set-attendance.dto";
-import { ReviewEventEvidenceDto } from "./dto/review-event-evidence.dto";
 import { EventsService } from "./events.service";
 import { MAX_RAW_UPLOAD_BYTES, processUpload } from "../common/upload.util";
 
@@ -101,13 +100,6 @@ export class EventsController {
     return this.eventsService.registerMember(id, dto.memberId, user);
   }
 
-  @Get(":id/registrations/pending-review")
-  @UseGuards(RolesGuard)
-  @Roles(...REVIEWER_ROLES)
-  listPendingReview(@Param("id") id: string, @CurrentUser() user: AuthUser) {
-    return this.eventsService.listPendingReview(id, user);
-  }
-
   @Get(":id/registrations/:registrationId/evidence")
   async downloadEvidence(
     @Param("id") id: string,
@@ -119,18 +111,6 @@ export class EventsController {
     res.header("Content-Type", mimeType);
     res.header("Content-Disposition", `inline; filename="${fileName.replace(/[\r\n"]/g, "")}"`);
     return new StreamableFile(stream);
-  }
-
-  @Post(":id/registrations/:registrationId/review")
-  @UseGuards(RolesGuard)
-  @Roles(...REVIEWER_ROLES)
-  reviewEvidence(
-    @Param("id") id: string,
-    @Param("registrationId") registrationId: string,
-    @Body() dto: ReviewEventEvidenceDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.eventsService.reviewEvidence(id, registrationId, dto.approved, dto.note ?? undefined, user);
   }
 
   @Patch(":id/registrations/:registrationId/attendance")

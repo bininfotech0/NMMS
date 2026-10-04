@@ -76,7 +76,7 @@ export function MemberDashboard() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{lapsed ? "Membership needs renewal" : "Registration pending review"}</CardTitle>
+          <CardTitle>{lapsed ? "Membership needs renewal" : "Registration in progress"}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">

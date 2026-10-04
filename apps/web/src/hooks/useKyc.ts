@@ -20,13 +20,13 @@ export function useSubmitKyc() {
       memberApiFetch<KycResponse>("/kyc/me", { method: "PUT", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kyc", "me"] });
-      toast.success("KYC details submitted for review");
+      toast.success("KYC details saved and verified automatically");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to submit KYC details")),
   });
 }
 
-// Staff-facing — org-wide KYC review queue, using the staff token.
+// Staff-facing — org-wide KYC and payout details list, using the staff token.
 export function useAdminKycList(status?: KycStatus) {
   return useQuery({
     queryKey: ["kyc", "admin", status ?? "all"],
@@ -45,9 +45,8 @@ export function useAdminKyc(memberId: string | null) {
   });
 }
 
-// Staff entering/correcting a member's payout details on their behalf (e.g.
-// a member without internet access). Always lands the KYC back in PENDING,
-// same as the member's own self-submission via useSubmitKyc.
+// Staff entering or correcting a member's payout details on their behalf.
+// The saved details are verified automatically, like member submissions.
 export function useUpdateKycAsAdmin() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -55,34 +54,9 @@ export function useUpdateKycAsAdmin() {
       apiFetch<KycResponse>(`/kyc/${memberId}`, { method: "PUT", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kyc"] });
-      toast.success("Payout details updated — pending review");
+      toast.success("Payout details saved and verified automatically");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to update payout details")),
-  });
-}
-
-export function useVerifyKyc() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (memberId: string) => apiFetch<KycResponse>(`/kyc/${memberId}/verify`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["kyc"] });
-      toast.success("KYC verified");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to verify KYC")),
-  });
-}
-
-export function useRejectKyc() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ memberId, note }: { memberId: string; note: string }) =>
-      apiFetch<KycResponse>(`/kyc/${memberId}/reject`, { method: "POST", body: JSON.stringify({ note }) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["kyc"] });
-      toast.success("KYC rejected");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to reject KYC")),
   });
 }
 

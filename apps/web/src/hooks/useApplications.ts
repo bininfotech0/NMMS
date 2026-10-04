@@ -12,40 +12,6 @@ export function useApplicationsQueue(enabled = true) {
   });
 }
 
-// Kept for the manual-override activation path (legacy SUBMITTED rows
-// predating the form-first/payment-last redesign) — not used by the routine
-// Applications queue UI anymore, since payment now auto-activates.
-export function useApproveApplication() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (memberId: string) =>
-      apiFetch<MemberResponse>(`/applications/${memberId}/approve`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["applications"] });
-      queryClient.invalidateQueries({ queryKey: ["members"] });
-      toast.success("Application approved");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to approve application")),
-  });
-}
-
-export function useRejectApplication() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ memberId, remarks }: { memberId: string; remarks: string }) =>
-      apiFetch<MemberResponse>(`/applications/${memberId}/reject`, {
-        method: "POST",
-        body: JSON.stringify({ remarks }),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["applications"] });
-      queryClient.invalidateQueries({ queryKey: ["members"] });
-      toast.success("Application rejected");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to reject application")),
-  });
-}
-
 function useLifecycleAction(action: "suspend" | "reactivate" | "mark-deceased", successMessage: string) {
   const queryClient = useQueryClient();
   return useMutation({

@@ -151,10 +151,9 @@ export class ReportsService {
     return members.map(this.toMemberRegisterRow);
   }
 
-  // Matches ApplicationsService.queue() (the Applications screen's own data
-  // source) — AWAITING_PAYMENT is the standard pending-payment state, plus
-  // any legacy SUBMITTED rows predating the form-first/payment-last redesign
-  // that are still awaiting a manual-override approve()/reject().
+  // Matches ApplicationsService.queue(): AWAITING_PAYMENT is the standard
+  // pending-payment state, plus legacy SUBMITTED rows that can still pay and
+  // activate without a manual review.
   async pendingApproval(user: AuthUser): Promise<MemberRegisterRow[]> {
     return this.memberRegisterByStatus(user, ["AWAITING_PAYMENT", "SUBMITTED"]);
   }

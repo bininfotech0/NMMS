@@ -11,8 +11,8 @@ import type { PayoutMethod } from "@nmms/shared";
 
 const STATUS_INFO: Record<string, { icon: typeof ShieldCheck; label: string; className: string }> = {
   NOT_SUBMITTED: { icon: ShieldAlert, label: "Not submitted", className: "bg-muted text-muted-foreground" },
-  PENDING: { icon: Clock, label: "Under review", className: "bg-amber-100 text-amber-700" },
-  VERIFIED: { icon: CheckCircle2, label: "Verified", className: "bg-emerald-100 text-emerald-700" },
+  PENDING: { icon: Clock, label: "Legacy pending", className: "bg-amber-100 text-amber-700" },
+  VERIFIED: { icon: CheckCircle2, label: "Verified automatically", className: "bg-emerald-100 text-emerald-700" },
   REJECTED: { icon: ShieldAlert, label: "Rejected", className: "bg-red-100 text-red-700" },
 };
 
@@ -74,10 +74,10 @@ export function MemberKyc() {
               <p className="text-sm text-destructive">{kyc.kycReviewNote}</p>
             )}
             {kyc.kycStatus === "VERIFIED" && (
-              <p className="text-sm text-muted-foreground">You can now withdraw earned points as money.</p>
+              <p className="text-sm text-muted-foreground">Your details are saved. Complete any required identity fields to withdraw earned points.</p>
             )}
             {kyc.kycStatus === "PENDING" && (
-              <p className="text-sm text-muted-foreground">Our team is reviewing your submission.</p>
+              <p className="text-sm text-muted-foreground">This is an older submission. Updated details are verified automatically.</p>
             )}
           </div>
         </CardContent>
@@ -182,11 +182,11 @@ export function MemberKyc() {
 
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={submitKyc.isPending} className="bg-brand-green hover:bg-brand-green/90">
-              {submitKyc.isPending ? "Submitting…" : "Submit for review"}
+              {submitKyc.isPending ? "Saving…" : "Save and verify"}
             </Button>
             {kyc.kycStatus === "VERIFIED" && (
               <p className="text-xs text-muted-foreground">
-                Changing your payout details will require re-verification before you can withdraw again.
+                Saved payout details are verified automatically. Configured identity and payout fields must be complete before withdrawals.
               </p>
             )}
           </form>

@@ -10,7 +10,7 @@ import { SelectMemberPlanDto } from "./dto/select-member-plan.dto";
 
 // Own profile — a curated, self-editable subset (see memberSelfUpdateSchema),
 // plus the self-service registration actions a DRAFT member needs to reach
-// SUBMITTED without staff involvement (select a plan, submit for review).
+// SUBMITTED without staff involvement (select a plan and pay to activate).
 // Registered before MembersController in members.module.ts so "GET/PATCH
 // /members/me" isn't shadowed by the staff controller's "/members/:id"
 // treating "me" as an id.
