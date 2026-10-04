@@ -19,7 +19,7 @@ export const referralLedgerReasonSchema = z.enum([
 ]);
 export type ReferralLedgerReason = z.infer<typeof referralLedgerReasonSchema>;
 
-export const rewardStatusSchema = z.enum(["PENDING", "FULFILLED"]);
+export const rewardStatusSchema = z.literal("EARNED");
 export type RewardStatus = z.infer<typeof rewardStatusSchema>;
 
 // A ledger row's own lifecycle — distinct from RewardStatus above. Only
@@ -74,11 +74,6 @@ export const referralRewardResponseSchema = z.object({
   createdAt: z.date(),
 });
 export type ReferralRewardResponse = z.infer<typeof referralRewardResponseSchema>;
-
-export const fulfillRewardSchema = z.object({
-  note: z.string().optional(),
-});
-export type FulfillRewardInput = z.infer<typeof fulfillRewardSchema>;
 
 // Staff-triggered generation for members who haven't opened their own
 // portal yet (e.g. field-registered, no self-service login) — see

@@ -1,6 +1,5 @@
 import { Gift } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { VolunteerBatchBadge, VolunteerBatchIcon } from "@/components/shared/VolunteerBatchBadge";
 import { useMyReferralRewards } from "@/hooks/useReferrals";
 import { useMyProfile } from "@/hooks/useMyProfile";
@@ -53,9 +52,7 @@ export function MemberRewards() {
                   <div className="flex items-center gap-2">
                     <VolunteerBatchBadge batch={reward.batch} />
                   </div>
-                  <Badge variant={reward.status === "FULFILLED" ? "secondary" : "outline"}>
-                    {reward.status === "FULFILLED" ? "Received" : "Pending"}
-                  </Badge>
+                  <span className="text-xs text-muted-foreground">Earned</span>
                 </li>
               ))}
             </ul>

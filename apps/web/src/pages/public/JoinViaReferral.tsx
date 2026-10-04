@@ -12,9 +12,11 @@ import type { ResolveReferralCodeResponse } from "@nmms/shared";
 export function JoinViaReferral() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const referralCode = searchParams.get("ref") ?? undefined;
+  const [referralCode, setReferralCode] = useState(() => searchParams.get("ref") ?? "");
 
   const [referrerName, setReferrerName] = useState<string | null>(null);
+  const [resolvedReferralCode, setResolvedReferralCode] = useState<string | null>(null);
+  const [isResolvingReferral, setIsResolvingReferral] = useState(false);
   const [fullName, setFullName] = useState("");
   const [mobile, setMobile] = useState("");
   const [aadhaarNumber, setAadhaarNumber] = useState("");
@@ -24,15 +26,48 @@ export function JoinViaReferral() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!referralCode) return;
-    memberApiFetch<ResolveReferralCodeResponse>(`/public/member-auth/resolve-code?code=${encodeURIComponent(referralCode)}`)
-      .then((res) => setReferrerName(res.fullName))
-      .catch(() => setReferrerName(null));
+    const code = referralCode.trim().toUpperCase();
+    setReferrerName(null);
+    setResolvedReferralCode(null);
+    if (!code) {
+      setIsResolvingReferral(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsResolvingReferral(true);
+    memberApiFetch<ResolveReferralCodeResponse>(`/public/member-auth/resolve-code?code=${encodeURIComponent(code)}`)
+      .then((res) => {
+        if (!isCurrent) return;
+        setReferrerName(res.fullName);
+        setResolvedReferralCode(code);
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setReferrerName(null);
+        setResolvedReferralCode(null);
+      })
+      .finally(() => {
+        if (isCurrent) setIsResolvingReferral(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [referralCode]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const normalizedReferralCode = referralCode.trim().toUpperCase();
+    if (normalizedReferralCode && isResolvingReferral) {
+      setError("Please wait while we check the referral code.");
+      return;
+    }
+    if (normalizedReferralCode && resolvedReferralCode !== normalizedReferralCode) {
+      setError("Please enter a valid referral code, or clear the optional field to continue without one.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       await registerMember({
@@ -41,7 +76,7 @@ export function JoinViaReferral() {
         aadhaarNumber,
         email: email || undefined,
         password,
-        referralCode,
+        referralCode: normalizedReferralCode || undefined,
       });
       navigate("/member");
     } catch (err) {
@@ -59,17 +94,6 @@ export function JoinViaReferral() {
         </div>
 
         <h1 className="mt-6 text-center font-heading text-lg font-semibold">Join as a member</h1>
-        {referralCode && (
-          <p className="mt-1 text-center text-sm text-muted-foreground">
-            {referrerName ? (
-              <>
-                You're joining via <span className="font-medium text-foreground">{referrerName}</span>'s invite
-              </>
-            ) : (
-              "Referral link"
-            )}
-          </p>
-        )}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
@@ -80,6 +104,31 @@ export function JoinViaReferral() {
               onChange={(e) => setFullName(e.target.value)}
               required
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="referralCode">Referral code or Member ID (optional)</Label>
+            <Input
+              id="referralCode"
+              placeholder="Referral code or Member ID"
+              value={referralCode}
+              onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+              autoCapitalize="characters"
+              autoComplete="off"
+              aria-describedby="referralCode-help referralCode-status"
+            />
+            <p id="referralCode-help" className="text-xs text-muted-foreground">
+              Enter the member's referral code, membership number, or Member ID. You can also open their invite link.
+              Leave blank if you weren't referred.
+            </p>
+            <p id="referralCode-status" className="min-h-4 text-xs text-muted-foreground" aria-live="polite">
+              {isResolvingReferral
+                ? "Checking referral code…"
+                : referrerName
+                  ? `Referred by ${referrerName}`
+                  : referralCode.trim()
+                    ? "Code not found. Check it or clear the field to continue without a referral."
+                    : ""}
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="mobile">Mobile number</Label>

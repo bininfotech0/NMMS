@@ -10,7 +10,9 @@ export function StepEducation({ form, setForm }: StepProps) {
   const { data: businessTypes = [] } = useLookups("BUSINESS_TYPE");
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div>
+      <p className="mb-4 text-xs text-muted-foreground">Optional — skip this section if these details are not available.</p>
+      <div className="grid gap-4 sm:grid-cols-2">
       <NativeSelect
         id="educationId"
         label="Education"
@@ -61,6 +63,7 @@ export function StepEducation({ form, setForm }: StepProps) {
           value={form.skills}
           onChange={(e) => setForm((f) => ({ ...f, skills: e.target.value }))}
         />
+      </div>
       </div>
     </div>
   );

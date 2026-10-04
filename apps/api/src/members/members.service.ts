@@ -432,64 +432,6 @@ export class MembersService {
     return members;
   }
 
-  // Self-registrations (via a referral link) land attributed to the org's
-  // system user — see MemberAuthService. A Field Executive "claims" one to
-  // confirm it in person, which reassigns createdById to themselves; from
-  // then on it behaves exactly like any other field-executive-created
-  // member for scoping/editing, and — per ApplicationsService.assertCanApprove
-  // — the same Field Executive can approve it once submitted.
-  async claim(id: string, user: AuthUser): Promise<MemberResponse> {
-    const member = await this.prisma.member.findFirst({
-      where: { id, organizationId: user.organizationId },
-      include: { createdBy: { select: { isSystem: true } } },
-    });
-    if (!member) {
-      throw new NotFoundException("Member not found");
-    }
-    if (!member.selfRegistered || !member.createdBy.isSystem) {
-      throw new ConflictException("This member is not an unclaimed self-registration");
-    }
-    // Compare-and-swap: only an unclaimed self-registration (still attributed
-    // to the sentinel system user) can be claimed, so two executives racing
-    // to claim the same member can't both win — the loser's updateMany
-    // matches zero rows.
-    const cas = await this.prisma.member.updateMany({
-      where: { id, selfRegistered: true, createdBy: { isSystem: true } },
-      data: { createdById: user.id },
-    });
-    if (cas.count === 0) {
-      throw new ConflictException("This member was just claimed by another executive — please refresh");
-    }
-    const updated = await this.prisma.member.findUniqueOrThrow({
-      where: { id },
-      include: MEMBER_INCLUDE,
-    });
-    return toMemberResponse(updated);
-  }
-
-  // The queue Field Executives (and admins) work from — self-registered
-  // members nobody has claimed yet. Deliberately not status-scoped: claim()
-  // itself only requires selfRegistered + still-system-attributed, and under
-  // the form-first/payment-last workflow a self-registered member can reach
-  // AWAITING_PAYMENT or even ACTIVE entirely through self-service before any
-  // staff ever looks at them — an earlier DRAFT-only filter here meant such a
-  // member became permanently invisible to this queue (and thus unclaimable
-  // through the UI, and permanently absent from any Field Executive's
-  // jurisdiction-scoped views) the moment they submitted, despite still
-  // genuinely being unclaimed.
-  async findUnclaimedReferrals(organizationId: string): Promise<MemberResponse[]> {
-    const members = await this.prisma.member.findMany({
-      where: {
-        organizationId,
-        selfRegistered: true,
-        createdBy: { isSystem: true },
-      },
-      orderBy: { createdAt: "asc" },
-      include: MEMBER_INCLUDE,
-    });
-    return members.map(toMemberResponse);
-  }
-
   // Admin-initiated: an ACTIVE member gains a separate Field Executive staff
   // account so they can start registering other members door-to-door. The
   // member's own login/portal access is untouched.

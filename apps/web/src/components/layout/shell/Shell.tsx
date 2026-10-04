@@ -86,30 +86,29 @@ function BottomNavLink({ item }: { item: ShellNavItem }) {
   );
 }
 
-// The bottom tab bar only has room for a handful of items before they get
-// squeezed unreadable/off-screen on a phone — cap what renders directly and
-// fold the rest behind a "More" tab that opens a full-list sheet, so every
-// nav item stays reachable on mobile regardless of how many sections/pages
-// exist (11 for the member portal as of this writing, and growing). Set to 6
-// (not lower) so it never clips AppShell's own curated 6-item mobileItems
-// list (5 real destinations + its own literal "More" shortcut to Settings —
-// that array is hand-picked on purpose, not the full nav, since "sidebar"
-// density already has a separate hamburger-menu sheet for reaching every
-// admin page on mobile).
-const MAX_BOTTOM_TABS = 6;
+// Keep the bottom bar compact; less-used destinations live in the More sheet.
+const MAX_BOTTOM_TABS = 5;
 
-function BottomNav({ items }: { items: ShellNavItem[] }) {
+function BottomNav({ items, allItems }: { items: ShellNavItem[]; allItems: ShellNavItem[] }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const overflow = items.length > MAX_BOTTOM_TABS;
-  const visible = overflow ? items.slice(0, MAX_BOTTOM_TABS) : items;
-  const hidden = overflow ? items.slice(MAX_BOTTOM_TABS) : [];
+  const explicitMore = items.at(-1)?.key === "more";
+  const directItems = explicitMore ? items.slice(0, -1) : items;
+  const overflow = directItems.length > MAX_BOTTOM_TABS;
+  const visible = overflow ? directItems.slice(0, MAX_BOTTOM_TABS) : directItems;
+  const visibleKeys = new Set(visible.map((item) => item.key));
+  const hidden = explicitMore
+    ? allItems.filter((item) => !visibleKeys.has(item.key))
+    : overflow
+      ? directItems.slice(MAX_BOTTOM_TABS)
+      : [];
+  const showMore = explicitMore || overflow;
 
   return (
     <div className="flex items-center justify-around">
       {visible.map((item) => (
         <BottomNavLink key={item.key} item={item} />
       ))}
-      {overflow && (
+      {showMore && (
         <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
           <SheetTrigger asChild>
             <button
@@ -323,7 +322,7 @@ export function Shell({
         </div>
 
         <nav className="no-print fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card lg:hidden">
-          <BottomNav items={bottomItems} />
+          <BottomNav items={bottomItems} allItems={flattenSections(sections)} />
         </nav>
       </div>
     );
@@ -362,7 +361,7 @@ export function Shell({
       <main className="mx-auto max-w-4xl px-4 py-6 pb-24 sm:pb-6">{children}</main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-white sm:hidden">
-        <BottomNav items={bottomItems} />
+        <BottomNav items={bottomItems} allItems={flattenSections(sections)} />
       </nav>
     </div>
   );

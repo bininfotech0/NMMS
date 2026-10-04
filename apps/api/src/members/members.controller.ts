@@ -12,7 +12,7 @@ import { PromoteToExecutiveDto } from "./dto/promote-to-executive.dto";
 import { UpdateMemberDto } from "./dto/update-member.dto";
 import { MembersService } from "./members.service";
 
-const CAN_CLAIM = [Role.FIELD_EXECUTIVE, Role.ADMIN, Role.SUPER_ADMIN] as const;
+const CAN_MANAGE_MEMBER_PASSWORD = [Role.FIELD_EXECUTIVE, Role.ADMIN, Role.SUPER_ADMIN] as const;
 const CAN_PROMOTE = [Role.ADMIN, Role.SUPER_ADMIN] as const;
 
 @ApiTags("members")
@@ -27,8 +27,7 @@ export class MembersController {
     return this.membersService.findAll(user);
   }
 
-  // Declared before ":id" so "dedupe-check"/"search-referrer"/
-  // "unclaimed-referrals" aren't swallowed as an id param.
+  // Declared before ":id" so static routes aren't swallowed as an id param.
   @Get("dedupe-check")
   dedupeCheck(@Query() query: DedupeCheckDto, @CurrentUser() user: AuthUser) {
     return this.membersService.dedupeCheck(query.mobile, query.aadhaarNumber, query.fullName, user.organizationId);
@@ -37,13 +36,6 @@ export class MembersController {
   @Get("search-referrer")
   searchReferrer(@Query("q") q: string, @CurrentUser() user: AuthUser) {
     return this.membersService.searchReferrer(q ?? "", user);
-  }
-
-  @Get("unclaimed-referrals")
-  @UseGuards(RolesGuard)
-  @Roles(...CAN_CLAIM)
-  unclaimedReferrals(@CurrentUser() user: AuthUser) {
-    return this.membersService.findUnclaimedReferrals(user.organizationId);
   }
 
   @Get(":id")
@@ -73,7 +65,7 @@ export class MembersController {
 
   @Post(":id/reset-password")
   @UseGuards(RolesGuard)
-  @Roles(...CAN_CLAIM)
+  @Roles(...CAN_MANAGE_MEMBER_PASSWORD)
   @HttpCode(200)
   async resetPassword(
     @Param("id") id: string,
@@ -82,13 +74,6 @@ export class MembersController {
   ) {
     await this.membersService.resetPassword(id, dto.newPassword, user);
     return { success: true };
-  }
-
-  @Post(":id/claim")
-  @UseGuards(RolesGuard)
-  @Roles(...CAN_CLAIM)
-  claim(@Param("id") id: string, @CurrentUser() user: AuthUser) {
-    return this.membersService.claim(id, user);
   }
 
   @Post(":id/promote-to-executive")

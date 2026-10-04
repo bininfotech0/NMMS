@@ -32,6 +32,41 @@ const REVIEW_STEP = 8;
 // profile first, then payment auto-activates the member with no separate
 // manual-review step in between.
 const PAYMENT_STEP = 9;
+const OPTIONAL_STEP_FIELDS: Partial<Record<number, (keyof WizardFormState)[]>> = {
+  2: [
+    "fatherName",
+    "motherName",
+    "spouseOrGuardianName",
+    "familyTypeId",
+    "familyMembersCount",
+    "childrenCount",
+    "monthlyIncome",
+    "isDifferentlyAbled",
+    "isExServiceman",
+    "isSeniorCitizen",
+  ],
+  4: ["educationId", "qualificationDetail", "occupationId", "businessTypeId", "languagesKnown", "skills"],
+  6: [
+    "emergencyContactName",
+    "emergencyContactMobile",
+    "emergencyContactRelationship",
+    "nomineeName",
+    "nomineeRelationship",
+    "nomineeDob",
+    "nomineeAddress",
+    "nomineeMobile",
+  ],
+};
+
+function nextStepSkippingEmptyOptional(currentStep: number, form: WizardFormState): number {
+  let nextStep = currentStep + 1;
+  while (nextStep < TOTAL_STEPS) {
+    const fields = OPTIONAL_STEP_FIELDS[nextStep];
+    if (!fields || fields.some((field) => Boolean(form[field]))) break;
+    nextStep++;
+  }
+  return Math.min(nextStep, TOTAL_STEPS - 1);
+}
 
 export function MemberWizard() {
   const { id } = useParams<{ id: string }>();
@@ -79,7 +114,7 @@ export function MemberWizard() {
     }
     setStepError(null);
     const ok = await save();
-    if (ok) setCurrentStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+    if (ok) setCurrentStep(nextStepSkippingEmptyOptional(currentStep, form));
   }
 
   async function handlePrevious() {

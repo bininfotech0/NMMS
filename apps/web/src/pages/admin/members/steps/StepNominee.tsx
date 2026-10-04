@@ -5,6 +5,9 @@ import type { StepProps } from "../wizard-types";
 export function StepNominee({ form, setForm }: StepProps) {
   return (
     <div className="space-y-6">
+      <p className="text-xs text-muted-foreground">
+        Optional — leave these sections blank if the member does not want to provide these details now.
+      </p>
       <div>
         <h3 className="mb-3 font-heading text-sm font-semibold">Emergency Contact</h3>
         <div className="grid gap-4 sm:grid-cols-3">

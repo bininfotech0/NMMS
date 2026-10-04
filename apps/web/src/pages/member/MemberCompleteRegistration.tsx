@@ -200,16 +200,16 @@ function PayFeeStep({ member }: { member: MemberResponse }) {
 function FinishProfileStep({ member }: { member: MemberResponse }) {
   const { data: documents = [] } = useMyDocuments();
   const uploadDocument = useUploadMyDocument();
-  const updateProfile = useUpdateMyProfile();
+  const updateProfile = useUpdateMyProfile({ notify: false });
   const submitRegistration = useSubmitMyRegistration();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const idProofInputRef = useRef<HTMLInputElement>(null);
   const [idProofType, setIdProofType] = useState<DocumentType>("AADHAAR");
-  const [declarationInfoCorrect, setDeclarationInfoCorrect] = useState(false);
-  const [declarationAcceptConstitution, setDeclarationAcceptConstitution] = useState(false);
-  const [declarationAcceptPrivacyPolicy, setDeclarationAcceptPrivacyPolicy] = useState(false);
-  const [declarationAcceptTerms, setDeclarationAcceptTerms] = useState(false);
-  const [declarationPlace, setDeclarationPlace] = useState("");
+  const [declarationInfoCorrect, setDeclarationInfoCorrect] = useState(member.declarationInfoCorrect);
+  const [declarationAcceptConstitution, setDeclarationAcceptConstitution] = useState(member.declarationAcceptConstitution);
+  const [declarationAcceptPrivacyPolicy, setDeclarationAcceptPrivacyPolicy] = useState(member.declarationAcceptPrivacyPolicy);
+  const [declarationAcceptTerms, setDeclarationAcceptTerms] = useState(member.declarationAcceptTerms);
+  const [declarationPlace, setDeclarationPlace] = useState(member.declarationPlace ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const hasPhoto = documents.some((d) => d.type === "PHOTO");
@@ -217,20 +217,25 @@ function FinishProfileStep({ member }: { member: MemberResponse }) {
   const hasAddress = !!member.addressLine && !!member.pincode;
   const allDeclarationsAccepted =
     declarationInfoCorrect && declarationAcceptConstitution && declarationAcceptPrivacyPolicy && declarationAcceptTerms;
+  const readyToSubmit = hasAddress && hasPhoto && hasIdProof && allDeclarationsAccepted;
+  const readinessChecks = [
+    { label: "Address and pincode", complete: hasAddress },
+    { label: "Passport photo", complete: hasPhoto },
+    { label: "One ID proof document", complete: hasIdProof },
+    { label: "All declarations accepted", complete: allDeclarationsAccepted },
+  ];
 
   async function handleSubmit() {
     setError(null);
     try {
-      if (declarationPlace) {
-        await updateProfile.mutateAsync({
-          declarationInfoCorrect,
-          declarationAcceptConstitution,
-          declarationAcceptPrivacyPolicy,
-          declarationAcceptTerms,
-          declarationPlace,
-          declarationDate: new Date(),
-        });
-      }
+      await updateProfile.mutateAsync({
+        declarationInfoCorrect,
+        declarationAcceptConstitution,
+        declarationAcceptPrivacyPolicy,
+        declarationAcceptTerms,
+        declarationPlace: declarationPlace.trim() || null,
+        declarationDate: new Date(),
+      });
       await submitRegistration.mutateAsync();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -340,12 +345,23 @@ function FinishProfileStep({ member }: { member: MemberResponse }) {
           </div>
         </div>
 
+        <div className="rounded-lg border border-border bg-muted/30 p-3">
+          <p className="mb-2 text-sm font-medium">Required before submission</p>
+          <ul className="space-y-1 text-sm">
+            {readinessChecks.map(({ label, complete }) => (
+              <li key={label} className={complete ? "text-brand-green" : "text-muted-foreground"}>
+                {complete ? "✓" : "○"} {label}
+              </li>
+            ))}
+          </ul>
+        </div>
+
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <Button
           type="button"
           onClick={handleSubmit}
-          disabled={submitRegistration.isPending || updateProfile.isPending || !allDeclarationsAccepted}
+          disabled={submitRegistration.isPending || updateProfile.isPending || !readyToSubmit}
           className="bg-brand-green hover:bg-brand-green/90"
         >
           {submitRegistration.isPending ? "Submitting…" : "Continue to Payment"}

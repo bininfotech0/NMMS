@@ -9,6 +9,7 @@ export function StepPersonal({ form, setForm }: StepProps) {
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">Optional — skip this section if these details are not available.</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="fatherName">Father's name</Label>

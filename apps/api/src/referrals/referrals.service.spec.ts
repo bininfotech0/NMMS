@@ -430,41 +430,4 @@ describe("ReferralsService", () => {
     });
   });
 
-  describe("fulfillReward", () => {
-    it("marks a PENDING reward as FULFILLED", async () => {
-      const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.referralReward.findFirst.mockResolvedValue({ id: "reward-1", status: "PENDING", note: null });
-      prisma.referralReward.update.mockResolvedValue({
-        id: "reward-1",
-        memberId: "member-1",
-        member: { fullName: "Test Member" },
-        batch: "GOLD",
-        pointsAtEarn: 20,
-        status: "FULFILLED",
-        fulfilledById: "staff-1",
-        fulfilledAt: new Date(),
-        note: "Gift handed over",
-        createdAt: new Date(),
-      });
-
-      const result = await service.fulfillReward("reward-1", "org-1", "staff-1", "Gift handed over");
-
-      expect(result.status).toBe("FULFILLED");
-      expect(prisma.referralReward.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: "reward-1" },
-          data: expect.objectContaining({ status: "FULFILLED", fulfilledById: "staff-1" }),
-        }),
-      );
-    });
-
-    it("refuses to fulfill a reward twice", async () => {
-      const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.referralReward.findFirst.mockResolvedValue({ id: "reward-1", status: "FULFILLED", note: null });
-
-      await expect(service.fulfillReward("reward-1", "org-1", "staff-1")).rejects.toThrow(ConflictException);
-    });
-  });
 });

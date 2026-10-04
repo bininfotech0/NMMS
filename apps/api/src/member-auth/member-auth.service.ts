@@ -72,15 +72,13 @@ export class MemberAuthService {
 
     let referralMemberId: string | undefined;
     if (dto.referralCode) {
-      const referrer = await this.prisma.member.findFirst({
-        where: { organizationId: org.id, referralCode: dto.referralCode },
-      });
+      const referrer = await this.findEligibleReferrer(dto.referralCode.trim(), org.id);
       // A referrer who's since become ineligible (matches MembersService.
       // assertReferrerValid / ReferralsService.awardPointsForApproval) should
       // stop accepting new signups on their link, not silently keep working
       // forever with the referral never actually paying out.
       if (!referrer || (BLOCKED_STATUSES as readonly string[]).includes(referrer.status)) {
-        throw new NotFoundException("Referral code not found");
+        throw new NotFoundException("Referral code or member ID not found");
       }
       referralMemberId = referrer.id;
     }
@@ -161,12 +159,29 @@ export class MemberAuthService {
     return this.toAuthMember(member);
   }
 
-  async resolveReferralCode(code: string): Promise<ResolveReferralCodeResponse> {
-    const referrer = await this.prisma.member.findFirst({ where: { referralCode: code } });
+  async resolveReferralCode(identifier: string): Promise<ResolveReferralCodeResponse> {
+    const organization = await this.prisma.organization.findFirst();
+    if (!organization) {
+      throw new NotFoundException("Organization is not configured yet");
+    }
+    const referrer = await this.findEligibleReferrer(identifier.trim(), organization.id);
     if (!referrer || (BLOCKED_STATUSES as readonly string[]).includes(referrer.status)) {
-      throw new NotFoundException("Referral code not found");
+      throw new NotFoundException("Referral code or member ID not found");
     }
     return { fullName: referrer.fullName };
+  }
+
+  private findEligibleReferrer(identifier: string, organizationId: string) {
+    return this.prisma.member.findFirst({
+      where: {
+        organizationId,
+        OR: [
+          { referralCode: { equals: identifier, mode: "insensitive" } },
+          { id: identifier },
+          { membershipNumber: { equals: identifier, mode: "insensitive" } },
+        ],
+      },
+    });
   }
 
   // Public: also used as the StatusHistory actor for system-triggered

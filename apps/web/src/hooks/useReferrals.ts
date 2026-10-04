@@ -10,7 +10,6 @@ import type {
   ReferralRewardResponse,
   ReferralSummaryResponse,
   ReferrerSearchResult,
-  RewardStatus,
 } from "@nmms/shared";
 import { apiFetch } from "@/lib/api-client";
 import { memberApiFetch } from "@/lib/member-api-client";
@@ -61,29 +60,10 @@ export function useGenerateReferralCode() {
   });
 }
 
-export function useReferralRewards(status?: RewardStatus) {
+export function useReferralRewards() {
   return useQuery({
-    queryKey: ["referrals", "rewards", status ?? "all"],
-    queryFn: () => {
-      const query = status ? `?status=${status}` : "";
-      return apiFetch<ReferralRewardResponse[]>(`/referrals/rewards${query}`);
-    },
-  });
-}
-
-export function useFulfillReward() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, note }: { id: string; note?: string }) =>
-      apiFetch<ReferralRewardResponse>(`/referrals/rewards/${id}/fulfill`, {
-        method: "POST",
-        body: JSON.stringify({ note }),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["referrals", "rewards"] });
-      toast.success("Reward marked as fulfilled");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to update reward")),
+    queryKey: ["referrals", "rewards"],
+    queryFn: () => apiFetch<ReferralRewardResponse[]>("/referrals/rewards"),
   });
 }
 

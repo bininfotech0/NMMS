@@ -34,7 +34,7 @@ import { logout } from "@/lib/auth";
 import { getInitials } from "@/lib/utils";
 import { Role } from "@nmms/shared";
 
-const REVIEWER_ROLES = [Role.ADMIN, Role.SUPER_ADMIN];
+const APPLICATION_QUEUE_ROLES = [Role.FIELD_EXECUTIVE, Role.ADMIN, Role.SUPER_ADMIN];
 
 type RawNavItem = ShellNavItem & { roles?: Role[] };
 
@@ -213,9 +213,9 @@ function HeaderExtras() {
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const isReviewer = !!user && REVIEWER_ROLES.includes(user.role);
-  const { data: pendingQueue = [] } = useApplicationsQueue(isReviewer);
-  const applicationsBadge = isReviewer && pendingQueue.length > 0 ? pendingQueue.length : undefined;
+  const canViewApplications = !!user && APPLICATION_QUEUE_ROLES.includes(user.role);
+  const { data: pendingQueue = [] } = useApplicationsQueue(canViewApplications);
+  const applicationsBadge = canViewApplications && pendingQueue.length > 0 ? pendingQueue.length : undefined;
 
   async function handleLogout() {
     await logout();

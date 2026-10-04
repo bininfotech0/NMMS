@@ -151,28 +151,6 @@ export function useMemberPayments(memberId: string | null) {
   });
 }
 
-// Self-registrations (via a referral link) waiting for a Field Executive to
-// claim/confirm them in person before payment collection proceeds.
-export function useUnclaimedReferrals() {
-  return useQuery({
-    queryKey: ["members", "unclaimed-referrals"],
-    queryFn: () => apiFetch<MemberResponse[]>("/members/unclaimed-referrals"),
-  });
-}
-
-export function useClaimMember() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiFetch<MemberResponse>(`/members/${id}/claim`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["members", "unclaimed-referrals"] });
-      queryClient.invalidateQueries({ queryKey: ["members"] });
-      toast.success("Claimed — continue their registration from Members");
-    },
-    onError: (err) => toast.error(errorMessage(err, "Failed to claim member")),
-  });
-}
-
 export function usePromoteToExecutive() {
   const queryClient = useQueryClient();
   return useMutation({

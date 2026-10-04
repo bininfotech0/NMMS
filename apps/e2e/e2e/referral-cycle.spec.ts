@@ -128,30 +128,17 @@ test("full referral cycle: link -> self-registration -> claim -> approval -> poi
   await expect(memberAPage.getByText("Silver", { exact: true }).first()).toBeVisible();
   await memberAContext.close();
 
-  // 6. Admin sees the pending reward and fulfills it. A Silver-tier
-  // activation cascades (tiersUpTo) and grants the Bronze reward too, so
-  // there are two rows for this referrer here — scope to the Silver one and
-  // separately confirm the cascaded Bronze row is also present.
+  // 6. Rewards are recorded automatically. A Silver-tier activation cascades
+  // (tiersUpTo) and grants the Bronze reward too, so there are two rows for
+  // this referrer.
   const adminContext = await browser.newContext({ storageState: AUTH_STATE.admin });
   const adminPage = await adminContext.newPage();
   await adminPage.goto("/admin/referral-rewards");
   const rewardRows = adminPage.getByRole("row", { name: new RegExp(referrerName) });
   await expect(rewardRows).toHaveCount(2);
-  const bronzeRow = rewardRows.filter({ hasText: "Bronze" });
-  await expect(bronzeRow).toBeVisible();
-  await expect(bronzeRow.getByText("Pending", { exact: true })).toBeVisible();
-  const rewardRow = rewardRows.filter({ hasText: "Silver" });
-  await expect(rewardRow).toBeVisible();
-  await expect(rewardRow.getByText("Pending", { exact: true })).toBeVisible();
-  await rewardRow.getByRole("button", { name: "Mark Fulfilled" }).click();
-  // The default tab filters to status=PENDING, so a just-fulfilled row drops
-  // out of the current view rather than updating in place — check the "All"
-  // tab for the new status instead of expecting the row to stay put.
-  await expect(rewardRow).toHaveCount(0);
-  await adminPage.getByRole("button", { name: "All" }).click();
-  const rewardRowAll = adminPage.getByRole("row", { name: new RegExp(referrerName) }).filter({ hasText: "Silver" });
-  await expect(rewardRowAll.getByText("Fulfilled", { exact: true })).toBeVisible();
-  await expect(rewardRowAll.getByRole("button", { name: "Mark Fulfilled" })).toHaveCount(0);
+  await expect(rewardRows.filter({ hasText: "Bronze" })).toBeVisible();
+  await expect(rewardRows.filter({ hasText: "Silver" })).toBeVisible();
+  await expect(adminPage.getByRole("button", { name: "Mark Fulfilled" })).toHaveCount(0);
   await adminContext.close();
 
   // 7. Field Executive hitting the admin-only Referral Rewards page degrades

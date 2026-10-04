@@ -27,7 +27,7 @@ import type { ReferralLedgerEntryResponse, WalletSummaryResponse, WithdrawalStat
 
 const STAT_CARDS: { key: keyof WalletSummaryResponse; label: string; isAmount?: boolean }[] = [
   { key: "earnedPoints", label: "Earned Points" },
-  { key: "pendingReviewPoints", label: "Legacy Pending Points" },
+  { key: "pendingReviewPoints", label: "Points not credited yet" },
   { key: "pendingPoints", label: "Withdrawal Pending" },
   { key: "approvedPoints", label: "Ready for payout" },
   { key: "convertedPoints", label: "Converted Points" },
@@ -51,7 +51,7 @@ const LEDGER_STATUS_STYLES: Partial<Record<ReferralLedgerEntryResponse["status"]
   REJECTED: "bg-red-100 text-red-700",
 };
 const LEDGER_STATUS_LABELS: Partial<Record<ReferralLedgerEntryResponse["status"], string>> = {
-  PENDING: "Pending review (legacy)",
+  PENDING: "Not credited yet",
   REJECTED: "Not approved",
 };
 
@@ -72,11 +72,14 @@ export function MemberWallet() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   const canWithdraw = kyc?.kycStatus === "VERIFIED" && kyc.isComplete;
+  const visibleStatCards = STAT_CARDS.filter(
+    ({ key }) => key !== "pendingReviewPoints" || (summary?.pendingReviewPoints ?? 0) > 0,
+  );
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {STAT_CARDS.map(({ key, label, isAmount }) => (
+        {visibleStatCards.map(({ key, label, isAmount }) => (
           <Card key={key} className="gap-1 py-3">
             <CardContent className="px-4">
               <p className="text-xs text-muted-foreground">{label}</p>

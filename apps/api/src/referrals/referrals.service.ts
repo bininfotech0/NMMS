@@ -8,7 +8,6 @@ import type {
   ReferralPointRuleResponse,
   ReferralRewardResponse,
   ReferralSummaryResponse,
-  RewardStatus,
 } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { PlanRewardsService } from "../plans/plan-rewards.service";
@@ -96,8 +95,8 @@ export class ReferralsService {
   // Called from PaymentsService.upgradePlan (staff-initiated tier change on
   // an ACTIVE member) and ApplicationsService.approve (a member's first plan
   // tier, on activation) — the only two places Member.planId is ever set.
-  // Grants a PENDING ReferralReward for `tier` and every lower tier not
-  // already earned (idempotent via the @@unique([memberId, batch])
+  // Records each reward earned at `tier` and every lower tier not already
+  // recorded (idempotent via the @@unique([memberId, batch])
   // constraint), mirroring the old point-threshold semantics but keyed off
   // the plan tier instead of referralPointsBalance. `pointsAtEarn` is purely
   // an audit snapshot now — it no longer gates eligibility.
@@ -473,34 +472,13 @@ export class ReferralsService {
     };
   }
 
-  async listRewards(organizationId: string, status?: RewardStatus): Promise<ReferralRewardResponse[]> {
+  async listRewards(organizationId: string): Promise<ReferralRewardResponse[]> {
     const rewards = await this.prisma.referralReward.findMany({
-      where: { organizationId, ...(status ? { status } : {}) },
+      where: { organizationId },
       include: { member: { select: { fullName: true } } },
       orderBy: { createdAt: "desc" },
     });
     return rewards.map(toRewardResponse);
-  }
-
-  async fulfillReward(
-    rewardId: string,
-    organizationId: string,
-    fulfilledById: string,
-    note?: string,
-  ): Promise<ReferralRewardResponse> {
-    const reward = await this.prisma.referralReward.findFirst({ where: { id: rewardId, organizationId } });
-    if (!reward) {
-      throw new NotFoundException("Reward not found");
-    }
-    if (reward.status === "FULFILLED") {
-      throw new ConflictException("Reward has already been fulfilled");
-    }
-    const updated = await this.prisma.referralReward.update({
-      where: { id: reward.id },
-      data: { status: "FULFILLED", fulfilledById, fulfilledAt: new Date(), note: note ?? reward.note },
-      include: { member: { select: { fullName: true } } },
-    });
-    return toRewardResponse(updated);
   }
 
   async leaderboard(organizationId: string, limit = 10): Promise<ReferralLeaderboardEntryResponse[]> {
@@ -563,7 +541,7 @@ function toRewardResponse(reward: {
     memberName: reward.member.fullName,
     batch: reward.batch as ReferralRewardResponse["batch"],
     pointsAtEarn: reward.pointsAtEarn,
-    status: reward.status as ReferralRewardResponse["status"],
+    status: "EARNED",
     fulfilledById: reward.fulfilledById,
     fulfilledAt: reward.fulfilledAt,
     note: reward.note,

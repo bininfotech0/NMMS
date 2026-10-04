@@ -11,16 +11,18 @@ export function useMyProfile() {
   });
 }
 
-export function useUpdateMyProfile() {
+export function useUpdateMyProfile({ notify = true }: { notify?: boolean } = {}) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (dto: MemberSelfUpdateInput) =>
       memberApiFetch<MemberResponse>("/members/me", { method: "PATCH", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["members", "me"] });
-      toast.success("Profile updated");
+      if (notify) toast.success("Profile updated");
     },
-    onError: (err) => toast.error(errorMessage(err, "Failed to update profile")),
+    onError: (err) => {
+      if (notify) toast.error(errorMessage(err, "Failed to update profile"));
+    },
   });
 }
 

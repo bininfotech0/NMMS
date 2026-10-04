@@ -384,63 +384,6 @@ describe("MembersService.submit", () => {
   });
 });
 
-describe("MembersService.claim", () => {
-  it("reassigns createdById to the claiming field executive for an unclaimed self-registration", async () => {
-    const prisma = makeMockPrisma();
-    const { service } = makeService(prisma);
-    const unclaimed = { ...makeMember({ selfRegistered: true }), createdBy: { isSystem: true } };
-    prisma.member.findFirst.mockResolvedValue(unclaimed);
-    prisma.member.updateMany.mockResolvedValue({ count: 1 });
-    prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ selfRegistered: true, createdById: "fe-1" }));
-
-    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await service.claim("member-1", user);
-
-    expect(prisma.member.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "member-1", selfRegistered: true, createdBy: { isSystem: true } },
-        data: { createdById: "fe-1" },
-      }),
-    );
-  });
-
-  it("loses a concurrent double-claim race cleanly via the CAS guard", async () => {
-    const prisma = makeMockPrisma();
-    const { service } = makeService(prisma);
-    const unclaimed = { ...makeMember({ selfRegistered: true }), createdBy: { isSystem: true } };
-    prisma.member.findFirst.mockResolvedValue(unclaimed);
-    prisma.member.updateMany.mockResolvedValue({ count: 0 });
-
-    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.claim("member-1", user)).rejects.toThrow(ConflictException);
-  });
-
-  it("refuses to claim a member that was staff-created (not self-registered)", async () => {
-    const prisma = makeMockPrisma();
-    const { service } = makeService(prisma);
-    const staffCreated = { ...makeMember({ selfRegistered: false }), createdBy: { isSystem: false } };
-    prisma.member.findFirst.mockResolvedValue(staffCreated);
-
-    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.claim("member-1", user)).rejects.toThrow(ConflictException);
-    expect(prisma.member.updateMany).not.toHaveBeenCalled();
-  });
-
-  it("refuses to claim a self-registration someone else already claimed", async () => {
-    const prisma = makeMockPrisma();
-    const { service } = makeService(prisma);
-    const alreadyClaimed = {
-      ...makeMember({ selfRegistered: true, createdById: "fe-2" }),
-      createdBy: { isSystem: false },
-    };
-    prisma.member.findFirst.mockResolvedValue(alreadyClaimed);
-
-    const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.claim("member-1", user)).rejects.toThrow(ConflictException);
-    expect(prisma.member.updateMany).not.toHaveBeenCalled();
-  });
-});
-
 describe("MembersService.promoteToExecutive", () => {
   it("creates a FIELD_EXECUTIVE user and links it back to the member", async () => {
     const prisma = makeMockPrisma();

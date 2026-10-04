@@ -20,7 +20,12 @@ export function StepMembership({ form, setForm, memberId }: StepProps) {
   const { data: branches = [] } = useLookups("BRANCH");
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div>
+      <p className="mb-4 text-xs text-muted-foreground">
+        Membership plan is required. Category, branch, referral and other details can be left blank. Empty personal,
+        education and nominee sections are skipped automatically.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
       <NativeSelect
         id="planId"
         label="Membership plan"
@@ -96,6 +101,7 @@ export function StepMembership({ form, setForm, memberId }: StepProps) {
           value={form.membershipRemarks}
           onChange={(e) => setForm((f) => ({ ...f, membershipRemarks: e.target.value }))}
         />
+      </div>
       </div>
     </div>
   );
