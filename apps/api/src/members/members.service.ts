@@ -189,6 +189,7 @@ export class MembersService {
   }
 
   async create(dto: CreateMemberInput, user: AuthUser): Promise<MemberResponse> {
+    await this.assertUniqueIdentity(user.organizationId, { mobile: dto.mobile });
     const registrationNumber = await this.numbering.nextRegistrationNumber(user.organizationId);
     const member = await this.prisma.member.create({
       data: {
@@ -250,6 +251,18 @@ export class MembersService {
     await this.assertReferrerValid(dto.referralMemberId, existing.id, user.organizationId);
 
     const { aadhaarNumber, nominee, ...rest } = dto;
+    // Every member needs their own mobile (it's their login) and their own
+    // Aadhaar — check only what's actually changing.
+    const mobileChanged = dto.mobile != null && dto.mobile !== existing.mobile;
+    const newAadhaarHash = aadhaarNumber ? this.aadhaar.hash(aadhaarNumber) : null;
+    const aadhaarChanged = newAadhaarHash !== null && newAadhaarHash !== existing.aadhaarHash;
+    if (mobileChanged || aadhaarChanged) {
+      await this.assertUniqueIdentity(
+        user.organizationId,
+        { mobile: mobileChanged ? dto.mobile! : undefined, aadhaarHash: aadhaarChanged ? newAadhaarHash! : undefined },
+        existing.id,
+      );
+    }
     const data: Prisma.MemberUpdateInput = { ...rest };
     if (aadhaarNumber === null) {
       data.aadhaarHash = null;
@@ -361,6 +374,41 @@ export class MembersService {
       include: MEMBER_INCLUDE,
     });
     return toMemberResponse(member);
+  }
+
+  // Mobile and Aadhaar are unique per organization among members who aren't
+  // REJECTED (same rule as self-registration in MemberAuthService.register).
+  // Not a DB constraint because existing data may already hold duplicates.
+  private async assertUniqueIdentity(
+    organizationId: string,
+    identity: { mobile?: string; aadhaarHash?: string },
+    excludeMemberId?: string,
+  ): Promise<void> {
+    const or: Prisma.MemberWhereInput[] = [
+      ...(identity.mobile ? [{ mobile: identity.mobile }] : []),
+      ...(identity.aadhaarHash ? [{ aadhaarHash: identity.aadhaarHash }] : []),
+    ];
+    if (or.length === 0) return;
+    const clash = await this.prisma.member.findFirst({
+      where: {
+        organizationId,
+        status: { not: "REJECTED" },
+        ...(excludeMemberId ? { id: { not: excludeMemberId } } : {}),
+        OR: or,
+      },
+      select: { id: true, fullName: true, mobile: true, aadhaarHash: true, membershipNumber: true, registrationNumber: true },
+    });
+    if (!clash || clash.id === excludeMemberId) return;
+    const ref = clash.membershipNumber ?? clash.registrationNumber;
+    const who = `${clash.fullName}${ref ? ` (${ref})` : ""}`;
+    if (identity.aadhaarHash && clash.aadhaarHash === identity.aadhaarHash) {
+      throw new ConflictException(
+        `This Aadhaar number is already registered to ${who}. Each member must have their own Aadhaar number.`,
+      );
+    }
+    throw new ConflictException(
+      `This mobile number is already registered to ${who}. Each member needs their own mobile number.`,
+    );
   }
 
   async dedupeCheck(

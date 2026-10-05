@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useMember, useSubmitMember, useUpdateMember } from "@/hooks/useMembers";
+import { ApiError } from "@/lib/api-client";
 import { useMemberDocuments } from "@/hooks/useDocuments";
 import {
   emptyWizardForm,
@@ -130,7 +131,10 @@ export function MemberWizard() {
     try {
       await updateMember.mutateAsync({ id: id!, dto: wizardFormToUpdateDto(form) });
       return true;
-    } catch {
+    } catch (err) {
+      // e.g. "This Aadhaar number is already registered to …" — keep it on
+      // screen (the toast disappears) so staff know why they can't continue.
+      setStepError(err instanceof ApiError ? err.message : "Couldn't save. Please check your internet and try again.");
       return false;
     }
   }

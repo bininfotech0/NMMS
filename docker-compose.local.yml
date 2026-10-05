@@ -1,0 +1,15 @@
+# Local stack override (project name "nmms-local"):
+#   docker compose -p nmms-local -f docker-compose.yml -f docker-compose.local.yml up -d --build
+# App on http://localhost:8080, API on :3000, Postgres on :5434. No Traefik/HTTPS.
+services:
+  postgres:
+    ports:
+      - "5434:5432"
+  api:
+    ports:
+      - "3000:3000"
+  nginx:
+    ports:
+      - "8080:80"
+  traefik:
+    profiles: ["prod"]

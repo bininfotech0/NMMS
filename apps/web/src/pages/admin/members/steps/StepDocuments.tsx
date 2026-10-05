@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useAutoFillIdentity, useMemberDocuments, useUploadDocument } from "@/hooks/useDocuments";
+import { useDedupeCheck } from "@/hooks/useMembers";
 import type { DocumentType, IdentityAutoFillResponse } from "@nmms/shared";
 import { ID_PROOF_DOCUMENT_TYPES, type StepProps } from "../wizard-types";
 
@@ -34,6 +35,20 @@ export function StepDocuments({ form, setForm, memberId }: StepProps) {
   const { data: documents = [] } = useMemberDocuments(memberId);
   const autoFillInputRef = useRef<HTMLInputElement>(null);
   const autoFill = useAutoFillIdentity();
+  const dedupeCheck = useDedupeCheck();
+  const [aadhaarClash, setAadhaarClash] = useState<string | null>(null);
+
+  // Each member must have their own Aadhaar — warn as soon as it's typed
+  // (the server also refuses to save a duplicate).
+  async function checkAadhaar() {
+    setAadhaarClash(null);
+    if (!/^\d{12}$/.test(form.aadhaarNumber)) return;
+    const matches = await dedupeCheck.mutateAsync({ aadhaarNumber: form.aadhaarNumber }).catch(() => []);
+    const clash = matches.find((m) => m.matchedOn === "aadhaar" && m.id !== memberId);
+    if (clash) {
+      setAadhaarClash(`This Aadhaar number is already registered to ${clash.fullName}. Each member must have their own Aadhaar number.`);
+    }
+  }
 
   function applyAutoFillResult(result: IdentityAutoFillResponse) {
     setForm((f) => ({
@@ -122,11 +137,19 @@ export function StepDocuments({ form, setForm, memberId }: StepProps) {
             title="Aadhaar number must be exactly 12 digits"
             maxLength={12}
             value={form.aadhaarNumber}
-            onChange={(e) => setForm((f) => ({ ...f, aadhaarNumber: e.target.value.replace(/\D/g, "") }))}
+            onChange={(e) => {
+              setAadhaarClash(null);
+              setForm((f) => ({ ...f, aadhaarNumber: e.target.value.replace(/\D/g, "") }));
+            }}
+            onBlur={() => void checkAadhaar()}
           />
-          <p className="text-xs text-muted-foreground">
-            Only stored as a hash for duplicate checks — leave blank to keep the existing one.
-          </p>
+          {aadhaarClash ? (
+            <p role="alert" className="text-xs text-destructive">{aadhaarClash}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Kept private — only used to stop duplicate members. Leave blank to keep the one already saved.
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="pan">PAN</Label>

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AUTH_STATE, uniqueMobile } from "./support/constants";
+import { AUTH_STATE, uniqueAadhaar, uniqueMobile } from "./support/constants";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PHOTO = path.join(__dirname, "..", "fixtures", "photo.jpg");
@@ -60,11 +60,13 @@ test.describe("member registration wizard", () => {
     await page.getByLabel("Full name").fill("Dedupe Attempt Member");
     await page.getByLabel("Mobile number").fill(firstMobile);
     await page.getByLabel("Mobile number").blur();
-    await expect(page.getByText(/matches an existing member/i)).toBeVisible();
+    await expect(page.getByText(/already registered to/i)).toBeVisible();
+    // A repeated mobile is a hard stop now, not just a warning.
+    await expect(page.getByRole("button", { name: "Create Draft" })).toBeDisabled();
 
     await page.getByLabel("Mobile number").fill(uniqueMobile());
     await page.getByLabel("Mobile number").blur();
-    await expect(page.getByText(/matches an existing member/i)).toHaveCount(0);
+    await expect(page.getByText(/already registered to/i)).toHaveCount(0);
   });
 
   test("Save Draft persists mid-wizard and reloading the wizard shows saved values", async ({ page }) => {
@@ -145,7 +147,7 @@ test.describe("member registration wizard", () => {
     await page.locator("#current-addressLine").fill("42 Wizard Test Lane");
     await page.locator("#current-pincode").fill("110001");
     await page.getByLabel("Same as current address").check();
-    await page.getByLabel("Aadhaar number").fill("123412341234");
+    await page.getByLabel("Aadhaar number").fill(uniqueAadhaar(mobile));
     await page.getByLabel("PAN").fill("ABCDE1234F");
     for (const slot of DOCUMENT_SLOTS) {
       const container = page.getByTestId(`document-slot-${slot}`);

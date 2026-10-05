@@ -24,9 +24,9 @@ import type { DedupeMatch, MemberResponse, MemberStatus } from "@nmms/shared";
 
 function describeDedupeMatch(match: DedupeMatch): string {
   if (match.matchedOn === "name") {
-    return `This name is similar to an existing member: ${match.fullName} (${match.status}). Please confirm this isn't a duplicate.`;
+    return `This name is similar to an existing member: ${match.fullName}. Please check it isn't the same person.`;
   }
-  return `This mobile number matches an existing member: ${match.fullName} (${match.status}).`;
+  return `This mobile number is already registered to ${match.fullName}. Each member needs their own mobile number — search for ${match.fullName} instead of adding them again.`;
 }
 
 const STATUS_FILTERS: ("All" | MemberStatus)[] = [
@@ -289,6 +289,9 @@ function AddMemberSheet({
   const [mobile, setMobile] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [dedupeWarning, setDedupeWarning] = useState<string | null>(null);
+  // A mobile (or Aadhaar) match is a hard stop — the server refuses it too.
+  // A similar-name match is only a warning.
+  const [dedupeBlocking, setDedupeBlocking] = useState(false);
   const createMember = useCreateMember();
   const dedupeCheck = useDedupeCheck();
 
@@ -297,12 +300,16 @@ function AddMemberSheet({
     setMobile("");
     setError(null);
     setDedupeWarning(null);
+    setDedupeBlocking(false);
   }
 
   async function handleMobileBlur() {
     if (mobile.length < 10) return;
     const matches = await dedupeCheck.mutateAsync({ mobile, fullName: fullName || undefined });
-    setDedupeWarning(matches.length > 0 ? describeDedupeMatch(matches[0]) : null);
+    const blocking = matches.find((m) => m.matchedOn !== "name");
+    const shown = blocking ?? matches[0];
+    setDedupeWarning(shown ? describeDedupeMatch(shown) : null);
+    setDedupeBlocking(!!blocking);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -360,17 +367,26 @@ function AddMemberSheet({
               pattern="[6-9][0-9]{9}"
               maxLength={10}
               value={mobile}
-              onChange={(e) => setMobile(e.target.value)}
+              onChange={(e) => {
+                setMobile(e.target.value);
+                // A new number needs a fresh check (runs again on blur).
+                setDedupeWarning(null);
+                setDedupeBlocking(false);
+              }}
               onBlur={handleMobileBlur}
               required
             />
-            {dedupeWarning && <p className="text-sm text-amber-600">{dedupeWarning}</p>}
+            {dedupeWarning && (
+              <p role="alert" className={cn("text-sm", dedupeBlocking ? "text-destructive" : "text-amber-600")}>
+                {dedupeWarning}
+              </p>
+            )}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <SheetFooter className="px-0">
             <Button
               type="submit"
-              disabled={createMember.isPending}
+              disabled={createMember.isPending || dedupeBlocking}
               className="bg-brand-green hover:bg-brand-green/90"
             >
               {createMember.isPending ? "Starting…" : "Create Draft"}

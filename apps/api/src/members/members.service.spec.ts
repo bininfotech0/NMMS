@@ -574,3 +574,53 @@ describe("MembersService.resetPassword", () => {
     expect(prisma.member.update).not.toHaveBeenCalled();
   });
 });
+
+describe("MembersService — unique mobile and Aadhaar", () => {
+  it("refuses to add a member whose mobile already belongs to another member", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    prisma.member.findFirst.mockResolvedValue(
+      makeMember({ id: "other", fullName: "Sita Devi", mobile: "9876543210", membershipNumber: "MEM-2026-0007" }),
+    );
+
+    await expect(service.create({ fullName: "New Person", mobile: "9876543210" }, makeAuthUser())).rejects.toThrow(
+      /mobile number is already registered to Sita Devi \(MEM-2026-0007\)/,
+    );
+    expect(prisma.member.create).not.toHaveBeenCalled();
+    expect(prisma.member.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: { not: "REJECTED" }, OR: [{ mobile: "9876543210" }] }),
+      }),
+    );
+  });
+
+  it("refuses to save an Aadhaar number that belongs to another member", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ id: "member-1", status: "DRAFT", aadhaarHash: null });
+    prisma.member.findFirst
+      .mockResolvedValueOnce(existing) // findEditable
+      .mockResolvedValueOnce(makeMember({ id: "other", fullName: "Ravi Kumar", aadhaarHash: "hashed:123412341234" }));
+
+    await expect(service.update("member-1", { aadhaarNumber: "123412341234" }, makeAuthUser())).rejects.toThrow(
+      /Aadhaar number is already registered to Ravi Kumar/,
+    );
+    expect(prisma.member.update).not.toHaveBeenCalled();
+  });
+
+  it("does not check identity when the mobile and Aadhaar aren't changing", async () => {
+    const prisma = makeMockPrisma();
+    const { service } = makeService(prisma);
+    const existing = makeMember({ id: "member-1", status: "DRAFT", mobile: "9876543210", aadhaarHash: "hashed:123412341234" });
+    prisma.member.findFirst.mockResolvedValue(existing);
+    prisma.member.update.mockResolvedValue(existing);
+    prisma.member.findUniqueOrThrow.mockResolvedValue(existing);
+
+    await service
+      .update("member-1", { mobile: "9876543210", aadhaarNumber: "123412341234" }, makeAuthUser())
+      .catch(() => undefined);
+
+    // Only findEditable's lookup — no identity lookup for unchanged values.
+    expect(prisma.member.findFirst).toHaveBeenCalledTimes(1);
+  });
+});
