@@ -33,7 +33,23 @@ describe("AllExceptionsFilter", () => {
     const body = send.mock.calls[0][0];
     expect(body.message).not.toBe("Validation failed");
     expect(body.message).toContain("Aadhaar number must be 12 digits");
-    expect(body.message).toContain("aadhaarNumber");
+    // The code-level field name is not shown to users.
+    expect(body.message).not.toContain("aadhaarNumber");
+  });
+
+  it("hides raw internal error text in production", () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const filter = new AllExceptionsFilter();
+      const { host, status, send } = makeHost();
+      filter.catch(new Error("Invalid `prisma.member.create()` invocation"), host);
+
+      expect(status).toHaveBeenCalledWith(500);
+      expect(send.mock.calls[0][0].message).not.toContain("prisma");
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
   });
 
   it("still uses the plain message for a normal HttpException", () => {

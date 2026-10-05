@@ -30,7 +30,7 @@ test.describe("payments — admin", () => {
     // exact: true — the topbar's wallet icon has a title like "No outstanding
     // payments" / "N members with outstanding payment", which otherwise also
     // matches this non-exact query.
-    await expect(page.getByRole("button", { name: "Outstanding", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Still to pay", exact: true })).toBeVisible();
 
     await page.getByPlaceholder("Search members...").fill("zzz-no-such-outstanding-member-zzz");
     await expect(page.getByText(name)).toHaveCount(0);
@@ -38,19 +38,19 @@ test.describe("payments — admin", () => {
     const outstandingRow = page.getByRole("row", { name: new RegExp(name) });
     await expect(outstandingRow).toBeVisible();
 
-    await outstandingRow.getByRole("button", { name: "Collect" }).click();
-    await expect(page.getByText(`Collecting payment from ${name}.`)).toBeVisible();
+    await outstandingRow.getByRole("button", { name: "Collect fee" }).click();
+    await expect(page.getByText(`From ${name}.`, { exact: false })).toBeVisible();
     const offlineToggle = page.getByRole("button", { name: "Record an offline payment instead" });
     if (await offlineToggle.count()) {
       await offlineToggle.click();
     }
-    await page.getByRole("button", { name: "Record Payment" }).click();
-    await expect(page.getByText(`Collecting payment from ${name}.`)).toHaveCount(0);
+    await page.getByRole("button", { name: "Money received — save" }).click();
+    await expect(page.getByText(`From ${name}.`, { exact: false })).toHaveCount(0);
 
     await page.getByPlaceholder("Search members...").fill(name);
     await expect(page.getByRole("row", { name: new RegExp(name) })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "History" }).click();
+    await page.getByRole("button", { name: "Paid", exact: true }).click();
     await page.getByPlaceholder("Search by receipt, member...").fill(name);
     await expect(page.getByRole("row", { name: new RegExp(name) })).toBeVisible();
   });
@@ -71,7 +71,7 @@ test.describe("payments — admin", () => {
     await apiCtx.dispose();
 
     await page.goto("/admin/payments");
-    await page.getByRole("button", { name: "History" }).click();
+    await page.getByRole("button", { name: "Paid", exact: true }).click();
     await page.getByPlaceholder("Search by receipt, member...").fill(name);
     const row = page.getByRole("row", { name: new RegExp(name) });
     await expect(row).toBeVisible();

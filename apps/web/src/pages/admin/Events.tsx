@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Plus, Pencil, Users2, Trash2, UserPlus, Check, X, ImagePlus, Video } from "lucide-react";
+import { Plus, Pencil, Users2, Trash2, UserPlus, Check, ImagePlus, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -229,6 +229,7 @@ function EventSheet({
   const [targetQuantity, setTargetQuantity] = useState(event?.targetQuantity ? String(event.targetQuantity) : "");
   const [pointsReward, setPointsReward] = useState(event ? String(event.pointsReward) : "0");
   const [youtubeUrl, setYoutubeUrl] = useState(event?.youtubeUrl ?? "");
+  const [confirmRemoveBanner, setConfirmRemoveBanner] = useState(false);
   const [tierOverrides, setTierOverrides] = useState<Record<PlanTier, string>>(() =>
     Object.fromEntries(
       PLAN_TIER_ORDER.map((tier) => [
@@ -318,7 +319,7 @@ function EventSheet({
         </SheetHeader>
         <form className="flex flex-1 flex-col gap-4 overflow-y-auto px-4" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="title">Event name</Label>
             <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
           <div className="space-y-1.5">
@@ -332,7 +333,7 @@ function EventSheet({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="location">Location</Label>
+            <Label htmlFor="location">Place</Label>
             <Input id="location" value={location ?? ""} onChange={(e) => setLocation(e.target.value)} />
           </div>
           <div className="space-y-1.5">
@@ -350,7 +351,7 @@ function EventSheet({
             <Input id="endAt" type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="capacity">Capacity (optional)</Label>
+            <Label htmlFor="capacity">Maximum people (optional)</Label>
             <Input
               id="capacity"
               type="number"
@@ -360,8 +361,12 @@ function EventSheet({
               onChange={(e) => setCapacity(e.target.value)}
             />
           </div>
-          <div className="space-y-3 rounded-lg border border-dashed border-border p-3">
-            <p className="text-xs font-medium text-muted-foreground">Media (optional)</p>
+          <details className="group space-y-3 rounded-lg border border-dashed border-border p-3" open={!!(youtubeUrl || event?.bannerImageUrl)}>
+            <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground">
+              <span className="group-open:hidden">▸ </span>
+              <span className="hidden group-open:inline">▾ </span>
+              Picture &amp; video (optional)
+            </summary>
             {isEdit ? (
               <div className="space-y-1.5">
                 <Label>Banner image</Label>
@@ -389,11 +394,20 @@ function EventSheet({
                       size="sm"
                       variant="ghost"
                       disabled={removeBanner.isPending}
-                      onClick={() => removeBanner.mutate(event.id)}
+                      onClick={() => setConfirmRemoveBanner(true)}
                     >
                       Remove
                     </Button>
                   )}
+                  <ConfirmDialog
+                    open={confirmRemoveBanner}
+                    onOpenChange={setConfirmRemoveBanner}
+                    title="Remove the banner picture?"
+                    description="Members will no longer see this picture on the event. You can upload a new one any time."
+                    confirmLabel="Remove picture"
+                    isPending={removeBanner.isPending}
+                    onConfirm={() => removeBanner.mutate(event.id, { onSettled: () => setConfirmRemoveBanner(false) })}
+                  />
                 </div>
                 <input
                   ref={bannerInputRef}
@@ -423,12 +437,20 @@ function EventSheet({
                 />
               </div>
             </div>
-          </div>
-          <div className="space-y-1.5 rounded-lg border border-dashed border-border p-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              Completion target (optional) — members can submit evidence toward this and earn points
-            </p>
-            <Label htmlFor="targetDescription">Target description</Label>
+          </details>
+          <details
+            className="group space-y-1.5 rounded-lg border border-dashed border-border p-3"
+            open={!!(targetDescription || targetQuantity || Number(pointsReward) > 0)}
+          >
+            <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground">
+              <span className="group-open:hidden">▸ </span>
+              <span className="hidden group-open:inline">▾ </span>
+              Task &amp; reward points (optional)
+              <span className="mt-1 block text-xs font-normal">
+                Give members a task (like planting trees). When they tell us what they did, they earn points.
+              </span>
+            </summary>
+            <Label htmlFor="targetDescription">What should members do?</Label>
             <Input
               id="targetDescription"
               placeholder="e.g. Plant 100 saplings"
@@ -437,7 +459,7 @@ function EventSheet({
             />
             <div className="grid grid-cols-2 gap-3 pt-1">
               <div className="space-y-1.5">
-                <Label htmlFor="targetQuantity">Target quantity</Label>
+                <Label htmlFor="targetQuantity">How many? (goal)</Label>
                 <Input
                   id="targetQuantity"
                   type="number"
@@ -448,7 +470,7 @@ function EventSheet({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pointsReward">Points reward</Label>
+                <Label htmlFor="pointsReward">Points they earn</Label>
                 <Input
                   id="pointsReward"
                   type="number"
@@ -460,9 +482,9 @@ function EventSheet({
               </div>
             </div>
             <div className="space-y-1.5 pt-1">
-              <Label>Reward points by plan tier (optional)</Label>
+              <Label>Different points for each plan (optional)</Label>
               <p className="text-xs text-muted-foreground">
-                Leave blank to use the base points reward above for that tier.
+                Leave empty to give everyone the points above.
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {REWARD_TIERS.map((tier) => (
@@ -483,7 +505,7 @@ function EventSheet({
                 ))}
               </div>
             </div>
-          </div>
+          </details>
           {isEdit && (
             <div className="space-y-1.5">
               <Label htmlFor="status">Status</Label>

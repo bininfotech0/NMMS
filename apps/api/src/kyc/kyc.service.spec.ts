@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { NotFoundException } from "@nestjs/common";
 import { KycService } from "./kyc.service";
 import { makeMember, makeMockPrisma } from "../test/fixtures";
 
@@ -65,7 +65,7 @@ describe("KycService", () => {
       const crypto = makeCrypto();
       const service = makeService(prisma, crypto);
       prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember());
-      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "PENDING" }));
+      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "VERIFIED" }));
       prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
 
       await service.submitKyc("member-1", {
@@ -82,16 +82,16 @@ describe("KycService", () => {
         data: expect.objectContaining({
           bankAccountNumberEncrypted: "enc(1234567890123456)",
           bankAccountNumberLast4: "3456",
-          kycStatus: "PENDING",
+          kycStatus: "VERIFIED",
         }),
       });
     });
 
-    it("reverts an already-VERIFIED member to PENDING on resubmit", async () => {
+    it("saves updated details straight away (no review step) and clears any old review note", async () => {
       const prisma = makeMockPrisma();
       const service = makeService(prisma);
       prisma.member.findUniqueOrThrow.mockResolvedValue(makeMember({ kycStatus: "VERIFIED" }));
-      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "PENDING" }));
+      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "VERIFIED" }));
       prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
 
       await service.submitKyc("member-1", { payoutMethod: "UPI", upiId: "ramesh@upi" });
@@ -99,9 +99,9 @@ describe("KycService", () => {
       expect(prisma.member.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            kycStatus: "PENDING",
+            kycStatus: "VERIFIED",
             kycReviewedById: null,
-            kycReviewedAt: null,
+            kycReviewedAt: expect.any(Date),
             kycReviewNote: null,
           }),
         }),
@@ -133,12 +133,12 @@ describe("KycService", () => {
   });
 
   describe("updateKycAsAdmin", () => {
-    it("lets staff enter payout details on a member's behalf, landing back in PENDING for review", async () => {
+    it("lets staff enter payout details on a member's behalf, saved straight away", async () => {
       const prisma = makeMockPrisma();
       const crypto = makeCrypto();
       const service = makeService(prisma, crypto);
       prisma.member.findFirst.mockResolvedValue(makeMember({ organizationId: "org-1", kycStatus: "REJECTED" }));
-      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "PENDING" }));
+      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "VERIFIED" }));
       prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
 
       await service.updateKycAsAdmin("member-1", "org-1", {
@@ -155,7 +155,7 @@ describe("KycService", () => {
         where: { id: "member-1" },
         data: expect.objectContaining({
           bankAccountNumberEncrypted: "enc(1234567890123456)",
-          kycStatus: "PENDING",
+          kycStatus: "VERIFIED",
           kycReviewedById: null,
         }),
       });
@@ -170,68 +170,6 @@ describe("KycService", () => {
         service.updateKycAsAdmin("member-1", "org-1", { payoutMethod: "UPI", upiId: "a@upi" }),
       ).rejects.toThrow(NotFoundException);
       expect(prisma.member.update).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("verify", () => {
-    it("verifies a PENDING submission", async () => {
-      const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.member.findFirst.mockResolvedValue(makeMember({ kycStatus: "PENDING" }));
-      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "VERIFIED" }));
-      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
-
-      const result = await service.verify("member-1", "org-1", "admin-1");
-
-      expect(result.kycStatus).toBe("VERIFIED");
-      expect(prisma.member.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ kycStatus: "VERIFIED", kycReviewedById: "admin-1" }),
-        }),
-      );
-    });
-
-    it("refuses to verify a submission that isn't PENDING", async () => {
-      const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.member.findFirst.mockResolvedValue(makeMember({ kycStatus: "NOT_SUBMITTED" }));
-
-      await expect(service.verify("member-1", "org-1", "admin-1")).rejects.toThrow(ConflictException);
-      expect(prisma.member.update).not.toHaveBeenCalled();
-    });
-
-    it("404s when the member doesn't exist in this org", async () => {
-      const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.member.findFirst.mockResolvedValue(null);
-
-      await expect(service.verify("member-1", "org-1", "admin-1")).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  describe("reject", () => {
-    it("rejects a PENDING submission with a note", async () => {
-      const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.member.findFirst.mockResolvedValue(makeMember({ kycStatus: "PENDING" }));
-      prisma.member.update.mockResolvedValue(makeMember({ kycStatus: "REJECTED" }));
-      prisma.orgSettings.upsert.mockResolvedValue(makeSettings());
-
-      await service.reject("member-1", "org-1", "admin-1", "Blurry document");
-
-      expect(prisma.member.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ kycStatus: "REJECTED", kycReviewNote: "Blurry document" }),
-        }),
-      );
-    });
-
-    it("refuses to reject a submission that isn't PENDING", async () => {
-      const prisma = makeMockPrisma();
-      const service = makeService(prisma);
-      prisma.member.findFirst.mockResolvedValue(makeMember({ kycStatus: "VERIFIED" }));
-
-      await expect(service.reject("member-1", "org-1", "admin-1", "note")).rejects.toThrow(ConflictException);
     });
   });
 

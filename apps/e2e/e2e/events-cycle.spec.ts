@@ -35,13 +35,14 @@ test.describe("events — admin", () => {
     const title = `Tree Plantation ${uniqueSuffix()}`;
     await page.goto("/admin/events");
     await page.getByRole("button", { name: "Create Event" }).click();
-    await page.getByLabel("Title").fill(title);
+    await page.getByLabel("Event name").fill(title);
     await page.getByLabel("Description", { exact: true }).fill("Plant saplings across the district");
-    await page.getByLabel("Location").fill("Community Park");
+    await page.getByLabel("Place").fill("Community Park");
     await page.getByLabel("Starts at").fill("2027-01-15T09:00");
-    await page.getByLabel("Target description").fill("Plant 100 saplings");
-    await page.getByLabel("Target quantity").fill("100");
-    await page.getByLabel("Points reward").fill("50");
+    await page.getByText("Task & reward points (optional)").click();
+    await page.getByLabel("What should members do?").fill("Plant 100 saplings");
+    await page.getByLabel("How many? (goal)").fill("100");
+    await page.getByLabel("Points they earn").fill("50");
     await page.getByRole("button", { name: "Create Event" }).click();
     // Every run creates an event with this same fixed "Starts at" date, and
     // the list isn't sorted by creation time — search by the unique title so
@@ -55,7 +56,7 @@ test.describe("events — admin", () => {
     const title = `Blood Donation ${uniqueSuffix()}`;
     await page.goto("/admin/events");
     await page.getByRole("button", { name: "Create Event" }).click();
-    await page.getByLabel("Title").fill(title);
+    await page.getByLabel("Event name").fill(title);
     await page.getByLabel("Starts at").fill("2027-02-01T09:00");
     await page.getByRole("button", { name: "Create Event" }).click();
 
@@ -87,10 +88,11 @@ test.describe("events — full evidence cycle (approve)", () => {
     const title = `Approve Cycle Event ${uniqueSuffix()}`;
     await adminPage.goto("/admin/events");
     await adminPage.getByRole("button", { name: "Create Event" }).click();
-    await adminPage.getByLabel("Title").fill(title);
+    await adminPage.getByLabel("Event name").fill(title);
     await adminPage.getByLabel("Starts at").fill("2027-03-01T09:00");
-    await adminPage.getByLabel("Target description").fill("Collect 50 signatures");
-    await adminPage.getByLabel("Points reward").fill("30");
+    await adminPage.getByText("Task & reward points (optional)").click();
+    await adminPage.getByLabel("What should members do?").fill("Collect 50 signatures");
+    await adminPage.getByLabel("Points they earn").fill("30");
     await adminPage.getByRole("button", { name: "Create Event" }).click();
     // Every run of this test creates an event with this same fixed date, and
     // the list isn't sorted by creation time — search by the unique title
@@ -105,11 +107,11 @@ test.describe("events — full evidence cycle (approve)", () => {
     await memberCard.getByRole("button", { name: "Register" }).click();
     await expect(memberCard.getByRole("button", { name: "Register" })).toHaveCount(0);
 
-    await memberCard.getByLabel("Note").fill("Collected 55 signatures at the community center");
-    await memberCard.getByLabel("Quantity achieved (optional)").fill("55");
-    await memberCard.getByRole("button", { name: "Attach photo" }).click();
+    await memberCard.getByLabel("What did you do?").fill("Collected 55 signatures at the community center");
+    await memberCard.getByLabel("How many? (optional)").fill("55");
+    await memberCard.getByRole("button", { name: "Add a photo (optional)" }).click();
     await memberCard.locator('input[type="file"]').setInputFiles(PHOTO);
-    await memberCard.getByRole("button", { name: "Submit" }).click();
+    await memberCard.getByRole("button", { name: "Send" }).click();
     await expect(memberCard.getByText("Pending review")).toBeVisible();
 
     // Admin approves via the Registrations sheet.
@@ -141,10 +143,11 @@ test.describe("events — reject and resubmission gap", () => {
     const title = `Reject Cycle Event ${uniqueSuffix()}`;
     await adminPage.goto("/admin/events");
     await adminPage.getByRole("button", { name: "Create Event" }).click();
-    await adminPage.getByLabel("Title").fill(title);
+    await adminPage.getByLabel("Event name").fill(title);
     await adminPage.getByLabel("Starts at").fill("2027-03-15T09:00");
-    await adminPage.getByLabel("Target description").fill("Distribute 20 food kits");
-    await adminPage.getByLabel("Points reward").fill("15");
+    await adminPage.getByText("Task & reward points (optional)").click();
+    await adminPage.getByLabel("What should members do?").fill("Distribute 20 food kits");
+    await adminPage.getByLabel("Points they earn").fill("15");
     await adminPage.getByRole("button", { name: "Create Event" }).click();
     // Every run of this test creates an event with this same fixed date, and
     // the list isn't sorted by creation time — search by the unique title
@@ -155,8 +158,8 @@ test.describe("events — reject and resubmission gap", () => {
     await memberPage.goto("/member/events");
     const memberCard = memberPage.locator('[data-slot="card"]').filter({ hasText: title });
     await memberCard.getByRole("button", { name: "Register" }).click();
-    await memberCard.getByLabel("Note").fill("Distributed kits to 10 families only");
-    await memberCard.getByRole("button", { name: "Submit" }).click();
+    await memberCard.getByLabel("What did you do?").fill("Distributed kits to 10 families only");
+    await memberCard.getByRole("button", { name: "Send" }).click();
     await expect(memberCard.getByText("Pending review")).toBeVisible();
 
     const row = adminPage.getByRole("row", { name: new RegExp(title) });
@@ -203,7 +206,7 @@ test.describe("events — remove registration", () => {
     const title = `Removable Event ${uniqueSuffix()}`;
     await page.goto("/admin/events");
     await page.getByRole("button", { name: "Create Event" }).click();
-    await page.getByLabel("Title").fill(title);
+    await page.getByLabel("Event name").fill(title);
     await page.getByLabel("Starts at").fill("2027-04-01T09:00");
     await page.getByRole("button", { name: "Create Event" }).click();
 

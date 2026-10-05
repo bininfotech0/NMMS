@@ -30,7 +30,7 @@ export function useSubmitDonation() {
       memberApiFetch<DonationResponse>("/donations/me", { method: "POST", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["donations", "me"] });
-      toast.success("Donation recorded — receipt and points are available now");
+      toast.success("Thank you! We'll confirm your donation once we receive it.");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to submit donation")),
   });
@@ -173,3 +173,28 @@ export function useDonation(id: string | null) {
   });
 }
 
+
+export function useApproveDonation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<DonationResponse>(`/donations/${id}/approve`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["donations"] });
+      toast.success("Donation confirmed — receipt issued");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Couldn't confirm the donation. Please try again.")),
+  });
+}
+
+export function useRejectDonation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      apiFetch<DonationResponse>(`/donations/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["donations"] });
+      toast.success("Marked as not received");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Couldn't update the donation. Please try again.")),
+  });
+}

@@ -37,6 +37,13 @@ function formatCurrency(amount: number) {
   );
 }
 
+// What each status means to the member who gave the money.
+const MEMBER_DONATION_STATUS: Record<string, string> = {
+  PENDING: "Being checked",
+  APPROVED: "Received",
+  REJECTED: "Not received",
+};
+
 function formatDate(d: string | Date) {
   return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
@@ -65,7 +72,7 @@ export function MemberDonations() {
           ) : donations.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-6 text-center">
               <HeartHandshake className="size-8 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">No donations yet.</p>
+              <p className="text-sm text-muted-foreground">You haven't made a donation yet. You can give using the form on this page.</p>
             </div>
           ) : (
             <ul className="divide-y divide-border">
@@ -74,10 +81,16 @@ export function MemberDonations() {
                   <div>
                     <p className="font-medium">{formatCurrency(donation.amount)}</p>
                     <p className="text-xs text-muted-foreground">{formatDate(donation.createdAt)}</p>
+                    {donation.status === "PENDING" && (
+                      <p className="text-xs text-muted-foreground">We'll give you a receipt once we receive the money.</p>
+                    )}
+                    {donation.status === "REJECTED" && donation.reviewNote && (
+                      <p className="text-xs text-destructive">{donation.reviewNote}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge className={`border-transparent font-medium ${STATUS_STYLES[donation.status]}`}>
-                      {donation.status[0] + donation.status.slice(1).toLowerCase()}
+                      {MEMBER_DONATION_STATUS[donation.status]}
                     </Badge>
                     {donation.status === "APPROVED" && (
                       <Link to={`/member/donations/${donation.id}/receipt`} className="text-brand-green hover:underline">
@@ -238,7 +251,7 @@ function DonationForm() {
             onClick={() => setShowManualForm(true)}
             className="block text-sm font-medium text-muted-foreground underline-offset-4 hover:text-brand-green-dark hover:underline"
           >
-            Sent it another way? Record it manually instead
+            Already gave cash, UPI or a cheque? Tell us here
           </button>
         ) : (
           <form className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2" onSubmit={handleSubmit}>
@@ -250,7 +263,7 @@ function DonationForm() {
               options={MODE_OPTIONS}
             />
             <div className="space-y-1.5">
-              <Label htmlFor="reference">Reference / transaction no. (optional)</Label>
+              <Label htmlFor="reference">UPI reference or cheque number (optional)</Label>
               <Input id="reference" value={reference} onChange={(e) => setReference(e.target.value)} />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
@@ -265,10 +278,10 @@ function DonationForm() {
                 className="bg-brand-green hover:bg-brand-green/90"
               >
                 <HeartHandshake className="size-4" />
-                {submitDonation.isPending ? "Submitting…" : "Submit Donation"}
+                {submitDonation.isPending ? "Sending…" : "Tell us about my donation"}
               </Button>
               <p className="mt-2 text-xs text-muted-foreground">
-                A Field Executive or Admin will confirm receipt before points are credited and a receipt is issued.
+                Our team will check that the money arrived. Then you get your receipt and points.
               </p>
             </div>
           </form>

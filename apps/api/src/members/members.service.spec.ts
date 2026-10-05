@@ -357,7 +357,7 @@ describe("MembersService.submit", () => {
     );
 
     const user = makeAuthUser({ id: "fe-1", role: Role.FIELD_EXECUTIVE });
-    await expect(service.submit("member-1", user)).rejects.toThrow(/missing/i);
+    await expect(service.submit("member-1", user)).rejects.toThrow(/please add your .*address/i);
   });
 
   it("refuses to submit without a passport photo and an ID proof document on file", async () => {

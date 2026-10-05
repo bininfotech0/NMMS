@@ -3,19 +3,20 @@ import { ChevronLeft, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useMyPayments } from "@/hooks/useMyPayments";
-import { useOrgProfile } from "@/hooks/useOrg";
+import { useOrgContact } from "@/hooks/useOrgContact";
 import { PaymentReceipt } from "@/components/receipts/PaymentReceipt";
 
 export function MemberPaymentReceiptPage() {
   const { paymentId } = useParams<{ paymentId: string }>();
   const { data: member, isLoading: memberLoading } = useMyProfile();
   const { data: payments = [], isLoading: paymentsLoading } = useMyPayments();
-  const { data: org } = useOrgProfile();
+  // Members can only read the public org details (staff-only /org fails).
+  const { data: org } = useOrgContact();
 
   if (!paymentId) return null;
 
   if (memberLoading || paymentsLoading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading receipt...</p>;
+    return <p className="py-10 text-center text-sm text-muted-foreground">Loading your receipt…</p>;
   }
 
   const payment = payments.find((p) => p.id === paymentId);

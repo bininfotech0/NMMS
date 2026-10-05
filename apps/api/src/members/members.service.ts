@@ -76,6 +76,20 @@ const REQUIRED_FOR_SUBMIT = [
   "declarationAcceptTerms",
 ] as const;
 
+// Plain-language names for REQUIRED_FOR_SUBMIT, used in the error a member
+// sees — never show the code-level field names.
+const REQUIRED_FIELD_LABELS: Record<(typeof REQUIRED_FOR_SUBMIT)[number], string> = {
+  fullName: "full name",
+  mobile: "mobile number",
+  planId: "membership plan",
+  addressLine: "address",
+  pincode: "pincode",
+  declarationInfoCorrect: "the declaration that your information is correct",
+  declarationAcceptConstitution: "acceptance of the constitution",
+  declarationAcceptPrivacyPolicy: "acceptance of the privacy policy",
+  declarationAcceptTerms: "acceptance of the terms & conditions",
+};
+
 // At least one photo and one form of ID proof — matches the minimum any
 // membership org would need on file, and mirrors StepDocuments.tsx's own
 // "Identity verification" section. AADHAAR (legacy single-side type, kept in
@@ -309,12 +323,12 @@ export class MembersService {
 
   private async submitInternal(existing: Member, actorId: string): Promise<MemberResponse> {
     if (existing.status !== "DRAFT") {
-      throw new ConflictException("Cannot submit: complete the required profile fields first");
+      throw new ConflictException("Your registration has already been submitted");
     }
 
     const missing = REQUIRED_FOR_SUBMIT.filter((field) => !existing[field]);
     if (missing.length > 0) {
-      throw new ConflictException(`Cannot submit: missing ${missing.join(", ")}`);
+      throw new ConflictException(`Please add your ${missing.map((f) => REQUIRED_FIELD_LABELS[f]).join(", ")} first`);
     }
 
     const [hasPhoto, hasIdProof] = await Promise.all([
@@ -327,7 +341,7 @@ export class MembersService {
       (v): v is string => !!v,
     );
     if (missingDocs.length > 0) {
-      throw new ConflictException(`Cannot submit: upload ${missingDocs.join(" and ")} first`);
+      throw new ConflictException(`Please upload ${missingDocs.join(" and ")} first`);
     }
 
     // Compare-and-swap: a concurrent duplicate submit loses the race cleanly

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ApiError } from "@/lib/api-client";
 import {
   useAdminWithdrawals,
@@ -24,13 +25,14 @@ import {
 } from "@/hooks/useWithdrawals";
 import type { WithdrawalRequestResponse, WithdrawalStatus } from "@nmms/shared";
 
-const TABS: { label: string; value: WithdrawalStatus | undefined }[] = [
-  { label: "Pending (legacy)", value: "PENDING" },
-  { label: "Approved", value: "APPROVED" },
-  { label: "Processing", value: "PAYOUT_PROCESSING" },
-  { label: "Payout Failed", value: "PAYOUT_FAILED" },
-  { label: "Rejected (legacy)", value: "REJECTED" },
+const TABS: { label: string; value: WithdrawalStatus | undefined; legacy?: boolean }[] = [
+  { label: "Ready to pay", value: "APPROVED" },
+  { label: "Being sent", value: "PAYOUT_PROCESSING" },
+  { label: "Sending failed", value: "PAYOUT_FAILED" },
   { label: "Paid", value: "PAID" },
+  // Older statuses from before automatic approval — shown for history only.
+  { label: "Older: waiting", value: "PENDING", legacy: true },
+  { label: "Older: not approved", value: "REJECTED", legacy: true },
   { label: "All", value: undefined },
 ];
 
@@ -50,6 +52,8 @@ export function WithdrawalRequests() {
   const checkPayoutStatus = useCheckPayoutStatus();
   const { data: gatewayStatus } = usePayoutGatewayStatus();
   const [payTarget, setPayTarget] = useState<WithdrawalRequestResponse | null>(null);
+  const [payoutTarget, setPayoutTarget] = useState<WithdrawalRequestResponse | null>(null);
+  const [showOlder, setShowOlder] = useState(false);
 
   const columns: DataGridColumn<WithdrawalRequestResponse>[] = useMemo(
     () => [
@@ -62,16 +66,16 @@ export function WithdrawalRequests() {
       },
       {
         key: "grossAmount",
-        header: "Gross",
+        header: "Value",
         sortable: true,
         render: (r) => <span className="text-muted-foreground">₹{r.grossAmount}</span>,
       },
       {
         key: "chargeAmount",
-        header: "Charge",
+        header: "Fee",
         render: (r) => <span className="text-muted-foreground">₹{r.chargeAmount}</span>,
       },
-      { key: "netAmount", header: "Net", sortable: true, cellClass: "font-medium", render: (r) => `₹${r.netAmount}` },
+      { key: "netAmount", header: "To send", sortable: true, cellClass: "font-medium", render: (r) => `₹${r.netAmount}` },
       {
         key: "payoutMethod",
         header: "Method",
@@ -120,14 +124,14 @@ export function WithdrawalRequests() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold">Withdrawal Requests</h1>
-          <p className="text-sm text-muted-foreground">Requests are approved automatically. Send payouts or record manual payments here.</p>
+          <h1 className="font-heading text-2xl font-bold">Money requests</h1>
+          <p className="text-sm text-muted-foreground">Members' money requests. Send the money online, or mark it paid if you paid another way.</p>
         </div>
         <ExportCsvButton filename="withdrawal-requests.csv" rows={exportRows} />
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => !tab.legacy || status === tab.value || showOlder).map((tab) => (
           <button
             key={tab.label}
             onClick={() => setStatus(tab.value)}
@@ -140,6 +144,13 @@ export function WithdrawalRequests() {
             {tab.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setShowOlder((v) => !v)}
+          className="ml-auto px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {showOlder ? "Hide older requests" : "Show older requests"}
+        </button>
       </div>
 
       <DataGrid
@@ -164,10 +175,10 @@ export function WithdrawalRequests() {
                     size="sm"
                     variant="outline"
                     disabled={initiatePayout.isPending}
-                    onClick={() => initiatePayout.mutate(r.id)}
+                    onClick={() => setPayoutTarget(r)}
                   >
                     <Send className="size-4" />
-                    Send Payout
+                    Send money
                   </Button>
                 )}
                 <Button size="sm" variant="outline" onClick={() => setPayTarget(r)}>
@@ -198,10 +209,10 @@ export function WithdrawalRequests() {
                     size="sm"
                     variant="outline"
                     disabled={initiatePayout.isPending}
-                    onClick={() => initiatePayout.mutate(r.id)}
+                    onClick={() => setPayoutTarget(r)}
                   >
                     <Send className="size-4" />
-                    Retry Payout
+                    Try again
                   </Button>
                 )}
               </>
@@ -211,6 +222,22 @@ export function WithdrawalRequests() {
       />
 
       <MarkPaidSheet target={payTarget} onOpenChange={(open) => !open && setPayTarget(null)} />
+      <ConfirmDialog
+        open={!!payoutTarget}
+        onOpenChange={(open) => !open && setPayoutTarget(null)}
+        title={`Send ₹${payoutTarget?.netAmount ?? 0} to ${payoutTarget?.memberName ?? "this member"}?`}
+        description={
+          payoutTarget?.payoutMethod === "UPI"
+            ? `Real money will be sent now to UPI ID ${payoutTarget?.payoutUpiId ?? ""}. This can't be undone.`
+            : `Real money will be sent now to the bank account ending ${payoutTarget?.payoutBankAccountNumberLast4 ?? "????"}. This can't be undone.`
+        }
+        confirmLabel="Send money"
+        destructive={false}
+        isPending={initiatePayout.isPending}
+        onConfirm={() =>
+          payoutTarget && initiatePayout.mutate(payoutTarget.id, { onSettled: () => setPayoutTarget(null) })
+        }
+      />
     </div>
   );
 }

@@ -288,13 +288,118 @@ export function MyProfile() {
       <div>
         <h1 className="font-heading text-2xl font-bold">My Profile</h1>
         <p className="text-sm text-muted-foreground">
-          Keep your details up to date. Mobile number and identity documents can only be changed by staff.
+          Keep your details up to date and tap <span className="font-medium">Save changes</span> at the bottom.
+          Fields marked * are needed. To change your mobile number or ID documents, please contact us.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
+          <CardTitle>Contact &amp; address</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="whatsappNumber">WhatsApp number</Label>
+              <Input
+                id="whatsappNumber"
+                inputMode="numeric"
+                pattern="[6-9][0-9]{9}"
+                maxLength={10}
+                value={form.whatsappNumber}
+                onChange={(e) => setForm((f) => (f ? { ...f, whatsappNumber: e.target.value } : f))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => (f ? { ...f, email: e.target.value } : f))}
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="socialMediaLinks">Social media links (optional)</Label>
+              <Input
+                id="socialMediaLinks"
+                placeholder="e.g. facebook.com/yourname"
+                value={form.socialMediaLinks}
+                onChange={(e) => setForm((f) => (f ? { ...f, socialMediaLinks: e.target.value } : f))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-3 font-heading text-sm font-semibold">Where you live now *</h3>
+            <AddressFields
+              idPrefix="current"
+              hideCoordinates
+              value={{
+                pincode: form.pincode,
+                addressLine: form.addressLine,
+                landmark: form.landmark,
+                latitude: form.latitude,
+                longitude: form.longitude,
+              }}
+              onChange={(next) => setForm((f) => (f ? { ...f, ...next } : f))}
+            />
+          </div>
+
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-heading text-sm font-semibold">Permanent (home) address</h3>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="size-4 rounded border-input"
+                  checked={form.sameAsCurrentAddress}
+                  onChange={(e) => setForm((f) => (f ? { ...f, sameAsCurrentAddress: e.target.checked } : f))}
+                />
+                Same as current address
+              </label>
+            </div>
+            <AddressFields
+              idPrefix="permanent"
+              disabled={form.sameAsCurrentAddress}
+              hideCoordinates
+              value={
+                form.sameAsCurrentAddress
+                  ? {
+                      pincode: form.pincode,
+                      addressLine: form.addressLine,
+                      landmark: form.landmark,
+                      latitude: form.latitude,
+                      longitude: form.longitude,
+                    }
+                  : {
+                      pincode: form.permPincode,
+                      addressLine: form.permAddressLine,
+                      landmark: form.permLandmark,
+                      latitude: "",
+                      longitude: "",
+                    }
+              }
+              onChange={(next) =>
+                setForm((f) =>
+                  f
+                    ? {
+                        ...f,
+                        permPincode: next.pincode,
+                        permAddressLine: next.addressLine,
+                        permLandmark: next.landmark,
+                      }
+                    : f,
+                )
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>About you</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -366,10 +471,9 @@ export function MyProfile() {
               }
             />
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="fullName">Full name</Label>
-            <Input id="fullName" value={form.fullName} readOnly disabled className="bg-muted" />
-          </div>
+          <p className="text-sm text-muted-foreground sm:col-span-2">
+            Your name will appear as: <span className="font-medium text-foreground">{form.fullName}</span>
+          </p>
           <NativeSelect
             id="gender"
             label="Gender"
@@ -432,6 +536,50 @@ export function MyProfile() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Emergency contact</CardTitle>
+          <p className="text-sm text-muted-foreground">Someone we can call if you need help.</p>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="emergencyContactName">Name</Label>
+            <Input
+              id="emergencyContactName"
+              value={form.emergencyContactName}
+              onChange={(e) => setForm((f) => (f ? { ...f, emergencyContactName: e.target.value } : f))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="emergencyContactMobile">Mobile</Label>
+            <Input
+              id="emergencyContactMobile"
+              inputMode="numeric"
+              pattern="[6-9][0-9]{9}"
+              maxLength={10}
+              value={form.emergencyContactMobile}
+              onChange={(e) => setForm((f) => (f ? { ...f, emergencyContactMobile: e.target.value } : f))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="emergencyContactRelationship">Relationship</Label>
+            <Input
+              id="emergencyContactRelationship"
+              value={form.emergencyContactRelationship}
+              onChange={(e) => setForm((f) => (f ? { ...f, emergencyContactRelationship: e.target.value } : f))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <details className="group rounded-xl border border-border bg-card">
+        <summary className="cursor-pointer list-none px-4 py-4 font-heading text-base font-semibold">
+          <span className="group-open:hidden">▸ </span>
+          <span className="hidden group-open:inline">▾ </span>
+          More about you (optional)
+          <p className="mt-1 text-sm font-normal text-muted-foreground">Family, education and work. You can skip this.</p>
+        </summary>
+        <div className="space-y-4 p-4 pt-0">
       <Card>
         <CardHeader>
           <CardTitle>Family</CardTitle>
@@ -538,109 +686,6 @@ export function MyProfile() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Contact &amp; Address</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="whatsappNumber">WhatsApp number</Label>
-              <Input
-                id="whatsappNumber"
-                inputMode="numeric"
-                pattern="[6-9][0-9]{9}"
-                maxLength={10}
-                value={form.whatsappNumber}
-                onChange={(e) => setForm((f) => (f ? { ...f, whatsappNumber: e.target.value } : f))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((f) => (f ? { ...f, email: e.target.value } : f))}
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="socialMediaLinks">Social media links (optional)</Label>
-              <Input
-                id="socialMediaLinks"
-                placeholder="e.g. facebook.com/yourname"
-                value={form.socialMediaLinks}
-                onChange={(e) => setForm((f) => (f ? { ...f, socialMediaLinks: e.target.value } : f))}
-              />
-            </div>
-          </div>
-
-          <div>
-            <h3 className="mb-3 font-heading text-sm font-semibold">Current Address</h3>
-            <AddressFields
-              idPrefix="current"
-              value={{
-                pincode: form.pincode,
-                addressLine: form.addressLine,
-                landmark: form.landmark,
-                latitude: form.latitude,
-                longitude: form.longitude,
-              }}
-              onChange={(next) => setForm((f) => (f ? { ...f, ...next } : f))}
-            />
-          </div>
-
-          <div>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-heading text-sm font-semibold">Permanent Address</h3>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="size-4 rounded border-input"
-                  checked={form.sameAsCurrentAddress}
-                  onChange={(e) => setForm((f) => (f ? { ...f, sameAsCurrentAddress: e.target.checked } : f))}
-                />
-                Same as current address
-              </label>
-            </div>
-            <AddressFields
-              idPrefix="permanent"
-              disabled={form.sameAsCurrentAddress}
-              hideCoordinates={!form.sameAsCurrentAddress}
-              value={
-                form.sameAsCurrentAddress
-                  ? {
-                      pincode: form.pincode,
-                      addressLine: form.addressLine,
-                      landmark: form.landmark,
-                      latitude: form.latitude,
-                      longitude: form.longitude,
-                    }
-                  : {
-                      pincode: form.permPincode,
-                      addressLine: form.permAddressLine,
-                      landmark: form.permLandmark,
-                      latitude: "",
-                      longitude: "",
-                    }
-              }
-              onChange={(next) =>
-                setForm((f) =>
-                  f
-                    ? {
-                        ...f,
-                        permPincode: next.pincode,
-                        permAddressLine: next.addressLine,
-                        permLandmark: next.landmark,
-                      }
-                    : f,
-                )
-              }
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Education &amp; Occupation</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -698,49 +743,20 @@ export function MyProfile() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Emergency Contact</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="emergencyContactName">Name</Label>
-            <Input
-              id="emergencyContactName"
-              value={form.emergencyContactName}
-              onChange={(e) => setForm((f) => (f ? { ...f, emergencyContactName: e.target.value } : f))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="emergencyContactMobile">Mobile</Label>
-            <Input
-              id="emergencyContactMobile"
-              inputMode="numeric"
-              pattern="[6-9][0-9]{9}"
-              maxLength={10}
-              value={form.emergencyContactMobile}
-              onChange={(e) => setForm((f) => (f ? { ...f, emergencyContactMobile: e.target.value } : f))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="emergencyContactRelationship">Relationship</Label>
-            <Input
-              id="emergencyContactRelationship"
-              value={form.emergencyContactRelationship}
-              onChange={(e) => setForm((f) => (f ? { ...f, emergencyContactRelationship: e.target.value } : f))}
-            />
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button
-        type="submit"
-        disabled={updateProfile.isPending}
-        className="bg-brand-green hover:bg-brand-green/90"
-      >
-        {updateProfile.isPending ? "Saving…" : "Save changes"}
-      </Button>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {/* Sticky on phones (above the bottom tab bar) so Save is always in reach on this long page. */}
+      <div className="sticky bottom-16 z-10 -mx-4 border-t border-border bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+        <Button
+          type="submit"
+          disabled={updateProfile.isPending}
+          className="w-full bg-brand-green hover:bg-brand-green/90 sm:w-auto"
+        >
+          {updateProfile.isPending ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
     </form>
   );
 }

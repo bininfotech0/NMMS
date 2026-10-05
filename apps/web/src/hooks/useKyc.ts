@@ -20,9 +20,9 @@ export function useSubmitKyc() {
       memberApiFetch<KycResponse>("/kyc/me", { method: "PUT", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kyc", "me"] });
-      toast.success("KYC details saved and verified automatically");
+      toast.success("Bank details saved");
     },
-    onError: (err) => toast.error(errorMessage(err, "Failed to submit KYC details")),
+    onError: (err) => toast.error(errorMessage(err, "Couldn't save your bank details. Please try again.")),
   });
 }
 
@@ -54,7 +54,7 @@ export function useUpdateKycAsAdmin() {
       apiFetch<KycResponse>(`/kyc/${memberId}`, { method: "PUT", body: JSON.stringify(dto) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kyc"] });
-      toast.success("Payout details saved and verified automatically");
+      toast.success("Bank details saved");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to update payout details")),
   });

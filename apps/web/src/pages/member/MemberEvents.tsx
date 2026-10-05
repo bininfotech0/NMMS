@@ -17,7 +17,7 @@ const COMPLETION_STYLES: Record<string, string> = {
 
 const COMPLETION_LABELS: Record<string, string> = {
   NOT_SUBMITTED: "Not submitted",
-  PENDING_REVIEW: "Legacy pending review",
+  PENDING_REVIEW: "Waiting for review",
   APPROVED: "Completed",
   REJECTED: "Rejected",
 };
@@ -30,7 +30,7 @@ export function MemberEvents() {
   const { data: events = [], isLoading } = useMyEvents();
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <p className="py-10 text-center text-sm text-muted-foreground">Loading events…</p>;
   }
 
   if (events.length === 0) {
@@ -110,7 +110,7 @@ function EventCard({ event }: { event: MyEventSummary }) {
                 <p className="text-muted-foreground">Target: {event.targetQuantity}</p>
               )}
               {event.pointsReward > 0 && (
-                <p className="text-muted-foreground">Reward: {event.pointsReward} points when evidence is submitted</p>
+                <p className="text-muted-foreground">Reward: {event.pointsReward} points when you tell us what you did</p>
               )}
             </div>
           </div>
@@ -172,20 +172,20 @@ function EvidenceForm({ eventId }: { eventId: string }) {
 
   return (
     <form className="space-y-2 rounded-lg border border-border p-3" onSubmit={handleSubmit}>
-      <p className="text-xs font-medium">Submit your evidence</p>
+      <p className="text-xs font-medium">Tell us what you did</p>
       <div className="space-y-1.5">
-        <Label htmlFor={`note-${eventId}`}>Note</Label>
+        <Label htmlFor={`note-${eventId}`}>What did you do?</Label>
         <textarea
           id={`note-${eventId}`}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
-          placeholder="Describe what you completed"
+          placeholder="For example: planted 10 trees near the school"
           className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor={`quantity-${eventId}`}>Quantity achieved (optional)</Label>
+        <Label htmlFor={`quantity-${eventId}`}>How many? (optional)</Label>
         <Input
           id={`quantity-${eventId}`}
           type="number"
@@ -197,7 +197,7 @@ function EvidenceForm({ eventId }: { eventId: string }) {
       <div className="flex items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
           <Upload className="size-4" />
-          {file ? file.name : "Attach photo"}
+          {file ? file.name : "Add a photo (optional)"}
         </Button>
         <input
           ref={fileInputRef}
@@ -213,7 +213,7 @@ function EvidenceForm({ eventId }: { eventId: string }) {
         className="bg-brand-green hover:bg-brand-green/90"
         disabled={submitEvidence.isPending || (!note && !file)}
       >
-        {submitEvidence.isPending ? "Submitting…" : "Submit"}
+        {submitEvidence.isPending ? "Sending…" : "Send"}
       </Button>
     </form>
   );

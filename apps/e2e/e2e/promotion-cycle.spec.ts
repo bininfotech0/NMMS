@@ -24,18 +24,19 @@ test.describe("promotion cycle", () => {
     const newFePassword = "PromotedExec123pw";
 
     await page.goto(`/admin/members/${memberId}/profile`);
-    const promoteButton = page.getByRole("button", { name: "Promote to Field Executive" });
+    await page.getByRole("button", { name: "More actions" }).click();
+    const promoteButton = page.getByRole("menuitem", { name: "Make a Field Executive" });
     await expect(promoteButton).toBeVisible();
     await promoteButton.click();
     await page.getByLabel("Staff login email").fill(newFeEmail);
     await page.getByLabel("Temporary password").fill(newFePassword);
     await page.getByRole("button", { name: "Promote", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Promote to Field Executive" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Make a Field Executive" })).toHaveCount(0);
 
     // Re-fetching the profile confirms the promotion persisted, not just the
     // in-memory UI state from before the sheet closed.
     await page.reload();
-    await expect(page.getByRole("button", { name: "Promote to Field Executive" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Make a Field Executive" })).toHaveCount(0);
 
     // The new Field Executive account can log into the staff panel...
     const newFeContext = await page.context().browser()!.newContext();
@@ -57,7 +58,7 @@ test.describe("promotion cycle", () => {
     await newFePage.getByLabel("Mobile number").fill(registeredMobile);
     await newFePage.getByRole("button", { name: "Create Draft" }).click();
     await newFePage.waitForURL(/\/admin\/members\/[^/]+\/wizard/);
-    await expect(newFePage.getByText("Step 1 of 10")).toBeVisible();
+    await expect(newFePage.getByText("Step 1 of 4")).toBeVisible();
 
     await newFeContext.close();
   });

@@ -1,4 +1,5 @@
-export const BASE_URL = "http://localhost";
+// Override with E2E_BASE_URL to run against another stack (e.g. a local dev server).
+export const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost";
 
 // Shared by support/api.ts and support/throttle-retry.ts — both extend a
 // colliding test's timeout to survive the server's ~60s IP-keyed throttle

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export function JoinViaReferral() {
   const [aadhaarNumber, setAadhaarNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -61,11 +63,11 @@ export function JoinViaReferral() {
     setError(null);
     const normalizedReferralCode = referralCode.trim().toUpperCase();
     if (normalizedReferralCode && isResolvingReferral) {
-      setError("Please wait while we check the referral code.");
+      setError("Please wait a moment while we check the invite code.");
       return;
     }
     if (normalizedReferralCode && resolvedReferralCode !== normalizedReferralCode) {
-      setError("Please enter a valid referral code, or clear the optional field to continue without one.");
+      setError("We couldn't find the invite code. Check it, or leave the box empty.");
       return;
     }
     setIsSubmitting(true);
@@ -93,7 +95,10 @@ export function JoinViaReferral() {
           <Logo variant="stacked" size={44} />
         </div>
 
-        <h1 className="mt-6 text-center font-heading text-lg font-semibold">Join as a member</h1>
+        <h1 className="mt-6 text-center font-heading text-lg font-semibold">Become a member</h1>
+        <p className="mt-1 text-center text-sm text-muted-foreground">
+          It takes about 5 minutes. Keep your Aadhaar card and a photo ready.
+        </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
@@ -106,10 +111,10 @@ export function JoinViaReferral() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="referralCode">Referral code or Member ID (optional)</Label>
+            <Label htmlFor="referralCode">Who invited you? (optional)</Label>
             <Input
               id="referralCode"
-              placeholder="Referral code or Member ID"
+              placeholder="Their code or member number"
               value={referralCode}
               onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
               autoCapitalize="characters"
@@ -117,21 +122,21 @@ export function JoinViaReferral() {
               aria-describedby="referralCode-help referralCode-status"
             />
             <p id="referralCode-help" className="text-xs text-muted-foreground">
-              Enter the member's referral code, membership number, or Member ID. You can also open their invite link.
-              Leave blank if you weren't referred.
+              If a member invited you, enter their code or member number. Otherwise leave this empty.
             </p>
             <p id="referralCode-status" className="min-h-4 text-xs text-muted-foreground" aria-live="polite">
               {isResolvingReferral
-                ? "Checking referral code…"
+                ? "Checking…"
                 : referrerName
                   ? `Referred by ${referrerName}`
                   : referralCode.trim()
-                    ? "Code not found. Check it or clear the field to continue without a referral."
+                    ? "We couldn't find this code. Check it, or leave the box empty."
                     : ""}
             </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="mobile">Mobile number</Label>
+            <p className="text-xs text-muted-foreground">10 digits. You will use this to sign in.</p>
             <Input
               id="mobile"
               type="tel"
@@ -151,11 +156,11 @@ export function JoinViaReferral() {
               value={aadhaarNumber}
               onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, ""))}
               pattern="\d{12}"
-              title="Aadhaar number must be exactly 12 digits"
+              title="Aadhaar number has 12 digits"
               maxLength={12}
               required
             />
-            <p className="text-xs text-muted-foreground">Only stored as a hash for duplicate checks.</p>
+            <p className="text-xs text-muted-foreground">Kept private. Only used to stop duplicate accounts.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="email">Email (optional)</Label>
@@ -168,17 +173,29 @@ export function JoinViaReferral() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password">Create a password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="At least 8 characters"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="At least 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={8}
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">Write it down somewhere safe — you'll need it to sign in.</p>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button
             type="submit"
             disabled={isSubmitting}

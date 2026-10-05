@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { cn } from "@/lib/utils";
@@ -124,7 +125,7 @@ export function Reports() {
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card className="h-full transition-shadow hover:shadow-md">
               <CardHeader>
-                <CardTitle className="text-base">Member Growth (12 months)</CardTitle>
+                <CardTitle className="text-base">New members (last 12 months)</CardTitle>
               </CardHeader>
               <CardContent className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
@@ -148,7 +149,7 @@ export function Reports() {
 
             <Card className="h-full transition-shadow hover:shadow-md">
               <CardHeader>
-                <CardTitle className="text-base">Collections (12 months)</CardTitle>
+                <CardTitle className="text-base">Money collected (last 12 months)</CardTitle>
               </CardHeader>
               <CardContent className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
@@ -169,18 +170,18 @@ export function Reports() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <BreakdownList
-              title="Member Status"
+              title="Members by status"
               data={data.memberStatusBreakdown}
               formatName={titleCase}
             />
             <BreakdownList
-              title="Application Funnel"
+              title="Registration progress"
               data={data.applicationFunnel}
               formatName={titleCase}
             />
             <BreakdownList
               className="sm:col-span-2 lg:col-span-1"
-              title="Membership Plans"
+              title="Members by plan"
               data={Object.entries(data.planBreakdown ?? {}).map(([name, count]) => ({ name, count }))}
               formatName={(s) => s}
             />
@@ -236,14 +237,26 @@ type ReportKey =
   | "revenue-collection";
 
 const REPORT_LABELS: Record<ReportKey, string> = {
-  "member-register": "Member Register",
-  "pending-approval": "Awaiting Payment",
-  "rejected-applications": "Rejected Applications",
-  "payment-collection": "Payment Collection",
-  renewals: "Membership Renewal",
-  "branch-wise": "Branch Wise Members",
-  "field-executive-performance": "Field Executive Performance",
-  "revenue-collection": "Revenue Collection",
+  "member-register": "All members",
+  "pending-approval": "Not paid yet",
+  "rejected-applications": "Older: not accepted",
+  "payment-collection": "Payments received",
+  renewals: "Due for renewal",
+  "branch-wise": "Members by branch",
+  "field-executive-performance": "Field Executive work",
+  "revenue-collection": "Money by month",
+};
+
+// One line under the report buttons saying what the chosen list shows.
+const REPORT_HINTS: Record<ReportKey, string> = {
+  "member-register": "Everyone registered, with their status and plan.",
+  "pending-approval": "People who filled the form but haven't paid the fee yet.",
+  "rejected-applications": "Applications turned down under the old approval process.",
+  "payment-collection": "Every fee payment, who paid and who collected it.",
+  renewals: "Memberships ending soon or already ended.",
+  "branch-wise": "How many members each branch has.",
+  "field-executive-performance": "How many people each Field Executive registered and how much they collected.",
+  "revenue-collection": "Total money collected in each month.",
 };
 
 function DetailedReports() {
@@ -252,7 +265,7 @@ function DetailedReports() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Detailed Reports</CardTitle>
+        <CardTitle className="text-base">Lists you can download</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
@@ -271,6 +284,7 @@ function DetailedReports() {
             </button>
           ))}
         </div>
+        <p className="text-sm text-muted-foreground">{REPORT_HINTS[report]} Tap "Export CSV" to open it in Excel.</p>
         <ReportTable report={report} />
       </CardContent>
     </Card>
@@ -307,11 +321,11 @@ function MemberRegisterTable({
 }) {
   const { data = [], isLoading, isError } = useHook();
   const columns: DataGridColumn<MemberRegisterRow>[] = [
-    { key: "registrationNumber", header: "Reg. No.", sortable: true, render: (r) => r.registrationNumber ?? "—" },
+    { key: "registrationNumber", header: "Registration no.", sortable: true, render: (r) => r.registrationNumber ?? "—" },
     { key: "membershipNumber", header: "Member ID", sortable: true, render: (r) => r.membershipNumber ?? "—" },
     { key: "fullName", header: "Name", sortable: true },
     { key: "mobile", header: "Mobile", sortable: true },
-    { key: "status", header: "Status", sortable: true },
+    { key: "status", header: "Status", sortable: true, render: (r) => <StatusBadge status={r.status} /> },
     { key: "planName", header: "Plan", sortable: true, render: (r) => r.planName ?? "—" },
     { key: "createdAt", header: "Registered", sortable: true, render: (r) => new Date(r.createdAt).toLocaleDateString("en-IN") },
   ];
@@ -331,7 +345,7 @@ function PaymentCollectionTable() {
     { key: "amount", header: "Amount", sortable: true, align: "right" },
     { key: "mode", header: "Mode", sortable: true },
     { key: "paidAt", header: "Date", sortable: true, render: (r) => new Date(r.paidAt).toLocaleDateString("en-IN") },
-    { key: "receivedByEmail", header: "Received By", sortable: true },
+    { key: "receivedByEmail", header: "Collected by", sortable: true },
   ];
   return (
     <div className="space-y-3">
@@ -398,7 +412,7 @@ function RevenueCollectionTable() {
   const { data = [], isLoading, isError } = useRevenueCollectionReport();
   const columns: DataGridColumn<MonthlyAmount>[] = [
     { key: "month", header: "Month", sortable: true },
-    { key: "amount", header: "Revenue", sortable: true, align: "right", render: (r) => formatCurrency(r.amount) },
+    { key: "amount", header: "Money collected", sortable: true, align: "right", render: (r) => formatCurrency(r.amount) },
   ];
   return (
     <div className="space-y-3">

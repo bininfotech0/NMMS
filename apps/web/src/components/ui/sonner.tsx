@@ -7,6 +7,9 @@ function Toaster(props: ToasterProps) {
       position="top-right"
       richColors
       closeButton
+      // On phones stacked toasts cover the header (name, sign-out); keep it to two.
+      visibleToasts={2}
+      duration={3500}
       toastOptions={{
         classNames: {
           toast: "font-sans",

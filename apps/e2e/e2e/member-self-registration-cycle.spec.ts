@@ -4,7 +4,6 @@ import { test, expect } from "@playwright/test";
 import {
   E2E_BASELINE_PLAN_FEE,
   ensureActivePlan,
-  memberLoginApi,
   memberRegisterApi,
   newApiContext,
   staffLoginApi,
@@ -61,46 +60,36 @@ test.describe("self-service member registration cycle — positive", () => {
     // (finish profile — payment is now the last step, not this one).
     await page.getByRole("button", { name: /E2E Baseline Plan/ }).click();
     await expect(page.getByText("Step 2 of 3")).toBeVisible();
-    await expect(page.getByText("Finish your profile")).toBeVisible();
+    await expect(page.getByText("Add your details")).toBeVisible();
 
-    // 3. Address, via the member's own profile-update endpoint — MyProfile's
-    // full form is exercised elsewhere; this step only cares that the
-    // checklist reacts to it being filled in.
     const membersRes = await apiCtx.get("/api/v1/members", { headers: authHeaders(admin.accessToken) });
     const allMembers = (await membersRes.json()).data as Array<{ id: string; fullName: string }>;
     const memberId = allMembers.find((m) => m.fullName === fullName)!.id;
-    const { accessToken: memberToken } = await memberLoginApi(apiCtx, mobile, password);
-    const addressPatchRes = await apiCtx.patch("/api/v1/members/me", {
-      headers: authHeaders(memberToken),
-      data: { addressLine: "42 Self Service Lane", pincode: "110001" },
-    });
-    expect(addressPatchRes.ok(), await addressPatchRes.text()).toBe(true);
-    await page.reload();
-    await expect(page.getByText("Address & personal details")).toBeVisible();
-    // Styled as a button but rendered via <Button asChild><Link>, so its
-    // accessible role is "link".
-    await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
+
+    // 3. Address — filled right inside step 2 (no detour to the profile page).
+    await page.locator("#join-addressLine").fill("42 Self Service Lane");
+    await page.locator("#join-pincode").fill("110001");
 
     // 4. Photo + ID proof, through the real (hidden) file inputs.
     const fileInputs = page.locator('input[type="file"]');
     await fileInputs.nth(0).setInputFiles(PHOTO_FIXTURE);
-    await expect(page.getByRole("button", { name: "Replace" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change photo" })).toBeVisible();
     await fileInputs.nth(1).setInputFiles(PHOTO_FIXTURE);
-    await expect(page.getByRole("button", { name: "Add another" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add another ID" })).toBeVisible();
 
     // 5. Declarations + submit -> AWAITING_PAYMENT -> Step 3 of 3 (payment).
     for (const label of [
-      "I declare the information provided is true and correct",
-      "I accept the organization's constitution",
+      "The information I have given is true and correct",
+      "I accept the organization's rules (constitution)",
       "I accept the privacy policy",
       "I accept the terms & conditions",
     ]) {
       await page.getByText(label, { exact: true }).locator('input[type="checkbox"]').check();
     }
     await page.locator("#declarationPlace").fill("New Delhi");
-    await page.getByRole("button", { name: "Continue to Payment" }).click();
+    await page.getByRole("button", { name: "Save and go to payment" }).click();
     await expect(page.getByText("Step 3 of 3")).toBeVisible();
-    await expect(page.getByText("Pay your registration fee")).toBeVisible();
+    await expect(page.getByText("Pay your membership fee")).toBeVisible();
 
     // 6. Staff collects the fee in person — same escape hatch a stuck
     // self-service member has in real use. (The online-checkout path is a
@@ -115,9 +104,10 @@ test.describe("self-service member registration cycle — positive", () => {
     await apiCtx.dispose();
 
     // 7. ACTIVE falls out of MemberCompleteRegistration entirely — the full
-    // member dashboard (referral link, etc.) renders instead.
+    // member home (membership card, referral link, etc.) renders instead.
     await page.reload();
-    await expect(page.getByText("Your referral link")).toBeVisible();
+    await expect(page.getByText("My membership", { exact: true })).toBeVisible();
+    await expect(page.getByText("Invite friends and earn points")).toBeVisible();
   });
 });
 
@@ -210,7 +200,7 @@ test.describe("self-service member registration cycle — negative", () => {
     });
     expect(beforeFields.status()).toBe(409);
     const beforeFieldsBody = await beforeFields.json();
-    expect(beforeFieldsBody.message ?? JSON.stringify(beforeFieldsBody)).toMatch(/missing/i);
+    expect(beforeFieldsBody.message ?? JSON.stringify(beforeFieldsBody)).toMatch(/please add your/i);
 
     // Every other REQUIRED_FOR_SUBMIT field, so the next submit call is
     // rejected specifically for missing documents rather than these.

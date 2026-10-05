@@ -2,8 +2,11 @@
   "extends": "@nmms/config/typescript/base.json",
   "compilerOptions": {
     "baseUrl": ".",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    // The package is "type": "module" (specs use import.meta.url), and a few
+    // specs read navigator.clipboard inside page.evaluate — hence DOM types.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
     "types": ["node"]
   },
   "include": ["e2e", "playwright.config.ts"]

@@ -133,16 +133,19 @@ const memberRegisterGate = new ThrottleGate(6, 60_000);
 // the rest of the worker process) instead of ever hitting the endpoint again
 // for those accounts. Any other email falls back to a real login.
 const staffTokenCache = new Map<string, { accessToken: string; userId: string; role: string }>();
-let persistedTokens: Record<string, { accessToken: string; userId: string; role: string }> | null = null;
+type PersistedTokens = Record<string, { accessToken: string; userId: string; role: string }>;
+let persistedTokens: PersistedTokens | null = null;
 
 async function loadPersistedTokens() {
   if (persistedTokens) return persistedTokens;
+  let loaded: PersistedTokens;
   try {
-    persistedTokens = JSON.parse(await readFile(TOKENS_FILE, "utf-8"));
+    loaded = JSON.parse(await readFile(TOKENS_FILE, "utf-8"));
   } catch {
-    persistedTokens = {};
+    loaded = {};
   }
-  return persistedTokens;
+  persistedTokens = loaded;
+  return loaded;
 }
 
 export async function staffLoginApi(

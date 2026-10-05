@@ -43,7 +43,7 @@ test.describe("donation cycle — positive", () => {
     // the two actually renders depends on the gateway-status fetch settling
     // first — wait for whichever one appears rather than racing a same-tick
     // count() against that in-flight request.
-    const manualToggle = memberPage.getByRole("button", { name: "Sent it another way? Record it manually instead" });
+    const manualToggle = memberPage.getByRole("button", { name: "Already gave cash, UPI or a cheque? Tell us here" });
     const modeField = memberPage.getByLabel("How did you send it?");
     await manualToggle.or(modeField).first().waitFor({ state: "visible" });
     if (await manualToggle.isVisible()) {
@@ -53,10 +53,10 @@ test.describe("donation cycle — positive", () => {
     await memberPage.getByLabel("Address (optional)").fill("12 MG Road, Pune");
     await memberPage.getByLabel("PAN (optional)").fill("ABCDE1234F");
     await memberPage.getByLabel("How did you send it?").selectOption("UPI");
-    await memberPage.getByLabel("Reference / transaction no. (optional)").fill("UPI-REF-CYCLE-1");
-    await memberPage.getByRole("button", { name: "Submit Donation" }).click();
+    await memberPage.getByLabel("UPI reference or cheque number (optional)").fill("UPI-REF-CYCLE-1");
+    await memberPage.getByRole("button", { name: "Tell us about my donation" }).click();
     await expect(memberPage.getByText("₹500")).toBeVisible();
-    await expect(memberPage.getByText("Pending", { exact: true })).toBeVisible();
+    await expect(memberPage.getByText("Being checked", { exact: true })).toBeVisible();
 
     // 2. Field Executive (CAN_MANAGE_DONATIONS deliberately includes FE,
     // unlike the withdrawal/KYC review precedent) approves it.
@@ -65,13 +65,13 @@ test.describe("donation cycle — positive", () => {
     await fePage.goto("/admin/donations");
     const row = fePage.getByRole("row", { name: new RegExp(fullName) });
     await expect(row).toBeVisible();
-    await row.getByRole("button", { name: "Approve" }).click();
-    await fePage.getByRole("alertdialog").getByRole("button", { name: "Approve" }).click();
+    await row.getByRole("button", { name: "Received" }).click();
+    await fePage.getByRole("alertdialog").getByRole("button", { name: "Yes, received" }).click();
     await expect(row).toHaveCount(0); // default tab filters to PENDING
 
     // 2b. Staff can also open the receipt from the Approved tab (admin
     // receipt page — mirrors the Payments module's admin+member receipt pair).
-    await fePage.getByRole("button", { name: "Approved", exact: true }).click();
+    await fePage.getByRole("button", { name: "Received", exact: true }).click();
     const approvedRow = fePage.getByRole("row", { name: new RegExp(fullName) });
     await expect(approvedRow).toBeVisible();
     await approvedRow.getByRole("link").click();
@@ -84,7 +84,7 @@ test.describe("donation cycle — positive", () => {
 
     // 3. Member sees Approved + a receipt with the donor details they gave.
     await memberPage.goto("/member/donations");
-    await expect(memberPage.getByText("Approved", { exact: true })).toBeVisible();
+    await expect(memberPage.getByText("Received", { exact: true })).toBeVisible();
     await memberPage.getByRole("link", { name: "View Receipt" }).click();
     await expect(memberPage.getByText("12 MG Road, Pune")).toBeVisible();
     await expect(memberPage.getByText("ABCDE1234F")).toBeVisible();
@@ -134,9 +134,9 @@ test.describe("donation cycle — negative (shared member)", () => {
     const adminPage = await adminContext.newPage();
     await adminPage.goto("/admin/donations");
     const row = adminPage.getByRole("row", { name: new RegExp(fullName) }).first();
-    await row.getByRole("button", { name: "Reject" }).click();
+    await row.getByRole("button", { name: "Not received" }).click();
     await adminPage.getByLabel("Reason").fill("Could not verify receipt");
-    await adminPage.getByRole("button", { name: "Reject Donation" }).click();
+    await adminPage.getByRole("button", { name: "Mark as not received" }).click();
     await adminContext.close();
 
     const finalRes = await apiCtx.get(`/api/v1/donations/${donation.id}`, { headers: authHeaders(admin.accessToken) });

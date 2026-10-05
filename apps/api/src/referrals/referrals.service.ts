@@ -288,8 +288,9 @@ export class ReferralsService {
     });
   }
 
-  // Legacy writer retained for old pending donation ledger rows. New
-  // donations are recorded and credited immediately in one transaction.
+  // Called from DonationsService.submitMine for a member-reported offline
+  // donation: records the points as PENDING without touching the spendable
+  // balance — resolveDonation credits or rejects them once staff check it.
   async recordPendingDonationPoints(
     organizationId: string,
     memberId: string,
@@ -311,8 +312,9 @@ export class ReferralsService {
     });
   }
 
-  // Legacy resolver retained for historical donation ledger rows. New
-  // donations are recorded and credited immediately in one transaction.
+  // Called from DonationsService.approve/reject — resolves the PENDING row
+  // created by recordPendingDonationPoints. No-ops when there is none (e.g. a
+  // 0-point donation never got one).
   async resolveDonation(
     organizationId: string,
     memberId: string,

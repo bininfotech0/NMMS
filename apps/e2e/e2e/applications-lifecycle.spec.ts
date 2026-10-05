@@ -87,24 +87,29 @@ test.describe("applications lifecycle — admin", () => {
     await apiCtx.dispose();
 
     await page.goto(`/admin/members/${memberId}/profile`);
-    await page.getByRole("button", { name: "Suspend" }).click();
+    // Lifecycle actions live in the "More actions" menu.
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Put membership on hold" }).click();
     await page.getByLabel("Remarks").fill("Non-payment of dues");
-    await page.getByRole("button", { name: "Suspend", exact: true }).click();
-    await expect(page.getByText("Suspended", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Put on hold", exact: true }).click();
+    await expect(page.getByText("On hold", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Reactivate" }).click();
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Make active again" }).click();
     await page.getByLabel("Remarks").fill("Dues cleared");
-    await page.getByRole("button", { name: "Reactivate", exact: true }).click();
+    await page.getByRole("button", { name: "Make active", exact: true }).click();
     await expect(page.getByText("Active", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Mark Deceased" }).click();
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Record death" }).click();
     await page.getByLabel("Remarks").fill("Reported by family");
-    await page.getByRole("button", { name: "Mark Deceased", exact: true }).click();
+    await page.getByRole("button", { name: "Record death", exact: true }).click();
     await expect(page.getByText("Deceased", { exact: true })).toBeVisible();
     // Terminal state — no further lifecycle actions offered.
-    await expect(page.getByRole("button", { name: "Suspend" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Reactivate" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Mark Deceased" })).toHaveCount(0);
+    await page.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Put membership on hold" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Make active again" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Record death" })).toHaveCount(0);
   });
 
   test("Timeline tab shows every transition with actor and remarks", async ({ page }) => {
@@ -177,8 +182,9 @@ test.describe("applications lifecycle — field executive", () => {
     await apiCtx.dispose();
 
     await page.goto(`/admin/members/${memberId}/profile`);
-    await expect(page.getByRole("button", { name: "Suspend" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Reactivate" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Mark Deceased" })).toHaveCount(0);
+    await page.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Put membership on hold" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Make active again" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Record death" })).toHaveCount(0);
   });
 });

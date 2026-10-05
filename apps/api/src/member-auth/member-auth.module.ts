@@ -8,11 +8,20 @@ import { PublicMemberAuthController } from "./public-member-auth.controller";
 import { MemberAuthService } from "./member-auth.service";
 import { MemberJwtStrategy } from "./strategies/member-jwt.strategy";
 import { MemberJwtRefreshStrategy } from "./strategies/member-jwt-refresh.strategy";
+import { MemberPasswordResetService } from "./member-password-reset.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [PassportModule, JwtModule.register({})],
+  imports: [PassportModule, JwtModule.register({}), NotificationsModule],
   controllers: [MemberAuthController, PublicMemberAuthController],
-  providers: [MemberAuthService, MemberJwtStrategy, MemberJwtRefreshStrategy, NumberingService, AadhaarHashService],
+  providers: [
+    MemberAuthService,
+    MemberPasswordResetService,
+    MemberJwtStrategy,
+    MemberJwtRefreshStrategy,
+    NumberingService,
+    AadhaarHashService,
+  ],
   exports: [MemberAuthService],
 })
 export class MemberAuthModule {}

@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Wallet, CreditCard, ArrowUpRight, IndianRupee, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,19 @@ const TABS = ["Outstanding", "History"] as const;
 // PaymentGatewayService instead, never through this manual form.
 const PAYMENT_MODES: PaymentMode[] = ["CASH", "UPI", "BANK", "CHEQUE", "ONLINE"];
 
+const PAYMENT_MODE_LABELS: Record<string, string> = {
+  CASH: "Cash",
+  UPI: "UPI (Google Pay, PhonePe…)",
+  BANK: "Bank transfer",
+  CHEQUE: "Cheque",
+  ONLINE: "Online — member pays by link or card",
+};
+
+const TAB_LABELS: Record<(typeof TABS)[number], string> = {
+  Outstanding: "Still to pay",
+  History: "Paid",
+};
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 }
@@ -41,6 +54,18 @@ function formatCurrency(amount: number) {
 export function Payments() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Outstanding");
   const [payTarget, setPayTarget] = useState<MemberResponse | null>(null);
+  // "?collect=<memberId>" (from "Waiting for payment") opens the collect form for that member.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const collectId = searchParams.get("collect");
+  const { data: outstanding = [] } = useOutstandingMembers();
+  useEffect(() => {
+    if (!collectId) return;
+    const member = outstanding.find((m) => m.id === collectId);
+    if (member) {
+      setPayTarget(member);
+      setSearchParams({}, { replace: true });
+    }
+  }, [collectId, outstanding, setSearchParams]);
 
   const { data: allPayments = [], isLoading: paymentsLoading, isError: paymentsError } = usePayments();
   const { data: members = [] } = useMembers();
@@ -57,7 +82,7 @@ export function Payments() {
     { key: "receiptNumber", header: "Receipt #", sortable: true },
     { key: "memberName", header: "Member", sortable: true },
     { key: "amount", header: "Amount", sortable: true, align: "right", render: (p) => <span className="font-medium">{formatCurrency(p.amount)}</span> },
-    { key: "mode", header: "Mode", sortable: true, render: (p) => <Badge variant="outline" className="border-transparent bg-muted font-medium">{p.mode}</Badge> },
+    { key: "mode", header: "Mode", sortable: true, render: (p) => <Badge variant="outline" className="border-transparent bg-muted font-medium">{(PAYMENT_MODE_LABELS[p.mode] ?? p.mode).split(" ")[0]}</Badge> },
     { key: "paidAt", header: "Date", sortable: true, render: (p) => new Date(p.paidAt).toLocaleDateString("en-IN") },
   ], []);
 
@@ -121,7 +146,7 @@ export function Payments() {
                 : "bg-muted text-muted-foreground hover:bg-accent",
             )}
           >
-            {t}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -180,7 +205,7 @@ function OutstandingTable({ onRecordPayment }: { onRecordPayment: (member: Membe
       isLoading={isLoading}
       isError={isError}
       errorMessage="Failed to load outstanding members."
-      emptyMessage="No members are awaiting payment."
+      emptyMessage="Everyone has paid. Nobody is waiting to pay right now."
       rowKey={(m) => m.id}
       searchable
       searchPlaceholder="Search members..."
@@ -192,7 +217,7 @@ function OutstandingTable({ onRecordPayment }: { onRecordPayment: (member: Membe
           onClick={() => onRecordPayment(member)}
         >
           <Wallet className="size-4 mr-1" />
-          Collect
+          Collect fee
         </Button>
       )}
     />
@@ -211,7 +236,16 @@ function RecordPaymentSheet({
   const plan = plans.find((p) => p.id === member?.planId);
   const onlineAvailable = gatewayStatus?.enabled ?? false;
 
-  const [amount, setAmount] = useState(plan ? String(plan.fee) : "");
+  const [amount, setAmount] = useState(plan ? String(member?.feeOverride ?? plan.fee) : "");
+  // Plans often load after the sheet opens — fill in the fee once known so
+  // staff don't have to type it (and can't save an empty amount by mistake).
+  const prefilled = useRef(!!plan);
+  useEffect(() => {
+    if (plan && !prefilled.current) {
+      prefilled.current = true;
+      setAmount(String(member?.feeOverride ?? plan.fee));
+    }
+  }, [plan, member]);
   const [mode, setMode] = useState<PaymentMode>("CASH");
   const [transactionNumber, setTransactionNumber] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -222,6 +256,10 @@ function RecordPaymentSheet({
     e.preventDefault();
     if (!member) return;
     setError(null);
+    if (!(Number(amount) > 0)) {
+      setError("Please enter the amount you received.");
+      return;
+    }
     try {
       await recordPayment.mutateAsync({
         memberId: member.id,
@@ -249,9 +287,9 @@ function RecordPaymentSheet({
     >
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Record Payment</SheetTitle>
+          <SheetTitle>Collect the fee</SheetTitle>
           <SheetDescription>
-            {member ? `Collecting payment from ${member.fullName}.` : null}
+            {member ? `From ${member.fullName}. Choose how they are paying. Their membership starts as soon as you save.` : null}
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-4 px-4">
@@ -268,7 +306,7 @@ function RecordPaymentSheet({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="mode">Payment mode</Label>
+            <Label htmlFor="mode">How are they paying?</Label>
             <select
               id="mode"
               value={mode}
@@ -277,7 +315,7 @@ function RecordPaymentSheet({
             >
               {PAYMENT_MODES.map((m) => (
                 <option key={m} value={m}>
-                  {m[0] + m.slice(1).toLowerCase()}
+                  {PAYMENT_MODE_LABELS[m]}
                 </option>
               ))}
             </select>
@@ -302,10 +340,10 @@ function RecordPaymentSheet({
             <form className="flex flex-1 flex-col gap-4" onSubmit={handleSubmit}>
               {mode !== "CASH" && (
                 <div className="space-y-1.5">
-                  <Label htmlFor="transactionNumber">Transaction number</Label>
+                  <Label htmlFor="transactionNumber">Reference number (UPI / bank / cheque)</Label>
                   <Input
                     id="transactionNumber"
-                    placeholder="UPI/bank/transaction reference"
+                    placeholder="Printed on the payment screen or cheque"
                     value={transactionNumber}
                     onChange={(e) => setTransactionNumber(e.target.value)}
                   />
@@ -322,7 +360,7 @@ function RecordPaymentSheet({
                   disabled={recordPayment.isPending}
                   className="bg-brand-green hover:bg-brand-green/90"
                 >
-                  {recordPayment.isPending ? "Recording…" : "Record Payment"}
+                  {recordPayment.isPending ? "Saving…" : "Money received — save"}
                 </Button>
               </SheetFooter>
             </form>

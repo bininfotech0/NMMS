@@ -26,46 +26,76 @@ import { StepNominee } from "./steps/StepNominee";
 import { StepDeclaration } from "./steps/StepDeclaration";
 import { StepReview } from "./steps/StepReview";
 
-const TOTAL_STEPS = 10;
-const REVIEW_STEP = 8;
-// Payment is the last step — the wizard collects and submits the full
-// profile first, then payment auto-activates the member with no separate
-// manual-review step in between.
-const PAYMENT_STEP = 9;
-const OPTIONAL_STEP_FIELDS: Partial<Record<number, (keyof WizardFormState)[]>> = {
-  2: [
-    "fatherName",
-    "motherName",
-    "spouseOrGuardianName",
-    "familyTypeId",
-    "familyMembersCount",
-    "childrenCount",
-    "monthlyIncome",
-    "isDifferentlyAbled",
-    "isExServiceman",
-    "isSeniorCitizen",
-  ],
-  4: ["educationId", "qualificationDetail", "occupationId", "businessTypeId", "languagesKnown", "skills"],
-  6: [
-    "emergencyContactName",
-    "emergencyContactMobile",
-    "emergencyContactRelationship",
-    "nomineeName",
-    "nomineeRelationship",
-    "nomineeDob",
-    "nomineeAddress",
-    "nomineeMobile",
-  ],
-};
+// The ten form sections (indexes into WIZARD_STEP_TITLES and
+// getStepValidationError) shown as four simple screens for field staff.
+// Optional sections are tucked into a collapsed "More details" area so the
+// required path is short.
+const SECTION = {
+  MEMBERSHIP: 0,
+  BASIC: 1,
+  PERSONAL: 2,
+  ADDRESS: 3,
+  EDUCATION: 4,
+  DOCUMENTS: 5,
+  NOMINEE: 6,
+  DECLARATION: 7,
+  REVIEW: 8,
+  PAYMENT: 9,
+} as const;
 
-function nextStepSkippingEmptyOptional(currentStep: number, form: WizardFormState): number {
-  let nextStep = currentStep + 1;
-  while (nextStep < TOTAL_STEPS) {
-    const fields = OPTIONAL_STEP_FIELDS[nextStep];
-    if (!fields || fields.some((field) => Boolean(form[field]))) break;
-    nextStep++;
+const SCREENS: { title: string; hint: string; sections: number[]; optionalSections?: number[] }[] = [
+  {
+    title: "Plan & person",
+    hint: "Choose the plan and enter the person's name and basic details.",
+    sections: [SECTION.MEMBERSHIP, SECTION.BASIC],
+  },
+  {
+    title: "Address & documents",
+    hint: "Add the address, then take or upload a photo and one ID proof.",
+    sections: [SECTION.ADDRESS, SECTION.DOCUMENTS],
+    optionalSections: [SECTION.PERSONAL, SECTION.EDUCATION, SECTION.NOMINEE],
+  },
+  {
+    title: "Agree & check",
+    hint: "Ask the person to agree, check everything once, then submit.",
+    sections: [SECTION.DECLARATION, SECTION.REVIEW],
+  },
+  {
+    title: "Collect payment",
+    hint: "Collect the fee. The membership starts as soon as it is paid.",
+    sections: [SECTION.PAYMENT],
+  },
+];
+const TOTAL_SCREENS = SCREENS.length;
+const SUBMIT_SCREEN = 2;
+const PAYMENT_SCREEN = 3;
+
+const OPTIONAL_SECTION_FIELDS: (keyof WizardFormState)[] = [
+  "fatherName",
+  "motherName",
+  "spouseOrGuardianName",
+  "familyTypeId",
+  "familyMembersCount",
+  "childrenCount",
+  "monthlyIncome",
+  "educationId",
+  "qualificationDetail",
+  "occupationId",
+  "businessTypeId",
+  "languagesKnown",
+  "skills",
+  "emergencyContactName",
+  "emergencyContactMobile",
+  "nomineeName",
+  "nomineeMobile",
+];
+
+function screenValidationError(screen: number, form: WizardFormState): string | null {
+  for (const section of SCREENS[screen].sections) {
+    const error = getStepValidationError(section, form);
+    if (error) return error;
   }
-  return Math.min(nextStep, TOTAL_STEPS - 1);
+  return null;
 }
 
 export function MemberWizard() {
@@ -76,7 +106,7 @@ export function MemberWizard() {
   const updateMember = useUpdateMember();
   const submitMember = useSubmitMember();
 
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentScreen, setCurrentScreen] = useState(0);
   const [form, setForm] = useState<WizardFormState>(emptyWizardForm());
   const [loaded, setLoaded] = useState(false);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
@@ -85,11 +115,10 @@ export function MemberWizard() {
   useEffect(() => {
     if (member && !loaded) {
       setForm(memberToWizardForm(member));
-      // Already submitted (or beyond) — the only step left to act on is
-      // Payment, so land there directly instead of forcing a click-through
-      // of the already-completed profile steps.
+      // Already submitted (or beyond) — the only thing left is payment, so
+      // land there directly instead of clicking through finished screens.
       if (member.status !== "DRAFT") {
-        setCurrentStep(PAYMENT_STEP);
+        setCurrentScreen(PAYMENT_SCREEN);
       }
       setLoaded(true);
     }
@@ -106,28 +135,33 @@ export function MemberWizard() {
     }
   }
 
+  function goTo(screen: number) {
+    setCurrentScreen(screen);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function handleNext() {
-    const validationError = getStepValidationError(currentStep, form);
+    const validationError = screenValidationError(currentScreen, form);
     if (validationError) {
       setStepError(validationError);
       return;
     }
     setStepError(null);
     const ok = await save();
-    if (ok) setCurrentStep(nextStepSkippingEmptyOptional(currentStep, form));
+    if (ok) goTo(Math.min(currentScreen + 1, TOTAL_SCREENS - 1));
   }
 
   async function handlePrevious() {
     setStepError(null);
     await save();
-    setCurrentStep((s) => Math.max(s - 1, 0));
+    goTo(Math.max(currentScreen - 1, 0));
   }
 
   function handleOpenConfirmSubmit() {
-    for (let step = 0; step < TOTAL_STEPS; step++) {
-      const validationError = getStepValidationError(step, form);
+    for (let screen = 0; screen <= SUBMIT_SCREEN; screen++) {
+      const validationError = screenValidationError(screen, form);
       if (validationError) {
-        setCurrentStep(step);
+        goTo(screen);
         setStepError(validationError);
         return;
       }
@@ -140,30 +174,58 @@ export function MemberWizard() {
     const ok = await save();
     if (!ok) return;
     submitMember.mutate(id!, {
-      // Submission moves DRAFT → AWAITING_PAYMENT — advance into the payment
-      // step in place rather than leaving the wizard, since payment (which
-      // auto-activates the member) is the last thing left to do.
-      onSuccess: () => setCurrentStep(PAYMENT_STEP),
+      // Submission moves DRAFT → AWAITING_PAYMENT — continue to payment in
+      // place, since paying (which activates the member) is all that's left.
+      onSuccess: () => goTo(PAYMENT_SCREEN),
     });
     setConfirmSubmitOpen(false);
   }
 
   if (isLoading || !loaded) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading member...</p>;
+    return <p className="py-10 text-center text-sm text-muted-foreground">Loading member…</p>;
   }
 
   const stepProps = { form, setForm, memberId: id };
-  const isReviewStep = currentStep === REVIEW_STEP;
-  const isPaymentStep = currentStep === PAYMENT_STEP;
+  const screen = SCREENS[currentScreen];
+  const isSubmitScreen = currentScreen === SUBMIT_SCREEN;
+  const isPaymentScreen = currentScreen === PAYMENT_SCREEN;
   const isSaving = updateMember.isPending;
   const hasPhoto = documents.some((d) => d.type === "PHOTO");
   const hasIdProof = documents.some((d) => ID_PROOF_DOCUMENT_TYPES.includes(d.type));
   const missingDocsReason = !hasPhoto
-    ? "Upload a passport photo (Identity & Documents step) before submitting"
+    ? "Upload a passport photo (step 2, Address & documents) before submitting"
     : !hasIdProof
-      ? "Upload an ID proof document (Identity & Documents step) before submitting"
+      ? "Upload an ID proof document (step 2, Address & documents) before submitting"
       : null;
   const canSubmit = member?.status === "DRAFT" && !missingDocsReason;
+  const hasOptionalData = OPTIONAL_SECTION_FIELDS.some((field) => Boolean(form[field]));
+
+  function renderSection(section: number) {
+    switch (section) {
+      case SECTION.MEMBERSHIP:
+        return <StepMembership {...stepProps} />;
+      case SECTION.BASIC:
+        return <StepBasicInfo {...stepProps} />;
+      case SECTION.PERSONAL:
+        return <StepPersonal {...stepProps} />;
+      case SECTION.ADDRESS:
+        return <StepAddress {...stepProps} />;
+      case SECTION.EDUCATION:
+        return <StepEducation {...stepProps} />;
+      case SECTION.DOCUMENTS:
+        return <StepDocuments {...stepProps} />;
+      case SECTION.NOMINEE:
+        return <StepNominee {...stepProps} />;
+      case SECTION.DECLARATION:
+        return <StepDeclaration {...stepProps} />;
+      case SECTION.REVIEW:
+        return <StepReview form={form} member={member ?? null} memberId={id!} />;
+      case SECTION.PAYMENT:
+        return <StepPayment {...stepProps} />;
+      default:
+        return null;
+    }
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -171,47 +233,61 @@ export function MemberWizard() {
         <h1 className="font-heading text-2xl font-bold">{member?.fullName || "New Member"}</h1>
         <p className="text-sm text-muted-foreground">
           {member?.registrationNumber ? `${member.registrationNumber} · ` : ""}
-          Step {currentStep + 1} of {TOTAL_STEPS} — {WIZARD_STEP_TITLES[currentStep]}
+          Step {currentScreen + 1} of {TOTAL_SCREENS} — {screen.title}
         </p>
-        <Progress value={((currentStep + 1) / TOTAL_STEPS) * 100} className="mt-3" />
+        <Progress value={((currentScreen + 1) / TOTAL_SCREENS) * 100} className="mt-3" />
+        <p className="mt-2 text-sm text-muted-foreground">{screen.hint}</p>
       </div>
 
       {stepError && (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
           {stepError}
         </p>
       )}
 
-      <div className="rounded-xl border border-border bg-card p-6">
-        {currentStep === 0 && <StepMembership {...stepProps} />}
-        {currentStep === 1 && <StepBasicInfo {...stepProps} />}
-        {currentStep === 2 && <StepPersonal {...stepProps} />}
-        {currentStep === 3 && <StepAddress {...stepProps} />}
-        {currentStep === 4 && <StepEducation {...stepProps} />}
-        {currentStep === 5 && <StepDocuments {...stepProps} />}
-        {currentStep === 6 && <StepNominee {...stepProps} />}
-        {currentStep === 7 && <StepDeclaration {...stepProps} />}
-        {currentStep === 8 && <StepReview form={form} member={member ?? null} memberId={id} />}
-        {currentStep === 9 && <StepPayment {...stepProps} />}
-      </div>
+      {screen.sections.map((section) => (
+        <section key={section} className="rounded-xl border border-border bg-card p-4 sm:p-6">
+          {screen.sections.length > 1 && (
+            <h2 className="mb-4 font-heading text-base font-semibold">{WIZARD_STEP_TITLES[section]}</h2>
+          )}
+          {renderSection(section)}
+        </section>
+      ))}
 
-      <div className="flex items-center justify-between">
-        <Button type="button" variant="outline" disabled={currentStep === 0 || isSaving} onClick={handlePrevious}>
+      {screen.optionalSections && (
+        <details className="group rounded-xl border border-dashed border-border bg-card" open={hasOptionalData}>
+          <summary className="cursor-pointer list-none p-4 font-heading text-base font-semibold sm:px-6">
+            <span className="group-open:hidden">▸ </span>
+            <span className="hidden group-open:inline">▾ </span>
+            More details (optional)
+            <span className="mt-1 block text-sm font-normal text-muted-foreground">
+              Family, education, work, nominee and emergency contact. You can skip this and add it later.
+            </span>
+          </summary>
+          <div className="space-y-6 px-4 pb-4 sm:px-6 sm:pb-6">
+            {screen.optionalSections.map((section) => (
+              <div key={section}>
+                <h2 className="mb-4 font-heading text-sm font-semibold">{WIZARD_STEP_TITLES[section]}</h2>
+                {renderSection(section)}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Wraps on narrow phones so the main button never runs off-screen. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button type="button" variant="outline" disabled={currentScreen === 0 || isSaving} onClick={handlePrevious}>
           <ChevronLeft className="size-4" />
           Previous
         </Button>
-        <div className="flex items-center gap-2">
-          {!isPaymentStep && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isSaving}
-              onClick={() => void save()}
-            >
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+          {!isPaymentScreen && (
+            <Button type="button" variant="outline" disabled={isSaving} onClick={() => void save()}>
               {isSaving ? "Saving…" : "Save Draft"}
             </Button>
           )}
-          {isReviewStep ? (
+          {isSubmitScreen ? (
             <Button
               type="button"
               className="bg-brand-green hover:bg-brand-green/90"
@@ -225,7 +301,7 @@ export function MemberWizard() {
             >
               Submit Application
             </Button>
-          ) : isPaymentStep ? (
+          ) : isPaymentScreen ? (
             member?.status === "ACTIVE" && (
               <Button
                 type="button"
@@ -236,24 +312,22 @@ export function MemberWizard() {
               </Button>
             )
           ) : (
-            <Button
-              type="button"
-              className="bg-brand-green hover:bg-brand-green/90"
-              disabled={isSaving}
-              onClick={handleNext}
-            >
+            <Button type="button" className="bg-brand-green hover:bg-brand-green/90" disabled={isSaving} onClick={handleNext}>
               {isSaving ? "Saving…" : "Save & Continue"}
               <ChevronRight className="size-4" />
             </Button>
           )}
         </div>
       </div>
+      {isSubmitScreen && missingDocsReason && member?.status === "DRAFT" && (
+        <p className="text-right text-sm text-muted-foreground">{missingDocsReason}.</p>
+      )}
 
       <ConfirmDialog
         open={confirmSubmitOpen}
         onOpenChange={setConfirmSubmitOpen}
         title="Submit this application?"
-        description="Once submitted, you'll move on to collecting the registration fee — paying it activates the membership immediately."
+        description="Next you'll collect the membership fee — the membership starts as soon as it is paid."
         confirmLabel="Submit"
         destructive={false}
         isPending={submitMember.isPending}

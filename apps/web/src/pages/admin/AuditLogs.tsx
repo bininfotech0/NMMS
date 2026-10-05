@@ -16,6 +16,7 @@ import { ApiError } from "@/lib/api-client";
 import { useAuditLogFacets, useAuditLogs } from "@/hooks/useAuditLogs";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import type { AuditLogResponse } from "@nmms/shared";
+import { auditActionLabel, auditEntityLabel, describeAuditAction } from "@/lib/audit-describe";
 
 const ACTION_STYLES: Record<string, string> = {
   LOGIN_SUCCESS: "bg-emerald-100 text-emerald-700",
@@ -73,15 +74,13 @@ export function AuditLogs() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-2xl font-bold">Audit Logs</h1>
-        <p className="text-sm text-muted-foreground">
-          Login history and a full activity trail of every change made across the system.
-        </p>
+        <h1 className="font-heading text-2xl font-bold">Activity history</h1>
+        <p className="text-sm text-muted-foreground">Who changed what, and when. Nothing here can be edited.</p>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Input
-          placeholder="Search by actor, action, entity, or ID..."
+          placeholder="Search by email or record number…"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           className="sm:max-w-xs"
@@ -91,10 +90,10 @@ export function AuditLogs() {
           onChange={(e) => setActionFilter(e.target.value)}
           className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <option value={ALL}>All actions</option>
+          <option value={ALL}>Everything people did</option>
           {(facets?.actions ?? []).map((a) => (
             <option key={a} value={a}>
-              {a}
+              {auditActionLabel(a)}
             </option>
           ))}
         </select>
@@ -103,10 +102,10 @@ export function AuditLogs() {
           onChange={(e) => setEntityFilter(e.target.value)}
           className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <option value={ALL}>All entities</option>
+          <option value={ALL}>All parts of the app</option>
           {(facets?.entities ?? []).map((e) => (
             <option key={e} value={e}>
-              {e}
+              {auditEntityLabel(e)}
             </option>
           ))}
         </select>
@@ -116,26 +115,23 @@ export function AuditLogs() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Timestamp</TableHead>
-              <TableHead>Actor</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead>Entity</TableHead>
-              <TableHead>Entity ID</TableHead>
-              <TableHead>IP Address</TableHead>
+              <TableHead>What happened</TableHead>
+              <TableHead className="hidden sm:table-cell">Who</TableHead>
+              <TableHead className="hidden sm:table-cell">When</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading && <TableSkeleton columns={6} />}
+            {isLoading && <TableSkeleton columns={3} />}
             {forbidden && (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
                   You don't have permission to view audit logs.
                 </TableCell>
               </TableRow>
             )}
             {isError && !forbidden && (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-destructive">
+                <TableCell colSpan={3} className="py-10 text-center text-destructive">
                   Failed to load audit logs.
                 </TableCell>
               </TableRow>
@@ -143,7 +139,7 @@ export function AuditLogs() {
             {!isLoading && !isError && logs.map((log) => <AuditLogRow key={log.id} log={log} />)}
             {!isLoading && !isError && logs.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <ShieldCheck className="size-8 text-muted-foreground/50" />
                     {meta && meta.total === 0 && !search && actionFilter === ALL && entityFilter === ALL
@@ -193,20 +189,34 @@ export function AuditLogs() {
 }
 
 function AuditLogRow({ log }: { log: AuditLogResponse }) {
+  const when = new Date(log.createdAt).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const who = log.actorEmail ?? "System / member";
   return (
     <TableRow>
-      <TableCell className="text-muted-foreground whitespace-nowrap">
-        {new Date(log.createdAt).toLocaleString()}
-      </TableCell>
-      <TableCell className="font-medium">{log.actorEmail ?? "—"}</TableCell>
-      <TableCell>
+      <TableCell className="whitespace-normal">
         <Badge className={cn("border-transparent font-medium", actionStyle(log.action))}>
-          {log.action}
+          {describeAuditAction(log.action, log.entity)}
         </Badge>
+        {/* On phones Who/When columns are hidden — show them here instead. */}
+        <p className="mt-1 text-xs text-muted-foreground sm:hidden">
+          {who} · {when}
+        </p>
+        {(log.entityId || log.ipAddress) && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {log.entityId && <>Record {log.entityId}</>}
+            {log.entityId && log.ipAddress && " · "}
+            {log.ipAddress && <>from {log.ipAddress}</>}
+          </p>
+        )}
       </TableCell>
-      <TableCell className="text-muted-foreground">{log.entity}</TableCell>
-      <TableCell className="font-mono text-xs text-muted-foreground">{log.entityId ?? "—"}</TableCell>
-      <TableCell className="text-muted-foreground">{log.ipAddress ?? "—"}</TableCell>
+      <TableCell className="hidden font-medium sm:table-cell">{who}</TableCell>
+      <TableCell className="hidden whitespace-nowrap text-muted-foreground sm:table-cell">{when}</TableCell>
     </TableRow>
   );
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { AuthUser, DonationStatus } from "@nmms/shared";
 import { Role } from "@nmms/shared";
@@ -8,6 +8,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { DonationsService } from "./donations.service";
 import { DonationGatewayService } from "./donation-gateway.service";
+import { ReviewDonationDto } from "./dto/review-donation.dto";
 
 // Staff can view donations org-wide or within their jurisdiction.
 const CAN_MANAGE_DONATIONS: Role[] = [Role.FIELD_EXECUTIVE, Role.ADMIN, Role.SUPER_ADMIN];
@@ -41,4 +42,16 @@ export class DonationsAdminController {
     return this.donationsService.adminGet(id, user.organizationId, user);
   }
 
+  // Confirm a member-reported (offline) donation actually arrived.
+  @Post(":id/approve")
+  @Roles(...CAN_MANAGE_DONATIONS)
+  approve(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.donationsService.approve(id, user.organizationId, user.id, user);
+  }
+
+  @Post(":id/reject")
+  @Roles(...CAN_MANAGE_DONATIONS)
+  reject(@Param("id") id: string, @Body() dto: ReviewDonationDto, @CurrentUser() user: AuthUser) {
+    return this.donationsService.reject(id, user.organizationId, user.id, dto.note, user);
+  }
 }

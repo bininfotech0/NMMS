@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { DataGrid, type DataGridColumn } from "@/components/shared/DataGrid";
 import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useCreateUser, useResetPassword, useUpdateUser, useUsers } from "@/hooks/useUsers";
 import { Role, type UserResponse } from "@nmms/shared";
 
@@ -27,6 +28,13 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 const ALL_ROLES = Object.values(Role);
 
+// What each role can do, in plain words — shown under the role picker.
+const ROLE_HELP: Record<Role, string> = {
+  [Role.FIELD_EXECUTIVE]: "Registers members, collects fees and donations, runs events. Sees only the members they registered.",
+  [Role.ADMIN]: "Everything a Field Executive can do for all members, plus settings, notices, money requests, staff accounts and the activity history.",
+  [Role.SUPER_ADMIN]: "Everything an Admin can do, plus adding or changing other Super Admins.",
+};
+
 function initials(email: string) {
   return email.slice(0, 2).toUpperCase();
 }
@@ -36,6 +44,7 @@ export function Users() {
   const [editOpen, setEditOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserResponse | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<UserResponse | null>(null);
 
   const { data: users = [], isLoading, isError, error } = useUsers();
   const updateUser = useUpdateUser();
@@ -101,7 +110,7 @@ export function Users() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold">Users</h1>
+          <h1 className="font-heading text-2xl font-bold">Staff accounts</h1>
           <p className="text-sm text-muted-foreground">{users.length} users</p>
         </div>
         <div className="flex gap-2">
@@ -145,14 +154,32 @@ export function Users() {
               size="sm"
               variant="outline"
               disabled={updateUser.isPending}
-              onClick={() => updateUser.mutate({ id: u.id, dto: { isActive: !u.isActive } })}
+              onClick={() =>
+                // Blocking a login is disruptive — confirm it; re-allowing is harmless.
+                u.isActive ? setDeactivateTarget(u) : updateUser.mutate({ id: u.id, dto: { isActive: true } })
+              }
             >
-              {u.isActive ? "Deactivate" : "Activate"}
+              {u.isActive ? "Block login" : "Allow login"}
             </Button>
           </div>
         )}
       />
 
+      <ConfirmDialog
+        open={!!deactivateTarget}
+        onOpenChange={(open) => !open && setDeactivateTarget(null)}
+        title="Block this staff login?"
+        description={`${deactivateTarget?.email ?? "This person"} will not be able to sign in until you allow it again. Their records stay as they are.`}
+        confirmLabel="Block login"
+        isPending={updateUser.isPending}
+        onConfirm={() =>
+          deactivateTarget &&
+          updateUser.mutate(
+            { id: deactivateTarget.id, dto: { isActive: false } },
+            { onSettled: () => setDeactivateTarget(null) },
+          )
+        }
+      />
       <AddUserSheet open={addOpen} onOpenChange={setAddOpen} />
       <EditUserSheet
         key={editing?.id ?? "none"}
@@ -218,8 +245,8 @@ function AddUserSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (op
     >
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Add User</SheetTitle>
-          <SheetDescription>Create a new user account and assign a role.</SheetDescription>
+          <SheetTitle>Add a staff member</SheetTitle>
+          <SheetDescription>They sign in with this email and the temporary password. Ask them to change it after the first sign-in.</SheetDescription>
         </SheetHeader>
         <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
@@ -246,6 +273,7 @@ function AddUserSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (op
           <div className="space-y-1.5">
             <Label htmlFor="role">Role</Label>
             <RoleSelect value={role} onChange={setRole} />
+            <p className="text-xs text-muted-foreground">{ROLE_HELP[role]}</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <SheetFooter className="px-0">
@@ -254,7 +282,7 @@ function AddUserSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (op
               disabled={createUser.isPending}
               className="bg-brand-green hover:bg-brand-green/90"
             >
-              {createUser.isPending ? "Creating…" : "Create User"}
+              {createUser.isPending ? "Adding…" : "Add staff member"}
             </Button>
           </SheetFooter>
         </form>
@@ -298,13 +326,14 @@ function EditUserSheet({
     >
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Edit User</SheetTitle>
-          <SheetDescription>{user ? `Editing ${user.email}.` : null}</SheetDescription>
+          <SheetTitle>Change role</SheetTitle>
+          <SheetDescription>{user ? `For ${user.email}. The change applies the next time they sign in.` : null}</SheetDescription>
         </SheetHeader>
         <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
             <Label htmlFor="role">Role</Label>
             <RoleSelect value={role} onChange={setRole} />
+            <p className="text-xs text-muted-foreground">{ROLE_HELP[role]}</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <SheetFooter className="px-0">

@@ -1,3 +1,4 @@
+import type { ExecutionContext } from "@nestjs/common";
 import { of } from "rxjs";
 import { AuditInterceptor } from "./audit.interceptor";
 import type { AuditService } from "./audit.service";
@@ -12,7 +13,7 @@ function makeContext(
   return {
     switchToHttp: () => ({ getRequest: () => request }),
     getClass: () => ({ name: "MembersController" }),
-  } as any;
+  } as unknown as ExecutionContext;
 }
 
 describe("AuditInterceptor", () => {

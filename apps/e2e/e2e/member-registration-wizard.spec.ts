@@ -74,30 +74,27 @@ test.describe("member registration wizard", () => {
     // there, then reload and navigate back to step 2 to check persistence.
     // Step 1 requires a plan selected before it'll advance.
     await selectFirstOptionIfAvailable(page, "planId");
-    await page.getByRole("button", { name: "Save & Continue" }).click();
-    await expect(page.getByText("Step 2 of 10")).toBeVisible();
     await page.getByLabel("First name").fill("SaveDraftFirstName");
     await page.getByRole("button", { name: "Save Draft" }).click();
     await expect(page.getByRole("button", { name: "Save Draft" })).toBeEnabled();
 
     await page.reload();
-    await expect(page.getByText("Step 1 of 10")).toBeVisible();
-    await page.getByRole("button", { name: "Save & Continue" }).click();
+    await expect(page.getByText("Step 1 of 4")).toBeVisible();
     await expect(page.getByLabel("First name")).toHaveValue("SaveDraftFirstName");
   });
 
   test("Previous/Save & Continue navigation moves between steps and updates the progress label", async ({ page }) => {
     await addDraftMember(page, "Step Nav Member", uniqueMobile());
-    await expect(page.getByText("Step 1 of 10")).toBeVisible();
+    await expect(page.getByText("Step 1 of 4")).toBeVisible();
     await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
 
-    // Step 1 requires a plan selected before it'll advance.
+    // Step 1 requires a plan and a name before it'll advance.
     await selectFirstOptionIfAvailable(page, "planId");
     await page.getByRole("button", { name: "Save & Continue" }).click();
-    await expect(page.getByText("Step 2 of 10")).toBeVisible();
+    await expect(page.getByText("Step 2 of 4")).toBeVisible();
 
     await page.getByRole("button", { name: "Previous" }).click();
-    await expect(page.getByText("Step 1 of 10")).toBeVisible();
+    await expect(page.getByText("Step 1 of 4")).toBeVisible();
   });
 
   test("referrer typeahead searches, selects, and clears", async ({ page }) => {
@@ -114,21 +111,18 @@ test.describe("member registration wizard", () => {
     await expect(page.getByLabel("Referred by (optional)")).toBeVisible();
   });
 
-  test("full 10-step walkthrough, submit then offline payment, ends ACTIVE with a membership number", async ({ page }) => {
+  test("full 4-step walkthrough, submit then offline payment, ends ACTIVE with a membership number", async ({ page }) => {
     const mobile = uniqueMobile();
     await addDraftMember(page, "Full Cycle Wizard Member", mobile);
 
-    // Step 1 — Membership: plan is required before the profile can be submitted.
-    await expect(page.getByText("Step 1 of 10")).toBeVisible();
+    // Step 1 — Plan & person: plan is required before the profile can be submitted.
+    await expect(page.getByText("Step 1 of 4")).toBeVisible();
     await selectFirstOptionIfAvailable(page, "planId");
+    await page.getByLabel("Joining date").fill("2026-01-01");
+    await page.getByText("More options (category, branch, special fee, remarks)").click();
     await selectFirstOptionIfAvailable(page, "membershipCategoryId");
     await selectFirstOptionIfAvailable(page, "branchId");
-    await page.getByLabel("Joining date").fill("2026-01-01");
-    await page.getByLabel("Fee override (optional)").fill("");
-    await page.getByRole("button", { name: "Save & Continue" }).click();
-
-    // Step 2 — Basic Information
-    await expect(page.getByText("Step 2 of 10")).toBeVisible();
+    await page.getByLabel("Special fee (optional)").fill("");
     await page.getByLabel("First name").fill("Full");
     await page.getByLabel("Middle name").fill("");
     await page.getByLabel("Last name").fill("Cycle");
@@ -142,20 +136,8 @@ test.describe("member registration wizard", () => {
     await selectFirstOptionIfAvailable(page, "casteCategoryId");
     await page.getByRole("button", { name: "Save & Continue" }).click();
 
-    // Step 3 — Personal Information
-    await expect(page.getByText("Step 3 of 10")).toBeVisible();
-    await page.getByLabel("Father's name").fill("Father Name");
-    await page.getByLabel("Mother's name").fill("Mother Name");
-    await selectFirstOptionIfAvailable(page, "familyTypeId");
-    await page.getByLabel("Family members count").fill("4");
-    await page.getByLabel("Children count").fill("1");
-    await page.getByLabel("Monthly income").fill("25000");
-    await page.getByLabel("Differently abled").check();
-    await page.getByLabel("Senior citizen").check();
-    await page.getByRole("button", { name: "Save & Continue" }).click();
-
-    // Step 4 — Contact & Address
-    await expect(page.getByText("Step 4 of 10")).toBeVisible();
+    // Step 2 — Address & documents, with the optional details opened.
+    await expect(page.getByText("Step 2 of 4")).toBeVisible();
     await page.getByLabel("WhatsApp number").fill(mobile);
     await page.getByLabel("Email").fill(`e2e.${mobile}@example.com`);
     // "Full address"/"Pincode" labels are duplicated (current + permanent
@@ -163,20 +145,6 @@ test.describe("member registration wizard", () => {
     await page.locator("#current-addressLine").fill("42 Wizard Test Lane");
     await page.locator("#current-pincode").fill("110001");
     await page.getByLabel("Same as current address").check();
-    await page.getByRole("button", { name: "Save & Continue" }).click();
-
-    // Step 5 — Education & Occupation
-    await expect(page.getByText("Step 5 of 10")).toBeVisible();
-    await selectFirstOptionIfAvailable(page, "educationId");
-    await page.getByLabel("Qualification detail").fill("B.Tech");
-    await selectFirstOptionIfAvailable(page, "occupationId");
-    await page.getByLabel("Languages known").fill("Hindi, English");
-    await page.getByLabel("Skills").fill("Teaching");
-    await page.getByRole("button", { name: "Save & Continue" }).click();
-
-    // Step 6 — Identity & Documents (moved ahead of Payment — form now
-    // completes fully before the fee is collected)
-    await expect(page.getByText("Step 6 of 10")).toBeVisible();
     await page.getByLabel("Aadhaar number").fill("123412341234");
     await page.getByLabel("PAN").fill("ABCDE1234F");
     for (const slot of DOCUMENT_SLOTS) {
@@ -185,10 +153,20 @@ test.describe("member registration wizard", () => {
       await container.locator('input[type="file"]').setInputFiles(file);
       await expect(container.getByRole("button", { name: "Replace" })).toBeVisible({ timeout: 15_000 });
     }
-    await page.getByRole("button", { name: "Save & Continue" }).click();
-
-    // Step 7 — Nominee & Emergency Contact
-    await expect(page.getByText("Step 7 of 10")).toBeVisible();
+    await page.getByText("More details (optional)").click();
+    await page.getByLabel("Father's name").fill("Father Name");
+    await page.getByLabel("Mother's name").fill("Mother Name");
+    await selectFirstOptionIfAvailable(page, "familyTypeId");
+    await page.getByLabel("Family members count").fill("4");
+    await page.getByLabel("Children count").fill("1");
+    await page.getByLabel("Monthly income").fill("25000");
+    await page.getByLabel("Differently abled").check();
+    await page.getByLabel("Senior citizen").check();
+    await selectFirstOptionIfAvailable(page, "educationId");
+    await page.getByLabel("Qualification detail").fill("B.Tech");
+    await selectFirstOptionIfAvailable(page, "occupationId");
+    await page.getByLabel("Languages known").fill("Hindi, English");
+    await page.getByLabel("Skills").fill("Teaching");
     await page.locator("#emergencyContactName").fill("Emergency Contact");
     await page.locator("#emergencyContactMobile").fill(mobile);
     await page.locator("#emergencyContactRelationship").fill("Sibling");
@@ -196,33 +174,30 @@ test.describe("member registration wizard", () => {
     await page.locator("#nomineeRelationship").fill("Spouse");
     await page.getByRole("button", { name: "Save & Continue" }).click();
 
-    // Step 8 — Declaration & Signature
-    await expect(page.getByText("Step 8 of 10")).toBeVisible();
+    // Step 3 — Agree & check: submitting moves DRAFT -> AWAITING_PAYMENT
+    // and auto-advances into payment, rather than leaving the wizard.
+    await expect(page.getByText("Step 3 of 4")).toBeVisible();
     await page.getByLabel("I declare that the information provided is correct.").check();
     await page.getByLabel("I accept the organization's constitution.").check();
     await page.getByLabel("I accept the privacy policy.").check();
     await page.getByLabel("I accept the terms & conditions.").check();
     await page.getByLabel("Place").fill("New Delhi");
     await page.getByLabel("Date").fill("2026-01-01");
-    await page.getByRole("button", { name: "Save & Continue" }).click();
-
-    // Step 9 — Review & Submit: submitting moves DRAFT -> AWAITING_PAYMENT
-    // and auto-advances into the Payment step, rather than leaving the wizard.
-    await expect(page.getByText("Step 9 of 10")).toBeVisible();
+    // Save the declarations so the review (same screen) reflects them.
+    await page.getByRole("button", { name: "Save Draft" }).click();
     await expect(page.getByRole("heading", { name: "Full Cycle" })).toBeVisible();
-    await expect(page.getByText("Yes").first()).toBeVisible(); // declarations accepted
     await page.getByRole("button", { name: "Submit Application" }).click();
     await expect(page.getByText("Submit this application?")).toBeVisible();
     await page.getByRole("button", { name: "Submit", exact: true }).click();
 
-    // Step 10 — Payment Collection (offline path): paying auto-activates the
+    // Step 4 — Collect payment (offline path): paying auto-activates the
     // member immediately, no separate manual-approval step.
-    await expect(page.getByText("Step 10 of 10")).toBeVisible();
+    await expect(page.getByText("Step 4 of 4")).toBeVisible();
     // Which of the toggle or the form itself renders first depends on the
     // gateway-status fetch settling — wait for whichever one appears rather
     // than racing a same-tick count() against that in-flight request.
-    const offlineToggle = page.getByRole("button", { name: "Record an offline payment instead" });
-    const collectButton = page.getByRole("button", { name: "Collect Payment" });
+    const offlineToggle = page.getByRole("button", { name: "Paid in cash, UPI or cheque? Record it here" });
+    const collectButton = page.getByRole("button", { name: "Money received — save" });
     await offlineToggle.or(collectButton).first().waitFor({ state: "visible" });
     if (await offlineToggle.isVisible()) {
       await offlineToggle.click();

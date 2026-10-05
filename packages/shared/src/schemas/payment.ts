@@ -4,7 +4,7 @@ export const paymentModeSchema = z.enum(["CASH", "UPI", "BANK", "CHEQUE", "ONLIN
 export type PaymentMode = z.infer<typeof paymentModeSchema>;
 
 export const recordPaymentSchema = z.object({
-  amount: z.number().positive(),
+  amount: z.number().positive("Please enter the amount received"),
   mode: paymentModeSchema,
   transactionNumber: z.string().nullish(),
   remarks: z.string().nullish(),

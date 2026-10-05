@@ -37,7 +37,7 @@ test.describe("notices — admin", () => {
     const row = page.getByRole("row", { name: new RegExp(title) });
     await expect(row).toBeVisible();
     await expect(row.getByText("Draft", { exact: true })).toBeVisible();
-    await expect(row.getByText("FIELD EXECUTIVE", { exact: true })).toBeVisible();
+    await expect(row.getByText("Field Executives only", { exact: true })).toBeVisible();
 
     // View (read-only dialog).
     await row.locator("button:has(svg.lucide-eye)").click();

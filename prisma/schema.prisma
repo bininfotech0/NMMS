@@ -497,6 +497,7 @@ model Member {
 
   withdrawalRequests WithdrawalRequest[]
   donations          Donation[]
+  passwordResets     MemberPasswordReset[]
 
   socialMediaLinks String?
 
@@ -1147,4 +1148,21 @@ model Donation {
   @@index([organizationId, status])
   @@index([memberId, status])
   @@map("donations")
+}
+
+// One-time SMS codes for a member resetting a forgotten password. Only a
+// keyed hash of the code is stored; a row is single-use (usedAt) and allows
+// a few wrong guesses (attempts) before it stops working.
+model MemberPasswordReset {
+  id        String    @id @default(cuid())
+  memberId  String
+  member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([memberId, createdAt])
+  @@map("member_password_resets")
 }

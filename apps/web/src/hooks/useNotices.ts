@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { CreateNoticeDto, UpdateNoticeDto, NoticeResponse } from "@nmms/shared";
+import type { CreateNoticeDto, MemberNoticeResponse, UpdateNoticeDto, NoticeResponse } from "@nmms/shared";
+import { memberApiFetch } from "@/lib/member-api-client";
 import { apiFetch } from "@/lib/api-client";
 import { errorMessage } from "@/lib/toast-utils";
 
@@ -81,5 +82,13 @@ export function useDeleteNotice() {
       toast.success("Notice deleted");
     },
     onError: (err) => toast.error(errorMessage(err, "Failed to delete notice")),
+  });
+}
+
+// Member portal: notices for everyone or for members only.
+export function useMemberNotices() {
+  return useQuery({
+    queryKey: ["member-notices"],
+    queryFn: () => memberApiFetch<MemberNoticeResponse[]>("/member-notices"),
   });
 }

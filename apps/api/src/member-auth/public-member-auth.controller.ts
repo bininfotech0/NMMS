@@ -6,6 +6,8 @@ import type { FastifyReply } from "fastify";
 import { MemberAuthService } from "./member-auth.service";
 import { MemberRegisterDto } from "./dto/member-register.dto";
 import { MemberLoginDto } from "./dto/member-login.dto";
+import { MemberPasswordResetService } from "./member-password-reset.service";
+import { MemberPasswordResetConfirmDto, MemberPasswordResetRequestDto } from "./dto/member-password-reset.dto";
 
 const MEMBER_REFRESH_COOKIE = "member_refresh_token";
 
@@ -16,8 +18,29 @@ const MEMBER_REFRESH_COOKIE = "member_refresh_token";
 export class PublicMemberAuthController {
   constructor(
     private readonly memberAuthService: MemberAuthService,
+    private readonly passwordReset: MemberPasswordResetService,
     private readonly config: ConfigService,
   ) {}
+
+  // Tells the forgot-password page whether SMS codes can be sent at all.
+  @Get("password-reset/status")
+  passwordResetStatus() {
+    return this.passwordReset.status();
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post("password-reset/request")
+  @HttpCode(200)
+  requestPasswordReset(@Body() dto: MemberPasswordResetRequestDto) {
+    return this.passwordReset.requestCode(dto.mobile);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post("password-reset/confirm")
+  @HttpCode(200)
+  confirmPasswordReset(@Body() dto: MemberPasswordResetConfirmDto) {
+    return this.passwordReset.confirm(dto.mobile, dto.code, dto.newPassword);
+  }
 
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post("register")

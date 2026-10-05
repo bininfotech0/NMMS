@@ -5,9 +5,11 @@ import { usePlans } from "@/hooks/usePlans";
 import type { MemberResponse } from "@nmms/shared";
 import { ID_PROOF_DOCUMENT_TYPES, type WizardFormState } from "../wizard-types";
 
+// Only filled-in answers are listed, so the check screen stays short.
 function ReviewRow({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
   return (
-    <div className="flex justify-between gap-4 py-1.5 text-sm">
+    <div className="review-row flex justify-between gap-4 py-1.5 text-sm">
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right font-medium">{value || "—"}</span>
     </div>
@@ -16,7 +18,8 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 
 function ReviewSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    // Hidden entirely when none of its rows have a value.
+    <div className="hidden rounded-lg border border-border p-4 has-[.review-row]:block">
       <h3 className="mb-2 font-heading text-sm font-semibold">{title}</h3>
       <div className="divide-y divide-border">{children}</div>
     </div>
@@ -52,7 +55,7 @@ export function StepReview({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Review the application below, then submit. You can still go back and change any step.
+        Check the details below with the person, then submit. Only filled-in details are shown. Use "Previous" to change anything.
       </p>
 
       <ReviewSection title="Registration Info">
@@ -60,16 +63,6 @@ export function StepReview({
         <ReviewRow
           label="Registered at"
           value={member?.registeredAt ? new Date(member.registeredAt).toLocaleString() : ""}
-        />
-        <ReviewRow label="Mode" value={member?.registrationMode ?? ""} />
-        <ReviewRow label="Device ID" value={member?.deviceId ?? ""} />
-        <ReviewRow
-          label="GPS location"
-          value={
-            member?.registrationLatitude != null && member?.registrationLongitude != null
-              ? `${member.registrationLatitude.toFixed(5)}, ${member.registrationLongitude.toFixed(5)}`
-              : ""
-          }
         />
       </ReviewSection>
 

@@ -25,15 +25,24 @@ import {
 } from "@/hooks/useWithdrawals";
 import type { ReferralLedgerEntryResponse, WalletSummaryResponse, WithdrawalStatus } from "@nmms/shared";
 
+// Only the four numbers a member actually needs — the in-between withdrawal
+// stages are shown per request in "Money requests" below instead.
 const STAT_CARDS: { key: keyof WalletSummaryResponse; label: string; isAmount?: boolean }[] = [
-  { key: "earnedPoints", label: "Earned Points" },
-  { key: "pendingReviewPoints", label: "Points not credited yet" },
-  { key: "pendingPoints", label: "Withdrawal Pending" },
-  { key: "approvedPoints", label: "Ready for payout" },
-  { key: "convertedPoints", label: "Converted Points" },
-  { key: "availableBalancePoints", label: "Available Balance (pts)" },
-  { key: "withdrawnAmount", label: "Withdrawn Amount", isAmount: true },
+  { key: "earnedPoints", label: "Total points earned" },
+  { key: "pendingReviewPoints", label: "Points on hold" },
+  { key: "availableBalancePoints", label: "Points you can use" },
+  { key: "withdrawnAmount", label: "Money already sent to you", isAmount: true },
 ];
+
+// Plain-language withdrawal statuses (the raw enum names mean nothing to members).
+const WITHDRAWAL_STATUS_LABELS: Record<WithdrawalStatus, string> = {
+  PENDING: "Waiting for our team",
+  APPROVED: "Approved — will be sent soon",
+  PAYOUT_PROCESSING: "Being sent to your bank",
+  PAYOUT_FAILED: "Sending failed — we'll try again",
+  REJECTED: "Not approved",
+  PAID: "Sent to your bank",
+};
 
 const WITHDRAWAL_STATUS_STYLES: Record<WithdrawalStatus, string> = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -51,7 +60,7 @@ const LEDGER_STATUS_STYLES: Partial<Record<ReferralLedgerEntryResponse["status"]
   REJECTED: "bg-red-100 text-red-700",
 };
 const LEDGER_STATUS_LABELS: Partial<Record<ReferralLedgerEntryResponse["status"], string>> = {
-  PENDING: "Not credited yet",
+  PENDING: "On hold",
   REJECTED: "Not approved",
 };
 
@@ -92,21 +101,21 @@ export function MemberWallet() {
       </div>
 
       <Card className="gap-3 py-4">
-        <CardContent className="flex items-center justify-between gap-4 px-4">
+        <CardContent className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div>
-            <p className="text-sm text-muted-foreground">Available to withdraw</p>
+            <p className="text-sm text-muted-foreground">Money you can take out</p>
             <p className="mt-1 text-2xl font-bold text-brand-green">₹{summary?.availableBalanceAmount ?? 0}</p>
           </div>
           {canWithdraw ? (
             <Button className="bg-brand-green hover:bg-brand-green/90" onClick={() => setWithdrawOpen(true)}>
               <Wallet className="size-4" />
-              Withdraw
+              Take out money
             </Button>
           ) : (
             <Button variant="outline" asChild>
               <Link to="/member/kyc">
                 <ShieldAlert className="size-4" />
-                Complete KYC to withdraw
+                Add bank details to take out money
               </Link>
             </Button>
           )}
@@ -115,7 +124,7 @@ export function MemberWallet() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Withdrawal requests</CardTitle>
+          <CardTitle>Money requests</CardTitle>
         </CardHeader>
         <CardContent>
           {withdrawalsLoading ? (
@@ -123,7 +132,7 @@ export function MemberWallet() {
           ) : !withdrawals || withdrawals.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-6 text-center">
               <Banknote className="size-8 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">No withdrawal requests yet.</p>
+              <p className="text-sm text-muted-foreground">When you take out money, your requests will show here.</p>
             </div>
           ) : (
             <ul className="divide-y divide-border">
@@ -131,12 +140,12 @@ export function MemberWallet() {
                 <li key={w.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <div>
                     <p>
-                      {w.pointsRequested} pts · ₹{w.netAmount} net
+                      ₹{w.netAmount} · {w.pointsRequested} points
                     </p>
-                    <p className="text-xs text-muted-foreground">{new Date(w.createdAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(w.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
                   </div>
                   <Badge className={`border-transparent font-medium ${WITHDRAWAL_STATUS_STYLES[w.status]}`}>
-                    {w.status[0] + w.status.slice(1).toLowerCase().replace(/_/g, " ")}
+                    {WITHDRAWAL_STATUS_LABELS[w.status]}
                   </Badge>
                 </li>
               ))}
@@ -155,7 +164,7 @@ export function MemberWallet() {
           ) : !ledger || ledger.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-6 text-center">
               <Receipt className="size-8 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">No points activity yet.</p>
+              <p className="text-sm text-muted-foreground">Points you earn from invites, events and donations will show here.</p>
             </div>
           ) : (
             <ul className="divide-y divide-border">
@@ -260,12 +269,12 @@ function WithdrawSheet({
     >
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Withdraw points</SheetTitle>
-          <SheetDescription>You have {availablePoints} points available to withdraw.</SheetDescription>
+          <SheetTitle>Take out money</SheetTitle>
+          <SheetDescription>You have {availablePoints} points you can change into money.</SheetDescription>
         </SheetHeader>
         <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
-            <Label htmlFor="points">Points to withdraw</Label>
+            <Label htmlFor="points">How many points?</Label>
             <Input
               id="points"
               type="number"
@@ -280,17 +289,17 @@ function WithdrawSheet({
           {preview && (
             <div className="space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Gross amount</span>
+                <span className="text-muted-foreground">Value of your points</span>
                 <span>₹{preview.gross.toFixed(2)}</span>
               </div>
               {preview.charge > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Withdrawal charge</span>
+                  <span className="text-muted-foreground">Fee</span>
                   <span>-₹{preview.charge.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between font-medium">
-                <span>You receive</span>
+                <span>You will receive</span>
                 <span>₹{preview.net.toFixed(2)}</span>
               </div>
             </div>
@@ -302,7 +311,7 @@ function WithdrawSheet({
               disabled={createRequest.isPending}
               className="bg-brand-green hover:bg-brand-green/90"
             >
-              {createRequest.isPending ? "Submitting…" : "Request Withdrawal"}
+              {createRequest.isPending ? "Submitting…" : "Send request"}
             </Button>
           </SheetFooter>
         </form>

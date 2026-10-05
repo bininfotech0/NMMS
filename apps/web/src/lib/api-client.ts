@@ -45,12 +45,16 @@ async function refreshSession(): Promise<boolean> {
   return true;
 }
 
+// Shown when the response isn't our JSON error shape (proxy/gateway errors
+// like "Bad Gateway") — never surface raw HTTP status text to users.
+const UNREACHABLE_MESSAGE = "We couldn't reach the server. Please check your internet and try again.";
+
 async function extractErrorMessage(res: Response): Promise<string> {
   try {
     const body = await res.json();
-    return body?.message ?? res.statusText;
+    return typeof body?.message === "string" && body.message ? body.message : UNREACHABLE_MESSAGE;
   } catch {
-    return res.statusText;
+    return UNREACHABLE_MESSAGE;
   }
 }
 

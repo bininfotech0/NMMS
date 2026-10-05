@@ -15,6 +15,12 @@ import type { PaymentMode } from "@nmms/shared";
 import type { StepProps } from "../wizard-types";
 
 const PAYMENT_MODES: PaymentMode[] = ["CASH", "UPI", "BANK", "CHEQUE"];
+const PAYMENT_MODE_LABELS: Record<string, string> = {
+  CASH: "Cash",
+  UPI: "UPI (Google Pay, PhonePe…)",
+  BANK: "Bank transfer",
+  CHEQUE: "Cheque",
+};
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(
@@ -124,10 +130,10 @@ export function StepPayment({ form, memberId }: StepProps) {
           onClick={() => setShowManualForm(true)}
           className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-brand-green-dark hover:underline"
         >
-          Record an offline payment instead
+          Paid in cash, UPI or cheque? Record it here
         </button>
       ) : (
-        <form className="space-y-4 border-t border-border pt-4" onSubmit={handleCollect}>
+        <form className={onlineAvailable ? "space-y-4 border-t border-border pt-4" : "space-y-4"} onSubmit={handleCollect}>
           <div className="space-y-1.5">
             <Label htmlFor="payment-amount">Amount (₹)</Label>
             <Input
@@ -142,17 +148,17 @@ export function StepPayment({ form, memberId }: StepProps) {
           </div>
           <NativeSelect
             id="payment-mode"
-            label="Payment mode"
+            label="How are they paying?"
             value={mode}
             onChange={(e) => setMode(e.target.value as PaymentMode)}
-            options={PAYMENT_MODES.map((m) => ({ value: m, label: m[0] + m.slice(1).toLowerCase() }))}
+            options={PAYMENT_MODES.map((m) => ({ value: m, label: PAYMENT_MODE_LABELS[m] }))}
           />
           {mode !== "CASH" && (
             <div className="space-y-1.5">
-              <Label htmlFor="payment-transaction-number">Transaction number</Label>
+              <Label htmlFor="payment-transaction-number">Reference number (UPI / bank / cheque)</Label>
               <Input
                 id="payment-transaction-number"
-                placeholder="UPI/bank reference"
+                placeholder="Printed on the payment screen or cheque"
                 value={transactionNumber}
                 onChange={(e) => setTransactionNumber(e.target.value)}
               />
@@ -165,7 +171,7 @@ export function StepPayment({ form, memberId }: StepProps) {
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={recordPayment.isPending} className="bg-brand-green hover:bg-brand-green/90">
             <Wallet className="size-4" />
-            {recordPayment.isPending ? "Recording…" : "Collect Payment"}
+            {recordPayment.isPending ? "Saving…" : "Money received — save"}
           </Button>
         </form>
       )}

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import type { CreateNoticeDto, UpdateNoticeDto } from "@nmms/shared";
+import { NOTICE_AUDIENCE_MEMBERS, type CreateNoticeDto, type MemberNoticeResponse, type UpdateNoticeDto } from "@nmms/shared";
 
 @Injectable()
 export class NoticesService {
@@ -64,6 +64,20 @@ export class NoticesService {
   async remove(id: string, organizationId: string) {
     await this.findOne(id, organizationId);
     return this.prisma.notice.delete({ where: { id } });
+  }
+
+  // Published notices for everyone (audience null) or members only.
+  async getForMembers(organizationId: string): Promise<MemberNoticeResponse[]> {
+    return this.prisma.notice.findMany({
+      where: {
+        organizationId,
+        publishedAt: { not: null },
+        OR: [{ audienceRole: NOTICE_AUDIENCE_MEMBERS }, { audienceRole: null }],
+      },
+      select: { id: true, title: true, body: true, publishedAt: true },
+      orderBy: { publishedAt: "desc" },
+      take: 20,
+    });
   }
 
   async getActive(organizationId: string, targetRole?: string) {

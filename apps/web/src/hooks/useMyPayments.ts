@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { GatewayOrderResponse, PaymentResponse, VerifyGatewayPaymentInput } from "@nmms/shared";
 import { memberApiFetch } from "@/lib/member-api-client";
-import { errorMessage } from "@/lib/toast-utils";
 
 export function useMyPayments() {
   return useQuery({
@@ -26,7 +25,7 @@ export function useMyPaymentGatewayStatus() {
 export function useCreateMyPaymentOrder() {
   return useMutation({
     mutationFn: () => memberApiFetch<GatewayOrderResponse>("/members/me/payments/gateway/order", { method: "POST" }),
-    onError: (err) => toast.error(errorMessage(err, "Failed to start online payment")),
+    onError: () => toast.error("We couldn't open the payment page. Please try again."),
   });
 }
 
@@ -43,6 +42,6 @@ export function useVerifyMyPaymentGateway() {
       queryClient.invalidateQueries({ queryKey: ["members", "me", "payments"] });
       toast.success("Payment received — your membership is now active!");
     },
-    onError: (err) => toast.error(errorMessage(err, "Failed to verify payment")),
+    onError: () => toast.error("We couldn't confirm your payment yet. If money was taken, don't pay again — contact us."),
   });
 }

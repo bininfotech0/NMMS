@@ -1,4 +1,10 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useApplicationsQueue } from "@/hooks/useApplications";
+import { useAdminWithdrawals } from "@/hooks/useWithdrawals";
+import { useDonationsAdminList } from "@/hooks/useDonations";
 import { ExecutiveDashboard } from "@/components/dashboard/ExecutiveDashboard";
 import { TopReferrersCard } from "@/components/dashboard/TopReferrersCard";
 import { useReportsSummary } from "@/hooks/useReports";
@@ -35,6 +41,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <TodoToday canManagePayouts={canViewOrgWideReports} expiringThisMonth={summary?.expiringThisMonth ?? 0} />
       <ExecutiveDashboard
         summary={summary}
         isLoading={isLoading}
@@ -43,5 +50,65 @@ export function Dashboard() {
       />
       {canViewOrgWideReports && <TopReferrersCard />}
     </div>
+  );
+}
+
+// Plain "what needs doing" list so staff don't have to read the charts to
+// find their work. Each row links straight to the page where it's done.
+function TodoToday({ canManagePayouts, expiringThisMonth }: { canManagePayouts: boolean; expiringThisMonth: number }) {
+  const { data: waiting = [] } = useApplicationsQueue();
+  const { data: payouts = [] } = useAdminWithdrawals("APPROVED", canManagePayouts);
+  const { data: donationsToCheck = [] } = useDonationsAdminList("PENDING");
+
+  const items = [
+    {
+      count: waiting.length,
+      text: `${waiting.length === 1 ? "person has" : "people have"} registered but not paid yet`,
+      action: "Collect payment",
+      to: "/admin/applications",
+    },
+    {
+      count: donationsToCheck.length,
+      text: `donation${donationsToCheck.length === 1 ? "" : "s"} to check (cash, UPI or cheque a member says they gave)`,
+      action: "Check",
+      to: "/admin/donations",
+    },
+    ...(canManagePayouts
+      ? [{ count: payouts.length, text: `money request${payouts.length === 1 ? "" : "s"} ready to send to members`, action: "Send money", to: "/admin/withdrawals" }]
+      : []),
+    {
+      count: expiringThisMonth,
+      text: `membership${expiringThisMonth === 1 ? "" : "s"} end this month`,
+      action: "See who",
+      to: "/admin/reports",
+    },
+  ].filter((item) => item.count > 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base font-semibold">To do today</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CheckCircle2 className="size-4 text-brand-green" /> Nothing waiting for you right now.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {items.map((item) => (
+              <li key={item.to} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span>
+                  <span className="font-semibold">{item.count}</span> {item.text}
+                </span>
+                <Link to={item.to} className="inline-flex shrink-0 items-center gap-1 font-medium text-brand-green hover:underline">
+                  {item.action} <ArrowRight className="size-4" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -2,14 +2,14 @@ import { test, expect } from "@playwright/test";
 import { AUTH_STATE } from "./support/constants";
 
 const REPORT_TABS = [
-  "Member Register",
-  "Pending Approval",
-  "Rejected Applications",
-  "Payment Collection",
-  "Membership Renewal",
-  "Branch Wise Members",
-  "Field Executive Performance",
-  "Revenue Collection",
+  "All members",
+  "Not paid yet",
+  "Older: not accepted",
+  "Payments received",
+  "Due for renewal",
+  "Members by branch",
+  "Field Executive work",
+  "Money by month",
 ];
 
 test.describe("reports — admin", () => {
@@ -20,9 +20,9 @@ test.describe("reports — admin", () => {
     await expect(page.getByText("Total Members", { exact: true })).toBeVisible();
     await expect(page.getByText("Active Members", { exact: true })).toBeVisible();
     await expect(page.getByText("Total Collected", { exact: true })).toBeVisible();
-    await expect(page.getByText("Member Growth (12 months)")).toBeVisible();
-    await expect(page.getByText("Collections (12 months)")).toBeVisible();
-    await expect(page.getByText("Detailed Reports")).toBeVisible();
+    await expect(page.getByText("New members (last 12 months)")).toBeVisible();
+    await expect(page.getByText("Money collected (last 12 months)")).toBeVisible();
+    await expect(page.getByText("Lists you can download")).toBeVisible();
 
     for (const tab of REPORT_TABS) {
       await page.getByRole("button", { name: tab, exact: true }).click();
@@ -36,13 +36,13 @@ test.describe("reports — admin", () => {
   test("Export CSV downloads a non-empty file for Member Register and Revenue Collection", async ({ page }) => {
     await page.goto("/admin/reports");
 
-    await page.getByRole("button", { name: "Member Register", exact: true }).click();
+    await page.getByRole("button", { name: "All members", exact: true }).click();
     const exportButton = page.getByRole("button", { name: "Export CSV" });
     await expect(exportButton).toBeEnabled();
     const [memberDownload] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
     expect(memberDownload.suggestedFilename()).toBe("member-register.csv");
 
-    await page.getByRole("button", { name: "Revenue Collection", exact: true }).click();
+    await page.getByRole("button", { name: "Money by month", exact: true }).click();
     const revenueExportButton = page.getByRole("button", { name: "Export CSV" });
     await expect(revenueExportButton).toBeEnabled();
     const [revenueDownload] = await Promise.all([page.waitForEvent("download"), revenueExportButton.click()]);
@@ -64,7 +64,7 @@ test.describe("reports — field executive", () => {
     await expect(page.getByText("Total Members", { exact: true })).toBeVisible();
     await expect(page.getByText("You don't have permission to view reports.")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Member Register", exact: true }).click();
+    await page.getByRole("button", { name: "All members", exact: true }).click();
     await expect(page.getByText("Failed to load data.")).toBeVisible();
   });
 });

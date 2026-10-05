@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { HandCoins, Printer } from "lucide-react";
+import { Check, HandCoins, Printer, X } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -20,18 +21,27 @@ import { PayDonationOnlineButton } from "@/components/donations/PayDonationOnlin
 import { ShareDonationLinkButton } from "@/components/donations/ShareDonationLinkButton";
 import { ApiError } from "@/lib/api-client";
 import {
+  useApproveDonation,
   useDonationGatewayStatus,
   useDonationsAdminList,
   useRecordDonationDirect,
+  useRejectDonation,
 } from "@/hooks/useDonations";
 import { useMembers } from "@/hooks/useMembers";
 import type { DonationMode, DonationResponse, DonationStatus, ManualDonationMode } from "@nmms/shared";
 
 const TABS: { label: string; value: DonationStatus | undefined }[] = [
-  { label: "Approved", value: "APPROVED" },
-  { label: "Rejected (legacy)", value: "REJECTED" },
+  { label: "To check", value: "PENDING" },
+  { label: "Received", value: "APPROVED" },
+  { label: "Not received", value: "REJECTED" },
   { label: "All", value: undefined },
 ];
+
+const STATUS_LABELS: Record<DonationStatus, string> = {
+  PENDING: "To check",
+  APPROVED: "Received",
+  REJECTED: "Not received",
+};
 
 const STATUS_STYLES: Record<DonationStatus, string> = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -47,9 +57,15 @@ const MODE_OPTIONS: { value: ManualDonationMode; label: string }[] = [
 ];
 
 export function Donations() {
-  const [status, setStatus] = useState<DonationStatus | undefined>(undefined);
+  // Opens on "To check" — member-reported cash/UPI/cheque donations wait here
+  // until staff confirm the money actually arrived.
+  const [status, setStatus] = useState<DonationStatus | undefined>("PENDING");
   const { data: donations = [], isLoading, isError } = useDonationsAdminList(status);
   const [recordOpen, setRecordOpen] = useState(false);
+  const approve = useApproveDonation();
+  const [approveTarget, setApproveTarget] = useState<DonationResponse | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<DonationResponse | null>(null);
+  const [decideTarget, setDecideTarget] = useState<DonationResponse | null>(null);
 
   const columns: DataGridColumn<DonationResponse>[] = useMemo(
     () => [
@@ -71,7 +87,7 @@ export function Donations() {
         sortable: true,
         render: (d) => (
           <Badge className={`border-transparent font-medium ${STATUS_STYLES[d.status]}`}>
-            {d.status[0] + d.status.slice(1).toLowerCase()}
+            {STATUS_LABELS[d.status]}
           </Badge>
         ),
       },
@@ -109,7 +125,10 @@ export function Donations() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-heading text-2xl font-bold">Donations</h1>
-          <p className="text-sm text-muted-foreground">Browse donations or record one received directly</p>
+          <p className="text-sm text-muted-foreground">
+            When a member says they gave cash, UPI or a cheque, check that the money arrived, then tap the donation to
+            confirm it. Online donations are confirmed automatically.
+          </p>
         </div>
         <div className="flex gap-2">
           <ExportCsvButton filename="donations.csv" rows={exportRows} />
@@ -143,13 +162,37 @@ export function Donations() {
         isError={isError}
         preserveOrder
         errorMessage="Failed to load donations."
-        emptyMessage="No donations found."
+        emptyMessage={status === "PENDING" ? "Nothing to check right now." : "No donations found."}
         rowKey={(d) => d.id}
         searchable
         searchPlaceholder="Search by donor name..."
         searchKeys={["memberName"]}
         pageSize={25}
+        // On phones the action buttons sit off-screen to the right — tapping
+        // a row that's waiting to be checked offers the same two choices.
+        onRowClick={(d) => {
+          if (d.status === "PENDING") setDecideTarget(d);
+        }}
         quickActions={(d) => {
+          if (d.status === "PENDING") {
+            return (
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setApproveTarget(d)}>
+                  <Check className="size-4" />
+                  Received
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setRejectTarget(d)}
+                >
+                  <X className="size-4" />
+                  Not received
+                </Button>
+              </div>
+            );
+          }
           if (d.status === "APPROVED" && d.receiptNumber) {
             return (
               <Button size="sm" variant="outline" asChild>
@@ -164,7 +207,126 @@ export function Donations() {
       />
 
       <RecordDonationSheet open={recordOpen} onOpenChange={setRecordOpen} />
+
+      <ConfirmDialog
+        open={approveTarget !== null}
+        onOpenChange={(open) => !open && setApproveTarget(null)}
+        title="Did you receive this money?"
+        description={
+          approveTarget
+            ? `Only confirm if ₹${approveTarget.amount} from ${approveTarget.memberName ?? "this member"} (${approveTarget.mode.toLowerCase()}${approveTarget.reference ? `, ref ${approveTarget.reference}` : ""}) has really reached the NGO. A receipt will be issued and the member gets their points.`
+            : ""
+        }
+        confirmLabel="Yes, received"
+        destructive={false}
+        isPending={approve.isPending}
+        onConfirm={() => {
+          if (!approveTarget) return;
+          approve.mutate(approveTarget.id, { onSettled: () => setApproveTarget(null) });
+        }}
+      />
+
+      <Sheet open={decideTarget !== null} onOpenChange={(open) => !open && setDecideTarget(null)}>
+        <SheetContent side="bottom">
+          <SheetHeader>
+            <SheetTitle>Did this money reach the NGO?</SheetTitle>
+            <SheetDescription>
+              {decideTarget
+                ? `${decideTarget.memberName ?? "A member"} says they gave ₹${decideTarget.amount} by ${decideTarget.mode.toLowerCase()}${decideTarget.reference ? ` (ref ${decideTarget.reference})` : ""}.`
+                : ""}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-2 px-4 pb-6">
+            <Button
+              className="bg-brand-green hover:bg-brand-green/90"
+              onClick={() => {
+                setApproveTarget(decideTarget);
+                setDecideTarget(null);
+              }}
+            >
+              <Check className="size-4" />
+              Yes, received
+            </Button>
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                setRejectTarget(decideTarget);
+                setDecideTarget(null);
+              }}
+            >
+              <X className="size-4" />
+              No, not received
+            </Button>
+            <Button variant="ghost" onClick={() => setDecideTarget(null)}>
+              Decide later
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <RejectDonationSheet target={rejectTarget} onOpenChange={(open) => !open && setRejectTarget(null)} />
     </div>
+  );
+}
+
+function RejectDonationSheet({
+  target,
+  onOpenChange,
+}: {
+  target: DonationResponse | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const rejectDonation = useRejectDonation();
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!target) return;
+    setError(null);
+    try {
+      await rejectDonation.mutateAsync({ id: target.id, note });
+      setNote("");
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  return (
+    <Sheet open={target !== null} onOpenChange={onOpenChange}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Money not received</SheetTitle>
+          <SheetDescription>
+            {target
+              ? `${target.memberName ?? "The member"} said they gave ₹${target.amount}. The member will see your reason.`
+              : ""}
+          </SheetDescription>
+        </SheetHeader>
+        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="reject-note">Reason</Label>
+            <textarea
+              id="reject-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              required
+              placeholder="For example: we could not find this payment in our bank account"
+              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            />
+          </div>
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <SheetFooter className="px-0">
+            <Button type="submit" variant="destructive" disabled={rejectDonation.isPending}>
+              {rejectDonation.isPending ? "Saving…" : "Mark as not received"}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 }
 

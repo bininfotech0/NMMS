@@ -5,7 +5,6 @@ import {
   UserCheck,
   Clock,
   Wallet,
-  AlertCircle,
   ClipboardCheck,
   Bell,
   Activity,
@@ -13,7 +12,6 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "./StatCard";
 import {
@@ -53,17 +51,17 @@ const STAT_ICONS = [Users, UserCheck, Clock, Wallet] as const;
 const STAT_ACCENTS = ["green", "gold", "brown", "muted"] as const;
 
 const QUICK_ACTIONS = [
-  { label: "New Registration", icon: UserPlus, to: "/admin/members/new/wizard", color: "bg-brand-green text-white" },
-  { label: "Review Applications", icon: ClipboardCheck, to: "/admin/applications", color: "bg-brand-gold text-brand-brown" },
-  { label: "Record Payment", icon: Wallet, to: "/admin/payments", color: "bg-blue-600 text-white" },
-  { label: "Create Notice", icon: Bell, to: "/admin/notices", color: "bg-purple-600 text-white" },
+  // Opens the Members page with the "Add Member" form already showing.
+  { label: "Register a new member", icon: UserPlus, to: "/admin/members?add=1", color: "bg-brand-green text-white" },
+  { label: "Waiting for payment", icon: ClipboardCheck, to: "/admin/applications", color: "bg-brand-gold text-brand-brown" },
+  { label: "Record a payment", icon: Wallet, to: "/admin/payments", color: "bg-blue-600 text-white" },
+  { label: "Write a notice", icon: Bell, to: "/admin/notices", color: "bg-purple-600 text-white", adminOnly: true },
 ];
 
 export function ExecutiveDashboard({
   summary,
   isLoading,
   fieldExecDashboard,
-  role,
 }: {
   summary: DashboardSummary | null;
   isLoading?: boolean;
@@ -78,8 +76,8 @@ export function ExecutiveDashboard({
     return [
       { label: "Total Members", value: summary.totalMembers.toLocaleString(), trend: `+${summary.monthlyRegistrations} this month`, trendUp: summary.monthlyRegistrations > 0 },
       { label: "Active Members", value: summary.activeMembers.toLocaleString(), trend: `${activePct.toFixed(1)}% active`, trendUp: activePct >= 50 },
-      { label: "Awaiting Payment", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
-      { label: "Total Collections", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: summary.monthlyCollection > 0 },
+      { label: "Not paid yet", value: summary.pendingApprovals.toString(), trend: `${summary.expiringThisMonth} memberships expiring this month`, trendUp: summary.expiringThisMonth < 10 },
+      { label: "Money collected", value: `₹${summary.totalCollections.toLocaleString()}`, trend: `+₹${summary.monthlyCollection.toLocaleString()} this month`, trendUp: summary.monthlyCollection > 0 },
     ];
   }, [summary]);
 
@@ -102,11 +100,11 @@ export function ExecutiveDashboard({
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-heading text-2xl font-bold">
-            {fieldExecDashboard ? "Field Executive Dashboard" : "Executive Dashboard"}
+            {fieldExecDashboard ? "Your work" : "Overview"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {role ? `${role.replace(/_/g, " ")} · ` : ""}
-            Real-time overview as of {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+            {fieldExecDashboard ? "Members you registered · " : ""}
+            {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
       </div>
@@ -126,7 +124,7 @@ export function ExecutiveDashboard({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {QUICK_ACTIONS.map((action) => (
+        {QUICK_ACTIONS.filter((action) => !(fieldExecDashboard && action.adminOnly)).map((action) => (
           <button
             key={action.label}
             onClick={() => navigate(action.to)}
@@ -172,7 +170,6 @@ export function ExecutiveDashboard({
                 <div key={s.key} className="flex items-center justify-between rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-accent/40">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={s.key} />
-                    <span className="text-sm text-muted-foreground">{s.key}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{s.value}</span>
@@ -232,29 +229,6 @@ export function ExecutiveDashboard({
         </Card>
       </div>
 
-      {summary.pendingApprovals > 0 && (
-        <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
-          <CardContent className="flex items-center gap-3 py-4">
-            <AlertCircle className="size-5 text-amber-600 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                {summary.pendingApprovals} registration{summary.pendingApprovals === 1 ? "" : "s"} awaiting payment
-              </p>
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                {summary.expiringThisMonth} memberships expiring this month
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-amber-300 text-amber-800"
-              onClick={() => navigate("/admin/applications")}
-            >
-              Review Now
-            </Button>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

@@ -12,9 +12,9 @@ test.describe("audit logs — super admin", () => {
     expect(totalCount).toBeGreaterThan(0);
 
     // Search narrows the result set (or shows the explicit no-match state).
-    await page.getByPlaceholder("Search by actor, action, entity, or ID...").fill("zzz-no-such-actor-zzz");
+    await page.getByPlaceholder("Search by email or record number…").fill("zzz-no-such-actor-zzz");
     await expect(page.getByText("No logs match your filters.")).toBeVisible();
-    await page.getByPlaceholder("Search by actor, action, entity, or ID...").fill("");
+    await page.getByPlaceholder("Search by email or record number…").fill("");
 
     // Action filter select is populated from real data and narrows results.
     const actionSelect = page.locator("select").first();
@@ -40,7 +40,7 @@ test.describe("audit logs — admin", () => {
     page,
   }) => {
     await page.goto("/admin/audit-logs");
-    await expect(page.getByRole("link", { name: "Audit Logs", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Activity history", exact: true })).toBeVisible();
     await expect(page.locator("table tbody tr").first()).toBeVisible();
   });
 });
@@ -50,7 +50,7 @@ test.describe("audit logs — field executive", () => {
 
   test("nav link is absent and direct navigation shows a permission-denied message", async ({ page }) => {
     await page.goto("/admin/audit-logs");
-    await expect(page.getByRole("link", { name: "Audit Logs", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Activity history", exact: true })).toHaveCount(0);
     await expect(page.getByText("You don't have permission to view audit logs.")).toBeVisible();
   });
 });

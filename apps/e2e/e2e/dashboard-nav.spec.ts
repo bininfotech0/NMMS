@@ -21,22 +21,34 @@ for (const role of ROLES) {
     test.use({ storageState: role.storageState });
 
     test.describe("dashboard quick actions", () => {
-      test("Review Applications navigates to the Applications queue", async ({ page }) => {
+      test("Waiting for payment navigates to the payment queue", async ({ page }) => {
         await page.goto("/admin");
-        await page.getByRole("button", { name: "Review Applications" }).click();
+        await page.getByRole("button", { name: "Waiting for payment" }).click();
         await page.waitForURL("**/admin/applications");
       });
 
-      test("Record Payment navigates to Payments", async ({ page }) => {
+      test("Record a payment navigates to Payments", async ({ page }) => {
         await page.goto("/admin");
-        await page.getByRole("button", { name: "Record Payment" }).click();
+        await page.getByRole("button", { name: "Record a payment" }).click();
         await page.waitForURL("**/admin/payments");
       });
 
-      test("Create Notice navigates to Notices", async ({ page }) => {
+      test("Write a notice navigates to Notices (admins only)", async ({ page }) => {
         await page.goto("/admin");
-        await page.getByRole("button", { name: "Create Notice" }).click();
+        const button = page.getByRole("button", { name: "Write a notice" });
+        if (!role.canManageUsers) {
+          await expect(button).toHaveCount(0);
+          return;
+        }
+        await button.click();
         await page.waitForURL("**/admin/notices");
+      });
+
+      test("Register a new member opens the Add Member form", async ({ page }) => {
+        await page.goto("/admin");
+        await page.getByRole("button", { name: "Register a new member" }).click();
+        await page.waitForURL("**/admin/members?add=1");
+        await expect(page.getByText("Register a new member").last()).toBeVisible();
       });
 
       test("New Registration — documents actual behavior of the /admin/members/new/wizard link", async ({ page }) => {
@@ -79,7 +91,11 @@ for (const role of ROLES) {
         const userMenuTrigger = page.locator("header button").filter({ has: page.locator('[data-slot="avatar"]') });
         await userMenuTrigger.click();
         await expect(page.getByRole("menuitem", { name: "Dashboard" })).toBeVisible();
-        await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+        if (role.canManageUsers) {
+          await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+        } else {
+          await expect(page.getByRole("menuitem", { name: "Settings" })).toHaveCount(0);
+        }
         await expect(page.getByRole("menuitem", { name: "Logout" })).toBeVisible();
         await page.keyboard.press("Escape");
       });
@@ -89,35 +105,43 @@ for (const role of ROLES) {
       const NAV_LINKS: Array<[string, string]> = [
         ["Dashboard", "/admin"],
         ["Members", "/admin/members"],
-        ["Applications", "/admin/applications"],
+        ["Waiting for payment", "/admin/applications"],
         ["Membership Plans", "/admin/membership"],
         ["Referral Rewards", "/admin/referral-rewards"],
         ["Payments", "/admin/payments"],
         ["Events", "/admin/events"],
         ["Documents", "/admin/documents"],
         ["Notices", "/admin/notices"],
-        ["Reports & Analytics", "/admin/reports"],
-        ["Settings", "/admin/settings"],
+        ["Reports", "/admin/reports"],
       ];
 
       for (const [label, path] of NAV_LINKS) {
         test(`nav link "${label}" navigates to ${path}`, async ({ page }) => {
           await page.goto("/admin");
-          // "Applications" carries a live pending-count badge (e.g.
-          // "Applications 7") that grows as the shared dev DB accumulates
-          // data across runs — match it as a whole-word prefix instead of
-          // requiring an exact "Applications" with no badge at all. No other
-          // label in this list shares "Applications" as a prefix, so this
-          // stays unambiguous.
-          const name = label === "Applications" ? new RegExp(`^${label}(\\s|$)`) : label;
-          await page.getByRole("link", { name, exact: label !== "Applications" }).click();
+          // "Waiting for payment" carries a live pending-count badge (e.g.
+          // "Waiting for payment 7") that grows as the shared dev DB
+          // accumulates data across runs — match it as a prefix instead.
+          const badged = label === "Waiting for payment";
+          const name = badged ? new RegExp(`^${label}(\\s|$)`) : label;
+          await page.getByRole("link", { name, exact: !badged }).click();
           await page.waitForURL(new RegExp(path.replace(/\//g, "\\/") + "$"));
         });
       }
 
-      test("Users link visibility matches role (ADMIN/SUPER_ADMIN only)", async ({ page }) => {
+      test("Settings link visibility matches role (ADMIN/SUPER_ADMIN only)", async ({ page }) => {
         await page.goto("/admin");
-        const usersLink = page.getByRole("link", { name: "Users", exact: true });
+        const settingsLink = page.getByRole("link", { name: "Settings", exact: true });
+        if (role.canManageUsers) {
+          await settingsLink.click();
+          await page.waitForURL("**/admin/settings");
+        } else {
+          await expect(settingsLink).toHaveCount(0);
+        }
+      });
+
+      test("Staff accounts link visibility matches role (ADMIN/SUPER_ADMIN only)", async ({ page }) => {
+        await page.goto("/admin");
+        const usersLink = page.getByRole("link", { name: "Staff accounts", exact: true });
         if (role.canManageUsers) {
           await expect(usersLink).toBeVisible();
         } else {
@@ -125,9 +149,9 @@ for (const role of ROLES) {
         }
       });
 
-      test("Audit Logs link visibility matches role (ADMIN and SUPER_ADMIN)", async ({ page }) => {
+      test("Activity history link visibility matches role (ADMIN and SUPER_ADMIN)", async ({ page }) => {
         await page.goto("/admin");
-        const auditLink = page.getByRole("link", { name: "Audit Logs", exact: true });
+        const auditLink = page.getByRole("link", { name: "Activity history", exact: true });
         if (role.canViewAuditLogs) {
           await expect(auditLink).toBeVisible();
         } else {
@@ -153,7 +177,7 @@ for (const role of ROLES) {
         await page.goto("/admin");
         const nav = page.locator("nav.fixed.bottom-0");
         await expect(nav).toBeVisible();
-        for (const label of ["Home", "Members", "Applications", "Payments", "Events", "More"]) {
+        for (const label of ["Home", "Members", "To pay", "Payments", "Events", "More"]) {
           await expect(nav.getByText(label)).toBeVisible();
         }
         await nav.getByText("Members").click();

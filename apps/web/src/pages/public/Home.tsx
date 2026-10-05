@@ -48,10 +48,13 @@ export function Home() {
 
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <Button asChild size="lg" className="bg-brand-green hover:bg-brand-green/90">
-                <Link to="/login">
-                  Member Login
+                <Link to="/join">
+                  Become a member
                   <ArrowRight className="size-4" />
                 </Link>
+              </Button>
+              <Button asChild size="lg" variant="outline">
+                <Link to="/login">Member login</Link>
               </Button>
               <a
                 href="#programs"

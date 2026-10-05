@@ -12,7 +12,13 @@ export class OrgService {
     if (!org) {
       throw new NotFoundException("Organization is not configured yet");
     }
-    return { name: org.name, logoUrl: org.settings?.logoUrl ?? null };
+    return {
+      name: org.name,
+      logoUrl: org.settings?.logoUrl ?? null,
+      address: org.settings?.address ?? null,
+      contactEmail: org.settings?.contactEmail ?? null,
+      contactPhone: org.settings?.contactPhone ?? null,
+    };
   }
 
   async getProfile(organizationId: string): Promise<OrgProfile> {

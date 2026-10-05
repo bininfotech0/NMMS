@@ -73,7 +73,7 @@ test.describe("withdrawal cycle — positive", () => {
 
     // Withdraw isn't offered yet — KYC is still PENDING.
     await memberPage.goto("/member/wallet");
-    await expect(memberPage.getByRole("button", { name: "Withdraw" })).toHaveCount(0);
+    await expect(memberPage.getByRole("button", { name: "Take out money" })).toHaveCount(0);
 
     // 2. Admin verifies it via the KYC review queue.
     const adminContext = await browser.newContext({ storageState: AUTH_STATE.admin });
@@ -87,11 +87,11 @@ test.describe("withdrawal cycle — positive", () => {
 
     // 3. Member requests a withdrawal now that KYC is VERIFIED.
     await memberPage.goto("/member/wallet");
-    await expect(memberPage.getByRole("button", { name: "Withdraw" })).toBeVisible();
-    await memberPage.getByRole("button", { name: "Withdraw" }).click();
-    await memberPage.getByLabel("Points to withdraw").fill("200");
-    await expect(memberPage.getByText("You receive")).toBeVisible();
-    await memberPage.getByRole("button", { name: "Request Withdrawal" }).click();
+    await expect(memberPage.getByRole("button", { name: "Take out money" })).toBeVisible();
+    await memberPage.getByRole("button", { name: "Take out money" }).click();
+    await memberPage.getByLabel("How many points?").fill("200");
+    await expect(memberPage.getByText("You will receive")).toBeVisible();
+    await memberPage.getByRole("button", { name: "Send request" }).click();
     await expect(memberPage.getByText("Pending", { exact: true })).toBeVisible();
 
     // 4. Admin approves, then marks it paid.

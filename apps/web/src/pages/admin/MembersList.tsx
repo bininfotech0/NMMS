@@ -43,6 +43,20 @@ const STATUS_FILTERS: ("All" | MemberStatus)[] = [
   "DECEASED",
 ];
 
+// Plain names for the filter buttons (raw status codes mean nothing to staff).
+const STATUS_FILTER_LABELS: Partial<Record<(typeof STATUS_FILTERS)[number], string>> = {
+  All: "All",
+  DRAFT: "Form not finished",
+  AWAITING_PAYMENT: "Not paid yet",
+  PAYMENT_COLLECTED: "Older: paid, not finished",
+  SUBMITTED: "Older: waiting for staff",
+  ACTIVE: "Active",
+  SUSPENDED: "On hold",
+  EXPIRED: "Ended",
+  REJECTED: "Not accepted",
+  DECEASED: "Deceased",
+};
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -58,7 +72,8 @@ export function MembersList() {
   const initialSearch = searchParams.get("search") ?? "";
   const [query, setQuery] = useState(initialSearch);
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("All");
-  const [addOpen, setAddOpen] = useState(false);
+  // "?add=1" (dashboard "Register a new member") opens the Add Member form straight away.
+  const [addOpen, setAddOpen] = useState(() => searchParams.get("add") === "1");
   const [deleteTarget, setDeleteTarget] = useState<MemberResponse | null>(null);
 
   const { data: members = [], isLoading, isError } = useMembers();
@@ -142,7 +157,7 @@ export function MembersList() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-heading text-2xl font-bold">Members</h1>
-          <p className="text-sm text-muted-foreground">{members.length} members registered</p>
+          <p className="text-sm text-muted-foreground">{members.length} members registered · tap a row to open a member</p>
         </div>
       </div>
 
@@ -168,7 +183,7 @@ export function MembersList() {
                   : "bg-muted text-muted-foreground hover:bg-accent",
               )}
             >
-              {filter === "All" ? "All" : filter[0] + filter.slice(1).toLowerCase()}
+              {STATUS_FILTER_LABELS[filter] ?? filter[0] + filter.slice(1).toLowerCase().replace(/_/g, " ")}
             </button>
           ))}
         </div>
@@ -322,9 +337,9 @@ function AddMemberSheet({
     >
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Add Member</SheetTitle>
+          <SheetTitle>Register a new member</SheetTitle>
           <SheetDescription>
-            Start a new registration as a draft. The rest of the details can be filled in later.
+            Start with just the name and mobile number. You'll fill in the rest on the next screens, and it's saved as you go.
           </SheetDescription>
         </SheetHeader>
         <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={handleSubmit}>
@@ -358,7 +373,7 @@ function AddMemberSheet({
               disabled={createMember.isPending}
               className="bg-brand-green hover:bg-brand-green/90"
             >
-              {createMember.isPending ? "Creating…" : "Create Draft"}
+              {createMember.isPending ? "Starting…" : "Create Draft"}
             </Button>
           </SheetFooter>
         </form>

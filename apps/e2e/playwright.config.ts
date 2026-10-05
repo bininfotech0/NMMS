@@ -17,7 +17,7 @@ export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
   use: {
     ...devices["Desktop Chrome"],
-    baseURL: "http://localhost",
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

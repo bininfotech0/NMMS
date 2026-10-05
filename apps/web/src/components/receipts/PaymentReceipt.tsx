@@ -24,7 +24,11 @@ function formatDate(d: string | Date) {
 
 // Printable via window.print() — same pattern as MembershipCard, no PDF
 // library involved.
-export function PaymentReceipt({ org, data }: { org: OrgProfile | undefined; data: ReceiptDisplayData }) {
+// Members only get the public org details (no bank section); staff get the full profile.
+type ReceiptOrg = Pick<OrgProfile, "name" | "address" | "contactEmail" | "contactPhone"> &
+  Partial<Pick<OrgProfile, "bankAccountName" | "bankAccountNumber" | "bankIfscCode">>;
+
+export function PaymentReceipt({ org, data }: { org: ReceiptOrg | undefined; data: ReceiptDisplayData }) {
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-white p-8 text-sm text-foreground">
       <div className="mb-6 flex items-center gap-3 border-b border-border pb-4">

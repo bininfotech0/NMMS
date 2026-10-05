@@ -17,9 +17,10 @@ export type ManualDonationMode = z.infer<typeof manualDonationModeSchema>;
 export const donationStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type DonationStatus = z.infer<typeof donationStatusSchema>;
 
-// Member self-submission — a claim about money already sent outside the app,
-// recorded immediately. Same shape reused for staff's direct-record action
-// (a donation received in person).
+// Member self-submission — a claim about money already sent outside the app
+// (cash/UPI/bank/cheque), so it waits as PENDING until staff confirm the money
+// arrived. Same shape reused for staff's direct-record action (a donation
+// received in person, auto-approved because staff vouch for it).
 export const submitDonationSchema = z.object({
   amount: z.number().positive(),
   mode: manualDonationModeSchema,
@@ -35,6 +36,12 @@ export type SubmitDonationInput = z.infer<typeof submitDonationSchema>;
 
 export const recordDonationSchema = submitDonationSchema;
 export type RecordDonationInput = z.infer<typeof recordDonationSchema>;
+
+// Reject needs a reason the member can read; approve takes no body.
+export const reviewDonationSchema = z.object({
+  note: z.string().trim().min(1, "Please write a short reason"),
+});
+export type ReviewDonationInput = z.infer<typeof reviewDonationSchema>;
 
 export const donationResponseSchema = z.object({
   id: z.string(),

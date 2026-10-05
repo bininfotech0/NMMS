@@ -13,7 +13,7 @@ test.describe("users management — super admin", () => {
       await page.getByLabel("Email").fill(email);
       await page.getByLabel("Temporary password").fill("NewUser123pw");
       await page.locator("#role").selectOption(role);
-      await page.getByRole("button", { name: "Create User" }).click();
+      await page.getByRole("button", { name: "Add staff member" }).click();
       await expect(page.getByRole("row", { name: new RegExp(email) })).toBeVisible();
     }
   });
@@ -25,7 +25,7 @@ test.describe("users management — super admin", () => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Temporary password").fill("EditRole123pw");
     await page.locator("#role").selectOption("Field Executive");
-    await page.getByRole("button", { name: "Create User" }).click();
+    await page.getByRole("button", { name: "Add staff member" }).click();
 
     const row = page.getByRole("row", { name: new RegExp(email) });
     await expect(row.getByText("Field Executive", { exact: true })).toBeVisible();
@@ -42,7 +42,7 @@ test.describe("users management — super admin", () => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Temporary password").fill("OldPassword123");
     await page.locator("#role").selectOption("Field Executive");
-    await page.getByRole("button", { name: "Create User" }).click();
+    await page.getByRole("button", { name: "Add staff member" }).click();
 
     const row = page.getByRole("row", { name: new RegExp(email) });
     await row.getByRole("button", { name: "Reset Password" }).click();
@@ -69,13 +69,14 @@ test.describe("users management — super admin", () => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Temporary password").fill("ToggleUser123");
     await page.locator("#role").selectOption("Field Executive");
-    await page.getByRole("button", { name: "Create User" }).click();
+    await page.getByRole("button", { name: "Add staff member" }).click();
 
     const row = page.getByRole("row", { name: new RegExp(email) });
     await expect(row.getByText("Active", { exact: true })).toBeVisible();
-    await row.getByRole("button", { name: "Deactivate" }).click();
+    await row.getByRole("button", { name: "Block login" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Block login" }).click();
     await expect(row.getByText("Inactive", { exact: true })).toBeVisible();
-    await row.getByRole("button", { name: "Activate" }).click();
+    await row.getByRole("button", { name: "Allow login" }).click();
     await expect(row.getByText("Active", { exact: true })).toBeVisible();
   });
 });
@@ -90,7 +91,7 @@ test.describe("users management — admin (super-admin protection)", () => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Temporary password").fill("BlockedSA123pw");
     await page.locator("#role").selectOption("Super Admin");
-    await page.getByRole("button", { name: "Create User" }).click();
+    await page.getByRole("button", { name: "Add staff member" }).click();
     await expect(page.getByText(/only a super admin/i).first()).toBeVisible();
     await expect(page.getByRole("row", { name: new RegExp(email) })).toHaveCount(0);
   });
@@ -129,7 +130,7 @@ test.describe("users management — admin (super-admin protection)", () => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Temporary password").fill("AdminCreated123pw");
     await page.locator("#role").selectOption("Field Executive");
-    await page.getByRole("button", { name: "Create User" }).click();
+    await page.getByRole("button", { name: "Add staff member" }).click();
     await expect(page.getByRole("row", { name: new RegExp(email) })).toBeVisible();
   });
 });

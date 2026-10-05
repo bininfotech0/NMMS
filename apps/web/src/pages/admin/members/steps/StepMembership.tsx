@@ -18,12 +18,15 @@ export function StepMembership({ form, setForm, memberId }: StepProps) {
   const { data: plans = [] } = usePlans();
   const { data: categories = [] } = useLookups("MEMBERSHIP_CATEGORY");
   const { data: branches = [] } = useLookups("BRANCH");
+  // Keep the optional block open when editing a member who already has values in it.
+  const hasAdvanced = Boolean(
+    form.membershipCategoryId || form.branchId || form.feeOverride || form.paymentFrequency || form.unit || form.membershipRemarks,
+  );
 
   return (
     <div>
       <p className="mb-4 text-xs text-muted-foreground">
-        Membership plan is required. Category, branch, referral and other details can be left blank. Empty personal,
-        education and nominee sections are skipped automatically.
+        Only the plan is required. Everything else on this screen can be left as it is.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
       <NativeSelect
@@ -33,22 +36,6 @@ export function StepMembership({ form, setForm, memberId }: StepProps) {
         value={form.planId}
         onChange={(e) => setForm((f) => ({ ...f, planId: e.target.value }))}
         options={plans.filter((p) => p.isActive).map((p) => ({ value: p.id, label: p.name }))}
-      />
-      <NativeSelect
-        id="membershipCategoryId"
-        label="Membership category"
-        placeholder="Select a category"
-        value={form.membershipCategoryId}
-        onChange={(e) => setForm((f) => ({ ...f, membershipCategoryId: e.target.value }))}
-        options={categories.filter((c) => c.isActive).map((c) => ({ value: c.id, label: c.value }))}
-      />
-      <NativeSelect
-        id="branchId"
-        label="Branch"
-        placeholder="Select a branch"
-        value={form.branchId}
-        onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}
-        options={branches.filter((b) => b.isActive).map((b) => ({ value: b.id, label: b.value }))}
       />
       <div className="space-y-1.5">
         <Label htmlFor="joiningDate">Joining date</Label>
@@ -66,14 +53,38 @@ export function StepMembership({ form, setForm, memberId }: StepProps) {
           excludeMemberId={memberId}
         />
       </div>
+      </div>
+      <details className="group mt-4 rounded-lg border border-dashed border-border" open={hasAdvanced}>
+        <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-muted-foreground">
+          <span className="group-open:hidden">▸ </span>
+          <span className="hidden group-open:inline">▾ </span>
+          More options (category, branch, special fee, remarks)
+        </summary>
+        <div className="grid gap-4 p-3 sm:grid-cols-2">
+      <NativeSelect
+        id="membershipCategoryId"
+        label="Membership category"
+        placeholder="Select a category"
+        value={form.membershipCategoryId}
+        onChange={(e) => setForm((f) => ({ ...f, membershipCategoryId: e.target.value }))}
+        options={categories.filter((c) => c.isActive).map((c) => ({ value: c.id, label: c.value }))}
+      />
+      <NativeSelect
+        id="branchId"
+        label="Branch"
+        placeholder="Select a branch"
+        value={form.branchId}
+        onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}
+        options={branches.filter((b) => b.isActive).map((b) => ({ value: b.id, label: b.value }))}
+      />
       <div className="space-y-1.5">
-        <Label htmlFor="feeOverride">Fee override (optional)</Label>
+        <Label htmlFor="feeOverride">Special fee (optional)</Label>
         <Input
           id="feeOverride"
           type="number"
           min="0"
           step="0.01"
-          placeholder="Use plan's default fee"
+          placeholder="Leave empty to use the plan's fee"
           value={form.feeOverride}
           onChange={(e) => setForm((f) => ({ ...f, feeOverride: e.target.value }))}
         />
@@ -102,7 +113,8 @@ export function StepMembership({ form, setForm, memberId }: StepProps) {
           onChange={(e) => setForm((f) => ({ ...f, membershipRemarks: e.target.value }))}
         />
       </div>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

@@ -28,15 +28,19 @@ import { ExportCsvButton } from "@/components/shared/ExportCsvButton";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api-client";
 import { useNotices, useCreateNotice, useUpdateNotice, usePublishNotice, useDeleteNotice } from "@/hooks/useNotices";
-import { Role, type CreateNoticeDto, type NoticeResponse } from "@nmms/shared";
+import { NOTICE_AUDIENCE_MEMBERS, Role, type CreateNoticeDto, type NoticeAudience, type NoticeResponse } from "@nmms/shared";
 
 const ROLE_OPTIONS = [
-  { value: "", label: "Everyone" },
-  ...Object.values(Role).map((r) => ({
-    value: r,
-    label: r.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-  })),
+  { value: "", label: "Everyone (members and staff)" },
+  { value: NOTICE_AUDIENCE_MEMBERS, label: "Members only" },
+  { value: Role.FIELD_EXECUTIVE, label: "Field Executives only" },
+  { value: Role.ADMIN, label: "Admins only" },
+  { value: Role.SUPER_ADMIN, label: "Super Admins only" },
 ];
+
+function audienceLabel(audienceRole: string | null | undefined): string {
+  return ROLE_OPTIONS.find((o) => o.value === (audienceRole ?? ""))?.label ?? "Everyone (members and staff)";
+}
 
 export function Notices() {
   const { data: notices = [], isLoading, isError } = useNotices();
@@ -73,7 +77,7 @@ export function Notices() {
         header: "Audience",
         render: (notice) => (
           <span className="text-muted-foreground">
-            {notice.audienceRole ? notice.audienceRole.replace(/_/g, " ") : "All Members"}
+            {audienceLabel(notice.audienceRole)}
           </span>
         ),
       },
@@ -108,7 +112,7 @@ export function Notices() {
     () =>
       notices.map((notice) => ({
         title: notice.title,
-        audience: notice.audienceRole ? notice.audienceRole.replace(/_/g, " ") : "All Members",
+        audience: audienceLabel(notice.audienceRole),
         status: notice.publishedAt ? "Published" : "Draft",
         createdAt: new Date(notice.createdAt).toLocaleDateString(),
       })),
@@ -120,7 +124,9 @@ export function Notices() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-heading text-2xl font-bold">Notices</h1>
-          <p className="text-sm text-muted-foreground">{notices.length} notice{notices.length === 1 ? "" : "s"}</p>
+          <p className="text-sm text-muted-foreground">
+            {notices.length} notice{notices.length === 1 ? "" : "s"} · only published notices are shown to members and staff
+          </p>
         </div>
         <div className="flex gap-2">
           <ExportCsvButton filename="notices.csv" rows={exportRows} />
@@ -305,7 +311,7 @@ function NoticeFormSheet({
       await onSubmit({
         title,
         body,
-        audienceRole: audienceRole || null,
+        audienceRole: (audienceRole || null) as NoticeAudience | null,
         publishNow,
       } as CreateNoticeDto);
     } finally {
@@ -347,7 +353,7 @@ function NoticeFormSheet({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="audienceRole">Target Audience</Label>
+            <Label htmlFor="audienceRole">Who should see this?</Label>
             <select
               id="audienceRole"
               value={audienceRole}
@@ -360,6 +366,9 @@ function NoticeFormSheet({
                 </option>
               ))}
             </select>
+            <p className="text-xs text-muted-foreground">
+              Members see notices on their Home page and Notices page. Staff see them in the bell menu at the top.
+            </p>
           </div>
           {!initial && (
             <div className="flex items-center gap-2">
@@ -421,9 +430,7 @@ function ViewNoticeDialog({
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Users className="size-4" />
-            {notice.audienceRole
-              ? `Target: ${notice.audienceRole.replace(/_/g, " ")}`
-              : "Target: All Members"}
+            {`Shown to: ${audienceLabel(notice.audienceRole)}`}
           </div>
           <div className="text-xs text-muted-foreground">
             Created: {new Date(notice.createdAt).toLocaleDateString("en-IN", {

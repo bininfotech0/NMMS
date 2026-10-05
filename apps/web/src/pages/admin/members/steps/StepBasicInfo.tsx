@@ -24,7 +24,7 @@ export function StepBasicInfo({ form, setForm }: StepProps) {
   return (
     <div className="space-y-4">
       <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-        Upload a passport-style photo in the Identity &amp; Documents step (Step 6).
+        You will add the photo on the next screen (Address &amp; documents).
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">

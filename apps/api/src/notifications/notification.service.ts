@@ -32,9 +32,39 @@ export type NotificationEvent =
       newPlanName: string;
       amount: number;
       receiptNumber: string | null;
+    }
+  | {
+      type: "MEMBERSHIP_EXPIRING";
+      organizationId: string;
+      memberName: string;
+      mobile: string;
+      email: string | null;
+      daysLeft: number;
+      validUntil: Date;
+    }
+  | {
+      type: "MEMBERSHIP_EXPIRED";
+      organizationId: string;
+      memberName: string;
+      mobile: string;
+      email: string | null;
     };
 
+function formatDay(d: Date): string {
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+}
+
+function expiringPhrase(daysLeft: number): string {
+  return daysLeft <= 1 ? "tomorrow" : `in ${daysLeft} days`;
+}
+
 function smsBody(event: NotificationEvent): string {
+  if (event.type === "MEMBERSHIP_EXPIRING") {
+    return `Dear ${event.memberName}, your NMMS membership ends ${expiringPhrase(event.daysLeft)} (${formatDay(event.validUntil)}). After it ends you can renew online from the member portal.`;
+  }
+  if (event.type === "MEMBERSHIP_EXPIRED") {
+    return `Dear ${event.memberName}, your NMMS membership has ended. Log in to the member portal and tap "Renew now" to become an active member again.`;
+  }
   if (event.type === "PAYMENT_RECEIPT") {
     return `Dear ${event.memberName}, your NMMS membership fee of Rs.${event.amount} was received. Receipt #${event.receiptNumber}.`;
   }
@@ -45,12 +75,20 @@ function smsBody(event: NotificationEvent): string {
 }
 
 function emailSubject(event: NotificationEvent): string {
+  if (event.type === "MEMBERSHIP_EXPIRING") return `Your membership ends ${expiringPhrase(event.daysLeft)}`;
+  if (event.type === "MEMBERSHIP_EXPIRED") return "Your membership has ended — renew online";
   if (event.type === "PAYMENT_RECEIPT") return "Payment received";
   if (event.type === "PLAN_UPGRADED") return "Membership plan upgraded";
   return "Welcome to NMMS";
 }
 
 function emailBody(event: NotificationEvent): string {
+  if (event.type === "MEMBERSHIP_EXPIRING") {
+    return `Dear ${event.memberName},\n\nYour NMMS membership ends ${expiringPhrase(event.daysLeft)}, on ${formatDay(event.validUntil)}.\nOnce it ends, log in to the member portal and tap "Renew now" to renew online in a minute.\n\nThank you.`;
+  }
+  if (event.type === "MEMBERSHIP_EXPIRED") {
+    return `Dear ${event.memberName},\n\nYour NMMS membership has ended.\nLog in to the member portal and tap "Renew now" to become an active member again.\n\nThank you.`;
+  }
   if (event.type === "PAYMENT_RECEIPT") {
     return `Dear ${event.memberName},\n\nWe received your payment of Rs.${event.amount}.\nReceipt number: ${event.receiptNumber}\n\nThank you.`;
   }
@@ -81,6 +119,37 @@ export class NotificationService {
       this.dispatchWhatsApp(event),
       this.dispatchEmail(event),
     ]);
+  }
+
+  // Whether SMS is switched on and has credentials — used to tell members up
+  // front if "forgot password" by SMS can work at all.
+  async isSmsAvailable(organizationId: string): Promise<boolean> {
+    try {
+      if (!(await this.integrations.isEnabled(FeatureFlagKey.SMS, organizationId))) return false;
+      const credentials = await this.integrations.getDecryptedConfig<Partial<TwilioCredentials>>(FeatureFlagKey.SMS, organizationId);
+      return !!(credentials?.accountSid && credentials.authToken && credentials.fromNumber);
+    } catch {
+      return false;
+    }
+  }
+
+  // Sends one SMS right away (e.g. a password reset code). Unlike notify(),
+  // returns whether it was actually sent so the caller can react.
+  async sendSmsNow(organizationId: string, mobile: string, body: string): Promise<boolean> {
+    try {
+      if (!(await this.integrations.isEnabled(FeatureFlagKey.SMS, organizationId))) return false;
+      const credentials = await this.integrations.getDecryptedConfig<Partial<TwilioCredentials>>(FeatureFlagKey.SMS, organizationId);
+      if (!credentials?.accountSid || !credentials.authToken || !credentials.fromNumber) return false;
+      await this.twilio.sendSms(mobile, body, {
+        accountSid: credentials.accountSid,
+        authToken: credentials.authToken,
+        fromNumber: credentials.fromNumber,
+      });
+      return true;
+    } catch (err) {
+      this.logger.error("Failed to send SMS", err instanceof Error ? err.stack : err);
+      return false;
+    }
   }
 
   private async dispatchSms(event: NotificationEvent): Promise<void> {

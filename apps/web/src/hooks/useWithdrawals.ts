@@ -50,13 +50,14 @@ export function useCreateWithdrawalRequest() {
 }
 
 // Staff-facing — org-wide withdrawal queue, using the staff token.
-export function useAdminWithdrawals(status?: WithdrawalStatus) {
+export function useAdminWithdrawals(status?: WithdrawalStatus, enabled = true) {
   return useQuery({
     queryKey: ["withdrawals", "admin", status ?? "all"],
     queryFn: () => {
       const query = status ? `?status=${status}` : "";
       return apiFetch<WithdrawalRequestResponse[]>(`/withdrawals${query}`);
     },
+    enabled,
   });
 }
 

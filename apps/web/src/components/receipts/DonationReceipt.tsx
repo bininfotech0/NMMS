@@ -27,7 +27,13 @@ function formatDate(d: string | Date) {
 
 // Printable via window.print() — same pattern as PaymentReceipt/MembershipCard,
 // no PDF library involved.
-export function DonationReceipt({ org, data }: { org: OrgProfile | undefined; data: DonationReceiptDisplayData }) {
+export function DonationReceipt({
+  org,
+  data,
+}: {
+  org: Pick<OrgProfile, "name" | "address" | "contactEmail" | "contactPhone"> | undefined;
+  data: DonationReceiptDisplayData;
+}) {
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-white p-8 text-sm text-foreground">
       <div className="mb-6 flex items-center gap-3 border-b border-border pb-4">

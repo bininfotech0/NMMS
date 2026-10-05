@@ -255,7 +255,9 @@ describe("PaymentsService.recordPayment", () => {
     expect(result.amount).toBe(450);
   });
 
-  it.each(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "SUSPENDED", "DECEASED"])(
+  // SUBMITTED is deliberately payable — legacy rows from the old staff-review
+  // flow are activated by collecting their fee (PaymentsService.assertPayable).
+  it.each(["DRAFT", "APPROVED", "REJECTED", "SUSPENDED", "DECEASED"])(
     "refuses to record a payment for a %s member",
     async (status) => {
       const prisma = makeMockPrisma();

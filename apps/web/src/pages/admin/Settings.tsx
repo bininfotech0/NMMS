@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Pencil, Plus, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, Pencil, Plus, X } from "lucide-react";
+import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,7 +36,7 @@ function hasBlankField(values: string[]): boolean {
   return values.some((v) => v.trim() === "");
 }
 
-const TABS = ["Organization", "Referral Program", "Withdrawals & KYC", "Integrations", "Lookups"] as const;
+const TABS = ["Organization", "Referral Program", "Withdrawals & KYC", "Online payments & messages", "Dropdown lists"] as const;
 
 const LOOKUP_CATEGORIES: LookupCategory[] = [
   "RELIGION",
@@ -60,29 +62,31 @@ const LOOKUP_CATEGORY_LABELS: Record<LookupCategory, string> = {
   FAMILY_TYPE: "Family Type",
 };
 
+// Only describe messages the code actually sends (see NotificationService):
+// payment receipt, welcome on activation, plan upgrade, expiry reminders.
 const INTEGRATION_INFO: Record<FeatureFlagKey, { label: string; description: string }> = {
   PAYMENT_GATEWAY: {
-    label: "Payment Gateway",
-    description: "Accept online membership payments via a card/UPI gateway.",
+    label: "Online payments (Razorpay)",
+    description: "Lets members pay their fee and donations online by UPI or card.",
   },
   PAYMENT_GATEWAY_PAYOUTS: {
-    label: "Payout Gateway (RazorpayX)",
-    description: "Send approved withdrawals via RazorpayX, or mark them paid manually.",
+    label: "Send money to members (RazorpayX)",
+    description: "Sends members' money requests straight to their bank. Without it, pay them yourself and tap “Mark paid”.",
   },
   WHATSAPP_NOTIFY: {
-    label: "WhatsApp Notifications",
-    description: "Send approval, receipt, and expiry alerts over WhatsApp.",
+    label: "WhatsApp messages",
+    description: "Sends payment receipts, welcome messages, plan upgrades, and reminders before a membership ends — on WhatsApp.",
   },
   AI_DEDUPE: {
-    label: "AI Duplicate Detection",
-    description: "Use AI to catch likely duplicate member registrations.",
+    label: "Duplicate check (AI)",
+    description: "Warns staff when a new registration looks like an existing member.",
   },
   AI_OCR: {
-    label: "AI Document Verification",
-    description: "Auto-extract and verify details from uploaded ID documents.",
+    label: "Read ID documents (AI)",
+    description: "Fills in details automatically from uploaded ID documents.",
   },
-  SMS: { label: "SMS Notifications", description: "Send SMS alerts for approvals and renewals." },
-  EMAIL: { label: "Email Notifications", description: "Send email receipts and renewal reminders." },
+  SMS: { label: "SMS messages", description: "Sends payment receipts, welcome messages, plan upgrades, and reminders before a membership ends — by SMS." },
+  EMAIL: { label: "Email messages", description: "Sends payment receipts, welcome messages, plan upgrades, and reminders before a membership ends — by email." },
 };
 
 // Flags with an expandable credential form below the enable/disable toggle.
@@ -94,6 +98,38 @@ const CONFIGURABLE_INTEGRATION_KEYS = new Set<FeatureFlagKey>([
   "EMAIL",
 ]);
 
+// Example of what a number format produces, so admins don't have to decode
+// {PREFIX}/{YYYY}/{SEQ}. Illustrative only — the server assigns real values.
+function previewNumberFormat(format: string): string {
+  if (!format.trim()) return "—";
+  const year = String(new Date().getFullYear());
+  return format
+    .replace(/\{PREFIX\}/g, "VV")
+    .replace(/\{YYYY\}/g, year)
+    .replace(/\{YY\}/g, year.slice(-2))
+    .replace(/\{SEQ\}/g, "0001");
+}
+
+function CopyField({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex gap-2">
+      <Input readOnly value={value} aria-label={label} className="bg-muted font-mono text-xs" />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          navigator.clipboard.writeText(value);
+          toast.success("Copied");
+        }}
+      >
+        <Copy className="size-4" />
+        Copy
+      </Button>
+    </div>
+  );
+}
+
 export function Settings() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Organization");
 
@@ -101,10 +137,10 @@ export function Settings() {
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-2xl font-bold">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage organization profile and integrations</p>
+        <p className="text-sm text-muted-foreground">Your NGO's details, the referral scheme, and online payments and messages</p>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button
             key={t}
@@ -124,8 +160,8 @@ export function Settings() {
       {tab === "Organization" && <OrganizationSettings />}
       {tab === "Referral Program" && <ReferralProgramSettings />}
       {tab === "Withdrawals & KYC" && <WithdrawalKycSettings />}
-      {tab === "Integrations" && <IntegrationsSettings />}
-      {tab === "Lookups" && <LookupsSettings />}
+      {tab === "Online payments & messages" && <IntegrationsSettings />}
+      {tab === "Dropdown lists" && <LookupsSettings />}
     </div>
   );
 }
@@ -206,26 +242,23 @@ function OrganizationSettings() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="mb-4 font-heading text-base font-semibold">Profile & Branding</h2>
+        <h2 className="mb-1 font-heading text-base font-semibold">Your NGO</h2>
+        <p className="mb-4 text-sm text-muted-foreground">Shown on membership cards and receipts, and to members who need to contact you.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="name">Organization name</Label>
             <Input id="name" {...field("name")} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="logoUrl">Logo URL</Label>
-            <Input id="logoUrl" {...field("logoUrl")} placeholder="/uploads/logo.png" />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="address">Address</Label>
             <Input id="address" {...field("address")} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="contactEmail">Contact email</Label>
+            <Label htmlFor="contactEmail">Email for members</Label>
             <Input id="contactEmail" type="email" {...field("contactEmail")} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="contactPhone">Contact phone</Label>
+            <Label htmlFor="contactPhone">Phone number for members</Label>
             <Input id="contactPhone" {...field("contactPhone")} />
           </div>
         </div>
@@ -261,19 +294,25 @@ function OrganizationSettings() {
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="mb-4 font-heading text-base font-semibold">Number Formats</h2>
+        <h2 className="mb-1 font-heading text-base font-semibold">Number style</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          Use <code>{"{PREFIX}"}</code>, <code>{"{YYYY}"}</code>, and <code>{"{SEQ}"}</code> as
-          placeholders.
+          How new member numbers and receipt numbers look. Usually you don't need to change this. Special words:{" "}
+          <code>{"{YYYY}"}</code> = year, <code>{"{SEQ}"}</code> = running number, <code>{"{PREFIX}"}</code> = your short code.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="membershipNumberFormat">Membership number format</Label>
+            <Label htmlFor="membershipNumberFormat">Member number</Label>
             <Input id="membershipNumberFormat" {...field("membershipNumberFormat")} />
+            <p className="text-xs text-muted-foreground">
+              Looks like: <span className="font-medium">{previewNumberFormat(form.membershipNumberFormat)}</span>
+            </p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="receiptNumberFormat">Receipt number format</Label>
+            <Label htmlFor="receiptNumberFormat">Receipt number</Label>
             <Input id="receiptNumberFormat" {...field("receiptNumberFormat")} />
+            <p className="text-xs text-muted-foreground">
+              Looks like: <span className="font-medium">{previewNumberFormat(form.receiptNumberFormat)}</span>
+            </p>
           </div>
         </div>
       </section>
@@ -286,7 +325,7 @@ function OrganizationSettings() {
         >
           {updateOrg.isPending ? "Saving…" : "Save Changes"}
         </Button>
-        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+        {saved && <span className="text-sm text-brand-green">Saved ✓</span>}
         {formError && <span className="text-sm text-destructive">{formError}</span>}
       </div>
     </form>
@@ -384,27 +423,45 @@ function ReferralProgramSettings() {
         <section className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-heading text-base font-semibold">Membership Referral Program</h2>
+              <h2 className="font-heading text-base font-semibold">Refer &amp; Earn</h2>
               <p className="text-sm text-muted-foreground">
-                Let approved members refer others via a personal link and earn points.
+                How it works: every active member gets a personal link. When someone joins and pays using that link, the
+                member gets points. Points can be changed into money and sent to the member's bank.
               </p>
             </div>
-            <Button
+            <button
               type="button"
-              variant="outline"
-              className={cn(form.referralProgramEnabled && "border-brand-green text-brand-green")}
+              role="switch"
+              aria-checked={form.referralProgramEnabled}
+              aria-label={`Refer & Earn: ${form.referralProgramEnabled ? "on" : "off"}`}
               onClick={() => setForm((f) => ({ ...f, referralProgramEnabled: !f.referralProgramEnabled }))}
+              className="flex shrink-0 items-center gap-2 text-sm font-medium"
             >
-              {form.referralProgramEnabled ? "Enabled" : "Disabled"}
-            </Button>
+              <span
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors",
+                  form.referralProgramEnabled ? "bg-brand-green" : "bg-muted-foreground/30",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 size-5 rounded-full bg-white shadow transition-transform",
+                    form.referralProgramEnabled ? "translate-x-5" : "translate-x-0.5",
+                  )}
+                />
+              </span>
+              <span className={form.referralProgramEnabled ? "text-brand-green" : "text-muted-foreground"}>
+                {form.referralProgramEnabled ? "On" : "Off"}
+              </span>
+            </button>
           </div>
         </section>
 
         <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="mb-4 font-heading text-base font-semibold">Points & Volunteer Batches</h2>
+          <h2 className="mb-4 font-heading text-base font-semibold">Points</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="pointsPerApprovedReferral">Fallback points per approved referral</Label>
+              <Label htmlFor="pointsPerApprovedReferral">Points for each person who joins with a member's link</Label>
               <Input
                 id="pointsPerApprovedReferral"
                 type="number"
@@ -413,11 +470,11 @@ function ReferralProgramSettings() {
                 onChange={(e) => setForm((f) => ({ ...f, pointsPerApprovedReferral: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground">
-                Used when the referral point matrix below has no cell for the two members' plan tiers.
+                Used unless you set a different number in "Points by plan" below.
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="donationPointsPercent">Donation reward — % of amount</Label>
+              <Label htmlFor="donationPointsPercent">Points for donations (% of the amount given)</Label>
               <Input
                 id="donationPointsPercent"
                 type="number"
@@ -438,13 +495,13 @@ function ReferralProgramSettings() {
         </section>
 
         <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="mb-1 font-heading text-base font-semibold">Referral Eligibility & Cap</h2>
+          <h2 className="mb-1 font-heading text-base font-semibold">Limits</h2>
           <p className="mb-4 text-sm text-muted-foreground">
             Optional guardrails on who can earn referral points and how much.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="referralPointsCapPerMember">Lifetime cap per referrer (points)</Label>
+              <Label htmlFor="referralPointsCapPerMember">Maximum points one member can ever earn</Label>
               <Input
                 id="referralPointsCapPerMember"
                 type="number"
@@ -453,10 +510,10 @@ function ReferralProgramSettings() {
                 value={form.referralPointsCapPerMember}
                 onChange={(e) => setForm((f) => ({ ...f, referralPointsCapPerMember: e.target.value }))}
               />
-              <p className="text-xs text-muted-foreground">Leave blank for no cap.</p>
+              <p className="text-xs text-muted-foreground">Leave empty for no limit.</p>
             </div>
             <div className="space-y-1.5">
-              <Label>Referrer must have an active plan</Label>
+              <Label>Only members with an active membership earn points</Label>
               <div>
                 <Button
                   type="button"
@@ -480,7 +537,7 @@ function ReferralProgramSettings() {
         </section>
 
         <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="mb-1 font-heading text-base font-semibold">Points → Money Conversion</h2>
+          <h2 className="mb-1 font-heading text-base font-semibold">How much money points are worth</h2>
           <p className="mb-4 text-sm text-muted-foreground">
             The ratio used to convert earned points into rupees (used by wallet/withdrawal features).
           </p>
@@ -518,7 +575,7 @@ function ReferralProgramSettings() {
           >
             {updateOrg.isPending ? "Saving…" : "Save Changes"}
           </Button>
-          {saved && <span className="text-sm text-brand-green">Saved.</span>}
+          {saved && <span className="text-sm text-brand-green">Saved ✓</span>}
           {formError && <span className="text-sm text-destructive">{formError}</span>}
         </div>
       </form>
@@ -560,13 +617,13 @@ function ReferralPointMatrixSection() {
 
   return (
     <section className="rounded-xl border border-border bg-card p-6">
-      <h2 className="mb-1 font-heading text-base font-semibold">Referral Points Matrix</h2>
+      <h2 className="mb-1 font-heading text-base font-semibold">Points by plan (optional)</h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        Points a referrer earns based on their own plan tier (rows) and the referred member's plan tier
-        (columns). Blank cells fall back to the flat rate above.
+        Give different points depending on plans. Each row is the plan of the member who shared the link; each column is
+        the plan of the new member who joined. Leave a box empty to use the normal number above.
       </p>
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading matrix...</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -704,10 +761,10 @@ function WithdrawalKycSettings() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="mb-1 font-heading text-base font-semibold">KYC Requirements</h2>
+        <h2 className="mb-1 font-heading text-base font-semibold">What members need before taking out money</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          Full Name and Mobile are always required. Toggle which additional pieces must be on file before a
-          member's KYC can be verified.
+          Name and mobile number are always needed. Choose what else a member must have saved before they can take out
+          their points as money.
         </p>
         <div className="flex flex-wrap gap-3">
           {(
@@ -807,7 +864,7 @@ function WithdrawalKycSettings() {
         <Button type="submit" disabled={updateOrg.isPending} className="bg-brand-green hover:bg-brand-green/90">
           {updateOrg.isPending ? "Saving…" : "Save Changes"}
         </Button>
-        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+        {saved && <span className="text-sm text-brand-green">Saved ✓</span>}
         {formError && <span className="text-sm text-destructive">{formError}</span>}
       </div>
     </form>
@@ -837,17 +894,22 @@ function IntegrationsSettings() {
 
   return (
     <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Each service needs two things: first tap <span className="font-medium">Set up</span> and paste the keys from that
+        company's website, then turn the switch <span className="font-medium">On</span>.
+      </p>
       {flags.map((flag) => {
         const info = INTEGRATION_INFO[flag.key];
         return (
           <div key={flag.key} className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between gap-4">
+            {/* Stacks on phones so the description isn't squeezed beside the buttons. */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{info.label}</span>
                   {flag.hasConfig && (
-                    <Badge variant="outline" className="border-transparent bg-muted text-xs text-muted-foreground">
-                      Configured
+                    <Badge variant="outline" className="border-transparent bg-brand-bg-soft text-xs text-brand-green">
+                      Set up ✓
                     </Badge>
                   )}
                 </div>
@@ -856,21 +918,37 @@ function IntegrationsSettings() {
               <div className="flex items-center gap-2">
                 {CONFIGURABLE_INTEGRATION_KEYS.has(flag.key) && (
                   <Button size="sm" variant="ghost" onClick={() => setExpandedKey((k) => (k === flag.key ? null : flag.key))}>
-                    Configure
+                    {flag.hasConfig ? "Change setup" : "Set up"}
                     {expandedKey === flag.key ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
+                {/* A real On/Off switch — the old button showed the current state as its label, which read as an action. */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={flag.enabled}
+                  aria-label={`${info.label}: ${flag.enabled ? "on" : "off"}`}
                   disabled={updateIntegration.isPending}
-                  className={cn(flag.enabled && "border-brand-green text-brand-green")}
-                  onClick={() =>
-                    updateIntegration.mutate({ key: flag.key, dto: { enabled: !flag.enabled } })
-                  }
+                  onClick={() => updateIntegration.mutate({ key: flag.key, dto: { enabled: !flag.enabled } })}
+                  className="flex items-center gap-2 text-sm font-medium disabled:opacity-50"
                 >
-                  {flag.enabled ? "Enabled" : "Disabled"}
-                </Button>
+                  <span
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors",
+                      flag.enabled ? "bg-brand-green" : "bg-muted-foreground/30",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-0.5 size-5 rounded-full bg-white shadow transition-transform",
+                        flag.enabled ? "translate-x-5" : "translate-x-0.5",
+                      )}
+                    />
+                  </span>
+                  <span className={cn("w-7 text-left", flag.enabled ? "text-brand-green" : "text-muted-foreground")}>
+                    {flag.enabled ? "On" : "Off"}
+                  </span>
+                </button>
               </div>
             </div>
             {flag.key === "PAYMENT_GATEWAY" && expandedKey === "PAYMENT_GATEWAY" && (
@@ -880,13 +958,13 @@ function IntegrationsSettings() {
               <PayoutGatewayConfigForm />
             )}
             {flag.key === "SMS" && expandedKey === "SMS" && (
-              <TwilioConfigForm flagKey="SMS" fromLabel="From Number" fromPlaceholder="+15551234567" />
+              <TwilioConfigForm flagKey="SMS" fromLabel="Your Twilio phone number (with country code)" fromPlaceholder="+919876543210" />
             )}
             {flag.key === "WHATSAPP_NOTIFY" && expandedKey === "WHATSAPP_NOTIFY" && (
               <TwilioConfigForm
                 flagKey="WHATSAPP_NOTIFY"
-                fromLabel="WhatsApp From Number"
-                fromPlaceholder="+15551234567"
+                fromLabel="Your WhatsApp business number (with country code)"
+                fromPlaceholder="+919876543210"
               />
             )}
             {flag.key === "EMAIL" && expandedKey === "EMAIL" && <ResendConfigForm />}
@@ -896,6 +974,8 @@ function IntegrationsSettings() {
     </div>
   );
 }
+
+const MODE_LABELS: Record<RazorpayMode, string> = { test: "Practice (test)", live: "Real payments (live)" };
 
 function PaymentGatewayConfigForm({ enabled }: { enabled: boolean }) {
   const organizationId = useAuthStore((s) => s.user?.organizationId);
@@ -907,21 +987,36 @@ function PaymentGatewayConfigForm({ enabled }: { enabled: boolean }) {
     : "";
 
   const activeMode = status?.mode ?? "test";
+  const [confirmLive, setConfirmLive] = useState(false);
   const hasAnyConfig = (status?.hasTestConfig || status?.hasLiveConfig) ?? false;
 
   return (
     <div className="mt-4 space-y-5 border-t border-border pt-4">
       {hasAnyConfig && !enabled && (
         <div className="rounded-lg border border-brand-gold/40 bg-brand-bg-soft px-3 py-2 text-sm text-brand-brown">
-          Credentials are saved, but this integration is still <strong>Disabled</strong> — click the "Disabled" button
-          in the top-right corner of this card to turn it on. Saving credentials here and enabling the integration are
-          two separate steps.
+          Your keys are saved, but online payments are switched <strong>Off</strong>. Turn the switch above{" "}
+          <strong>On</strong> when you're ready.
         </div>
       )}
+      <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>
+          Sign in at{" "}
+          <a href="https://dashboard.razorpay.com" target="_blank" rel="noreferrer" className="text-brand-green hover:underline">
+            dashboard.razorpay.com
+          </a>{" "}
+          and open <span className="font-medium">Account &amp; Settings → API Keys</span>. Copy the Key ID and Key Secret.
+        </li>
+        <li>
+          In Razorpay open <span className="font-medium">Webhooks → Add webhook</span>, paste the address below, choose a
+          secret word, and copy it.
+        </li>
+        <li>Paste all three into the boxes below. Start with Practice mode, try a payment, then add the Real payment keys.</li>
+      </ol>
       <div className="space-y-1.5">
-        <Label>Active mode</Label>
+        <Label>Mode</Label>
         <p className="text-xs text-muted-foreground">
-          Which credentials new checkouts use. Keep both saved so you can switch back to Test without re-entering keys.
+          Practice mode uses test money — nothing is really charged. Switch to Real payments when you're ready to collect
+          money from members.
         </p>
         <div className="flex gap-2">
           {(["test", "live"] as RazorpayMode[]).map((mode) => {
@@ -932,17 +1027,17 @@ function PaymentGatewayConfigForm({ enabled }: { enabled: boolean }) {
                 key={mode}
                 type="button"
                 disabled={!hasConfig || isActive || setMode.isPending}
-                onClick={() => setMode.mutate(mode)}
-                title={!hasConfig ? `Save ${mode} credentials below first` : undefined}
+                onClick={() => (mode === "live" ? setConfirmLive(true) : setMode.mutate(mode))}
+                title={!hasConfig ? `Save the ${MODE_LABELS[mode].toLowerCase()} keys below first` : undefined}
                 className={cn(
-                  "rounded-full border px-3 py-1.5 text-sm font-medium capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                  "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   isActive
                     ? "border-brand-green bg-brand-bg-soft text-brand-green"
                     : "border-border text-muted-foreground hover:border-brand-green hover:text-brand-green",
                 )}
               >
-                {mode}
-                {isActive && " (active)"}
+                {MODE_LABELS[mode]}
+                {isActive && " (in use)"}
               </button>
             );
           })}
@@ -950,13 +1045,22 @@ function PaymentGatewayConfigForm({ enabled }: { enabled: boolean }) {
       </div>
 
       <div className="space-y-1.5">
-        <Label>Webhook URL — paste this into both your Test and Live Razorpay Dashboard → Webhooks</Label>
-        <Input readOnly value={webhookUrl} className="bg-muted font-mono text-xs" />
+        <Label>Webhook address — copy this into Razorpay (step 2)</Label>
+        <CopyField value={webhookUrl} label="Webhook address" />
         <p className="text-xs text-muted-foreground">
-          Test and Live are separate Razorpay accounts with separate webhook secrets, but both post to this same URL —
-          save each mode's webhook secret below and either can be verified.
+          Use the same address in Practice and Real mode. It lets Razorpay tell NMMS when a member has paid.
         </p>
       </div>
+      <ConfirmDialog
+        open={confirmLive}
+        onOpenChange={setConfirmLive}
+        title="Switch to real payments?"
+        description="From now on, members will be charged real money when they pay online. Make sure you tried a payment in Practice mode first."
+        confirmLabel="Use real payments"
+        destructive={false}
+        isPending={setMode.isPending}
+        onConfirm={() => setMode.mutate("live", { onSettled: () => setConfirmLive(false) })}
+      />
 
       <div className="grid gap-5 sm:grid-cols-2">
         <RazorpayModeCredentialsForm mode="test" configured={status?.hasTestConfig ?? false} />
@@ -984,15 +1088,15 @@ function RazorpayModeCredentialsForm({ mode, configured }: { mode: RazorpayMode;
   return (
     <form onSubmit={handleSave} className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold capitalize">{mode} mode</span>
+        <span className="text-sm font-semibold">{MODE_LABELS[mode]} keys</span>
         {configured && (
           <Badge variant="outline" className="border-transparent bg-brand-bg-soft text-brand-green">
-            Configured
+            Saved ✓
           </Badge>
         )}
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor={`rzp-${mode}-key-id`}>Key ID</Label>
+        <Label htmlFor={`rzp-${mode}-key-id`}>Key ID (starts with {mode === "live" ? "rzp_live_" : "rzp_test_"})</Label>
         <Input
           id={`rzp-${mode}-key-id`}
           name={`rzp-${mode}-key-id`}
@@ -1016,20 +1120,19 @@ function RazorpayModeCredentialsForm({ mode, configured }: { mode: RazorpayMode;
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor={`rzp-${mode}-webhook-secret`}>Webhook Secret</Label>
+        <Label htmlFor={`rzp-${mode}-webhook-secret`}>Webhook secret word (from step 2)</Label>
         <Input
           id={`rzp-${mode}-webhook-secret`}
           name={`rzp-${mode}-webhook-secret`}
           type="password"
           value={webhookSecret}
           onChange={(e) => setWebhookSecret(e.target.value)}
-          placeholder="From Razorpay Dashboard → Webhooks"
           autoComplete="new-password"
           required
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        Encrypted at rest and write-only — won't be shown again after saving.
+        Kept secret and locked away. For safety they won't be shown again after you save.
       </p>
       <Button
         type="submit"
@@ -1037,7 +1140,7 @@ function RazorpayModeCredentialsForm({ mode, configured }: { mode: RazorpayMode;
         disabled={updateCredentials.isPending}
         className="w-full bg-brand-green hover:bg-brand-green/90"
       >
-        {updateCredentials.isPending ? "Saving…" : `Save ${mode} credentials`}
+        {updateCredentials.isPending ? "Saving…" : `Save ${MODE_LABELS[mode].toLowerCase()} keys`}
       </Button>
     </form>
   );
@@ -1073,9 +1176,16 @@ function PayoutGatewayConfigForm() {
 
   return (
     <form onSubmit={handleSave} className="mt-4 space-y-4 border-t border-border pt-4">
+      <p className="text-sm text-muted-foreground">
+        You need a RazorpayX account (Razorpay's business banking). Copy these from{" "}
+        <a href="https://x.razorpay.com" target="_blank" rel="noreferrer" className="text-brand-green hover:underline">
+          x.razorpay.com
+        </a>
+        . Not using RazorpayX? Leave this switched off and pay members yourself.
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="rzpx-key-id">Key ID</Label>
+          <Label htmlFor="rzpx-key-id">Key ID (starts with rzp_)</Label>
           <Input
             id="rzpx-key-id"
             name="rzpx-key-id"
@@ -1099,19 +1209,19 @@ function PayoutGatewayConfigForm() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="rzpx-account-number">RazorpayX Account Number</Label>
+          <Label htmlFor="rzpx-account-number">RazorpayX account number</Label>
           <Input
             id="rzpx-account-number"
             name="rzpx-account-number"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value)}
-            placeholder="The virtual account payouts are sent from"
+            placeholder="The account money is sent from"
             autoComplete="off"
             required
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="rzpx-webhook-secret">Webhook Secret</Label>
+          <Label htmlFor="rzpx-webhook-secret">Webhook secret word</Label>
           <Input
             id="rzpx-webhook-secret"
             name="rzpx-webhook-secret"
@@ -1126,19 +1236,19 @@ function PayoutGatewayConfigForm() {
       </div>
 
       <div className="space-y-1.5">
-        <Label>Webhook URL — paste this into Razorpay Dashboard → Webhooks</Label>
-        <Input readOnly value={webhookUrl} className="bg-muted font-mono text-xs" />
+        <Label>Webhook address — copy this into RazorpayX → Webhooks</Label>
+        <CopyField value={webhookUrl} label="Payout webhook address" />
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Credentials are encrypted at rest and are write-only — they won't be shown again after saving.
+        Kept secret and locked away. For safety they won't be shown again after you save.
       </p>
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={updateIntegration.isPending} className="bg-brand-green hover:bg-brand-green/90">
-          {updateIntegration.isPending ? "Saving…" : "Save Credentials"}
+          {updateIntegration.isPending ? "Saving…" : "Save"}
         </Button>
-        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+        {saved && <span className="text-sm text-brand-green">Saved ✓</span>}
       </div>
     </form>
   );
@@ -1175,9 +1285,16 @@ function TwilioConfigForm({
 
   return (
     <form onSubmit={handleSave} className="mt-4 space-y-4 border-t border-border pt-4">
+      <p className="text-sm text-muted-foreground">
+        Messages are sent through Twilio. Sign in at{" "}
+        <a href="https://console.twilio.com" target="_blank" rel="noreferrer" className="text-brand-green hover:underline">
+          console.twilio.com
+        </a>{" "}
+        — the Account SID and Auth Token are on the first page.
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor={`twilio-sid-${flagKey}`}>Twilio Account SID</Label>
+          <Label htmlFor={`twilio-sid-${flagKey}`}>Account SID (starts with AC)</Label>
           <Input
             id={`twilio-sid-${flagKey}`}
             name={`twilio-sid-${flagKey}`}
@@ -1215,14 +1332,14 @@ function TwilioConfigForm({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Credentials are encrypted at rest and are write-only — they won't be shown again after saving.
+        Kept secret and locked away. For safety they won't be shown again after you save.
       </p>
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={updateIntegration.isPending} className="bg-brand-green hover:bg-brand-green/90">
-          {updateIntegration.isPending ? "Saving…" : "Save Credentials"}
+          {updateIntegration.isPending ? "Saving…" : "Save"}
         </Button>
-        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+        {saved && <span className="text-sm text-brand-green">Saved ✓</span>}
       </div>
     </form>
   );
@@ -1249,9 +1366,16 @@ function ResendConfigForm() {
 
   return (
     <form onSubmit={handleSave} className="mt-4 space-y-4 border-t border-border pt-4">
+      <p className="text-sm text-muted-foreground">
+        Emails are sent through Resend. Sign in at{" "}
+        <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-brand-green hover:underline">
+          resend.com
+        </a>{" "}
+        and create a key.
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="resend-api-key">Resend API Key</Label>
+          <Label htmlFor="resend-api-key">Resend key (starts with re_)</Label>
           <Input
             id="resend-api-key"
             name="resend-api-key"
@@ -1264,7 +1388,7 @@ function ResendConfigForm() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="resend-from-address">From Address</Label>
+          <Label htmlFor="resend-from-address">Send emails from</Label>
           <Input
             id="resend-from-address"
             name="resend-from-address"
@@ -1279,14 +1403,14 @@ function ResendConfigForm() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Credentials are encrypted at rest and are write-only — they won't be shown again after saving.
+        Kept secret and locked away. For safety they won't be shown again after you save.
       </p>
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={updateIntegration.isPending} className="bg-brand-green hover:bg-brand-green/90">
-          {updateIntegration.isPending ? "Saving…" : "Save Credentials"}
+          {updateIntegration.isPending ? "Saving…" : "Save"}
         </Button>
-        {saved && <span className="text-sm text-brand-green">Saved.</span>}
+        {saved && <span className="text-sm text-brand-green">Saved ✓</span>}
       </div>
     </form>
   );

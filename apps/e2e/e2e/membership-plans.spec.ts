@@ -12,17 +12,17 @@ test.describe("membership plans — admin", () => {
     await page.getByLabel("Fee (₹)").fill("500");
     // Default validity type is "Fixed duration" (MONTHS) — switch to Lifetime.
     await page.locator("#validityType").selectOption("LIFETIME");
-    await expect(page.getByLabel("Duration (months)")).toHaveCount(0);
+    await expect(page.getByLabel("Number of months (12 = one year)")).toHaveCount(0);
     await page.getByRole("button", { name: "Create Plan" }).click();
 
     const row = page.getByRole("row", { name: new RegExp(name) });
     await expect(row.getByText("Lifetime")).toBeVisible();
 
     await row.getByRole("button", { name: "Edit" }).click();
-    await expect(page.getByLabel("Duration (months)")).toHaveCount(0);
+    await expect(page.getByLabel("Number of months (12 = one year)")).toHaveCount(0);
     await page.locator("#validityType").selectOption("MONTHS");
-    await expect(page.getByLabel("Duration (months)")).toBeVisible();
-    await page.getByLabel("Duration (months)").fill("24");
+    await expect(page.getByLabel("Number of months (12 = one year)")).toBeVisible();
+    await page.getByLabel("Number of months (12 = one year)").fill("24");
     await page.getByRole("button", { name: "Save Changes" }).click();
     await expect(row.getByText("24 months")).toBeVisible();
   });
@@ -33,7 +33,7 @@ test.describe("membership plans — admin", () => {
     await page.getByRole("button", { name: "Add Plan" }).click();
     await page.getByLabel("Plan name").fill(name);
     await page.getByLabel("Fee (₹)").fill("300");
-    await page.getByLabel("Duration (months)").fill("12");
+    await page.getByLabel("Number of months (12 = one year)").fill("12");
     await page.getByRole("button", { name: "Create Plan" }).click();
 
     const row = page.getByRole("row", { name: new RegExp(name) });
@@ -51,7 +51,7 @@ test.describe("membership plans — admin", () => {
     await page.getByRole("button", { name: "Add Plan" }).click();
     await page.getByLabel("Plan name").fill(name);
     await page.getByLabel("Fee (₹)").fill("100");
-    await page.getByLabel("Duration (months)").fill("6");
+    await page.getByLabel("Number of months (12 = one year)").fill("6");
     await page.getByRole("button", { name: "Create Plan" }).click();
 
     const row = page.getByRole("row", { name: new RegExp(name) });

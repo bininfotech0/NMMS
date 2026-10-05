@@ -3,19 +3,20 @@ import { ChevronLeft, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useMyDonations } from "@/hooks/useDonations";
-import { useOrgProfile } from "@/hooks/useOrg";
+import { useOrgContact } from "@/hooks/useOrgContact";
 import { DonationReceipt } from "@/components/receipts/DonationReceipt";
 
 export function MemberDonationReceiptPage() {
   const { id } = useParams<{ id: string }>();
   const { data: member, isLoading: memberLoading } = useMyProfile();
   const { data: donations = [], isLoading: donationsLoading } = useMyDonations();
-  const { data: org } = useOrgProfile();
+  // Members can only read the public org details (staff-only /org fails).
+  const { data: org } = useOrgContact();
 
   if (!id) return null;
 
   if (memberLoading || donationsLoading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading receipt...</p>;
+    return <p className="py-10 text-center text-sm text-muted-foreground">Loading your receipt…</p>;
   }
 
   const donation = donations.find((d) => d.id === id && d.status === "APPROVED");

@@ -5,6 +5,11 @@ import { ifscSchema } from "./validators";
 export const publicOrgSchema = z.object({
   name: z.string(),
   logoUrl: z.string().nullable(),
+  // Public contact details — already printed on every membership card, and
+  // shown to members wherever they're told to "contact us".
+  address: z.string().nullable(),
+  contactEmail: z.string().nullable(),
+  contactPhone: z.string().nullable(),
 });
 export type PublicOrg = z.infer<typeof publicOrgSchema>;
 

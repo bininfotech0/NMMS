@@ -21,10 +21,10 @@ export function MemberPayments() {
       <h1 className="font-heading text-2xl font-bold">Payments</h1>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading payments...</p>
+        <p className="text-sm text-muted-foreground">Loading your payments…</p>
       ) : payments.length === 0 ? (
         <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-          No payments recorded yet.
+          No payments yet. After you pay your membership fee, your receipt will appear here.
         </p>
       ) : (
         <div className="space-y-3">

@@ -10,10 +10,10 @@ import { useMyKyc, useSubmitKyc } from "@/hooks/useKyc";
 import type { PayoutMethod } from "@nmms/shared";
 
 const STATUS_INFO: Record<string, { icon: typeof ShieldCheck; label: string; className: string }> = {
-  NOT_SUBMITTED: { icon: ShieldAlert, label: "Not submitted", className: "bg-muted text-muted-foreground" },
-  PENDING: { icon: Clock, label: "Legacy pending", className: "bg-amber-100 text-amber-700" },
-  VERIFIED: { icon: CheckCircle2, label: "Verified automatically", className: "bg-emerald-100 text-emerald-700" },
-  REJECTED: { icon: ShieldAlert, label: "Rejected", className: "bg-red-100 text-red-700" },
+  NOT_SUBMITTED: { icon: ShieldAlert, label: "Not added yet", className: "bg-muted text-muted-foreground" },
+  PENDING: { icon: Clock, label: "Waiting for our team", className: "bg-amber-100 text-amber-700" },
+  VERIFIED: { icon: CheckCircle2, label: "Saved", className: "bg-emerald-100 text-emerald-700" },
+  REJECTED: { icon: ShieldAlert, label: "Please check your details", className: "bg-red-100 text-red-700" },
 };
 
 export function MemberKyc() {
@@ -55,7 +55,7 @@ export function MemberKyc() {
   }
 
   if (isLoading || !kyc) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <p className="py-10 text-center text-sm text-muted-foreground">Loading your bank details…</p>;
   }
 
   const status = STATUS_INFO[kyc.kycStatus];
@@ -63,6 +63,12 @@ export function MemberKyc() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h1 className="font-heading text-2xl font-bold">Bank details</h1>
+        <p className="text-sm text-muted-foreground">
+          Needed only if you want to take out your points as money. Not needed for your membership.
+        </p>
+      </div>
       <Card className="gap-3 py-4">
         <CardContent className="flex items-center gap-3 px-4">
           <div className={cn("flex size-10 items-center justify-center rounded-lg", status.className)}>
@@ -74,10 +80,10 @@ export function MemberKyc() {
               <p className="text-sm text-destructive">{kyc.kycReviewNote}</p>
             )}
             {kyc.kycStatus === "VERIFIED" && (
-              <p className="text-sm text-muted-foreground">Your details are saved. Complete any required identity fields to withdraw earned points.</p>
+              <p className="text-sm text-muted-foreground">Your bank details are saved. Points you withdraw will be sent here.</p>
             )}
             {kyc.kycStatus === "PENDING" && (
-              <p className="text-sm text-muted-foreground">This is an older submission. Updated details are verified automatically.</p>
+              <p className="text-sm text-muted-foreground">Our team will check these details. You can update them below at any time.</p>
             )}
           </div>
         </CardContent>
@@ -85,7 +91,7 @@ export function MemberKyc() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Identity on file</CardTitle>
+          <CardTitle>Your ID numbers</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="flex justify-between">
@@ -97,14 +103,14 @@ export function MemberKyc() {
             <span>{kyc.pan ?? "Not on file"}</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            To update your Aadhaar or PAN, contact staff to update your membership profile.
+            To change your Aadhaar or PAN, please contact us.
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Payout details</CardTitle>
+          <CardTitle>Where should we send your money?</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -140,18 +146,19 @@ export function MemberKyc() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="bankAccountNumber">
-                    Account number {kyc.bankAccountNumberLast4 && `(currently on file: ...${kyc.bankAccountNumberLast4})`}
+                    Account number {kyc.bankAccountNumberLast4 && `(saved number ends in ${kyc.bankAccountNumberLast4})`}
                   </Label>
                   <Input
                     id="bankAccountNumber"
                     value={bankAccountNumber}
                     onChange={(e) => setBankAccountNumber(e.target.value)}
-                    placeholder="Re-enter your account number"
+                    placeholder="Type your full account number"
                     required
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="bankIfscCode">IFSC code</Label>
+                  <p className="text-xs text-muted-foreground">11 letters and numbers, printed on your passbook or cheque book.</p>
                   <Input
                     id="bankIfscCode"
                     value={bankIfscCode}
@@ -169,6 +176,7 @@ export function MemberKyc() {
             ) : (
               <div className="space-y-1.5">
                 <Label htmlFor="upiId">UPI ID</Label>
+                <p className="text-xs text-muted-foreground">Find it in your UPI app (Google Pay, PhonePe, Paytm) — it looks like name@bank.</p>
                 <Input
                   id="upiId"
                   value={upiId}
@@ -180,13 +188,13 @@ export function MemberKyc() {
               </div>
             )}
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={submitKyc.isPending} className="bg-brand-green hover:bg-brand-green/90">
-              {submitKyc.isPending ? "Saving…" : "Save and verify"}
+              {submitKyc.isPending ? "Saving…" : "Save bank details"}
             </Button>
             {kyc.kycStatus === "VERIFIED" && (
               <p className="text-xs text-muted-foreground">
-                Saved payout details are verified automatically. Configured identity and payout fields must be complete before withdrawals.
+                You can change these details whenever you like.
               </p>
             )}
           </form>

@@ -45,10 +45,10 @@ function buildSections(applicationsBadge: number | undefined, userRole: Role): S
       label: "Membership",
       items: [
         { key: "members", label: "Members", to: "/admin/members", icon: Users },
-        { key: "applications", label: "Applications", to: "/admin/applications", icon: ClipboardCheck, badgeCount: applicationsBadge },
+        { key: "applications", label: "Waiting for payment", to: "/admin/applications", icon: ClipboardCheck, badgeCount: applicationsBadge },
         { key: "membership", label: "Membership Plans", to: "/admin/membership", icon: IdCard },
         { key: "referral-rewards", label: "Referral Rewards", to: "/admin/referral-rewards", icon: Gift },
-        { key: "kyc", label: "KYC & Payout Details", to: "/admin/kyc", icon: UserCheck },
+        { key: "kyc", label: "Member bank details", to: "/admin/kyc", icon: UserCheck },
       ],
     },
     {
@@ -67,13 +67,15 @@ function buildSections(applicationsBadge: number | undefined, userRole: Role): S
         { key: "notices", label: "Notices", to: "/admin/notices", icon: Megaphone },
       ],
     },
-    { label: "Reports", items: [{ key: "reports", label: "Reports & Analytics", to: "/admin/reports", icon: BarChart3 }] },
+    { label: "Reports", items: [{ key: "reports", label: "Reports", to: "/admin/reports", icon: BarChart3 }] },
     {
       label: "Administration",
       items: [
-        { key: "settings", label: "Settings", to: "/admin/settings", icon: SettingsIcon },
-        { key: "users", label: "Users", to: "/admin/users", icon: UserCog, roles: [Role.ADMIN, Role.SUPER_ADMIN] },
-        { key: "audit-logs", label: "Audit Logs", to: "/admin/audit-logs", icon: ShieldCheck, roles: [Role.ADMIN, Role.SUPER_ADMIN] },
+        // The org/integration settings APIs are Admin-only — hiding the item
+        // keeps Field Executives from landing on a permission error.
+        { key: "settings", label: "Settings", to: "/admin/settings", icon: SettingsIcon, roles: [Role.ADMIN, Role.SUPER_ADMIN] },
+        { key: "users", label: "Staff accounts", to: "/admin/users", icon: UserCog, roles: [Role.ADMIN, Role.SUPER_ADMIN] },
+        { key: "audit-logs", label: "Activity history", to: "/admin/audit-logs", icon: ShieldCheck, roles: [Role.ADMIN, Role.SUPER_ADMIN] },
       ],
     },
   ];
@@ -90,7 +92,7 @@ function buildMobileItems(applicationsBadge: number | undefined): ShellNavItem[]
   return [
     { key: "home", label: "Home", to: "/admin", icon: LayoutDashboard, end: true },
     { key: "members", label: "Members", to: "/admin/members", icon: Users },
-    { key: "applications", label: "Applications", to: "/admin/applications", icon: ClipboardCheck, badgeCount: applicationsBadge },
+    { key: "applications", label: "To pay", to: "/admin/applications", icon: ClipboardCheck, badgeCount: applicationsBadge },
     { key: "payments", label: "Payments", to: "/admin/payments", icon: Wallet },
     { key: "events", label: "Events", to: "/admin/events", icon: CalendarDays },
     { key: "more", label: "More", to: "/admin/settings", icon: UserCog },
@@ -133,6 +135,11 @@ function HeaderExtras() {
           variant="ghost"
           size="icon"
           className="relative"
+          aria-label={
+            outstandingMembers.length > 0
+              ? `${outstandingMembers.length} members still have to pay — open Payments`
+              : "Payments"
+          }
           title={
             outstandingMembers.length > 0
               ? `${outstandingMembers.length} member${outstandingMembers.length === 1 ? "" : "s"} with outstanding payment`
@@ -149,7 +156,14 @@ function HeaderExtras() {
         </Button>
 
         <div className="relative">
-          <Button variant="ghost" size="icon" className="relative" onClick={() => setShowNotifications(!showNotifications)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            aria-label={`Notices${notices.length > 0 ? ` (${notices.length} new)` : ""}`}
+            aria-expanded={showNotifications}
+            onClick={() => setShowNotifications(!showNotifications)}
+          >
             <Bell className="size-5" />
             {notices.length > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-brand-gold text-[10px] font-bold text-brand-brown">
@@ -226,9 +240,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const accountMenuItems: ShellAccountMenuItem[] = [
     { label: "Dashboard", icon: User, onClick: () => navigate("/admin") },
-    { label: "Settings", icon: SettingsIcon, onClick: () => navigate("/admin/settings") },
+    ...(user.role !== Role.FIELD_EXECUTIVE
+      ? [{ label: "Settings", icon: SettingsIcon, onClick: () => navigate("/admin/settings") }]
+      : []),
     ...(user.role === Role.SUPER_ADMIN
-      ? [{ label: "Audit Logs", icon: Shield, onClick: () => navigate("/admin/audit-logs") }]
+      ? [{ label: "Activity history", icon: Shield, onClick: () => navigate("/admin/audit-logs") }]
       : []),
   ];
 

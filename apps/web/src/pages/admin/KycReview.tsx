@@ -9,7 +9,6 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
-  SheetFooter,
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -24,12 +23,19 @@ import {
 import type { KycResponse, KycStatus, PayoutMethod } from "@nmms/shared";
 
 const TABS: { label: string; value: KycStatus | undefined }[] = [
-  { label: "Pending (legacy)", value: "PENDING" },
-  { label: "Verified automatically", value: "VERIFIED" },
-  { label: "Rejected (legacy)", value: "REJECTED" },
-  { label: "Not Submitted", value: "NOT_SUBMITTED" },
   { label: "All", value: undefined },
+  { label: "Saved", value: "VERIFIED" },
+  { label: "Not added yet", value: "NOT_SUBMITTED" },
+  { label: "Older: waiting", value: "PENDING" },
+  { label: "Older: needs fixing", value: "REJECTED" },
 ];
+
+const STATUS_LABELS: Record<KycStatus, string> = {
+  NOT_SUBMITTED: "Not added yet",
+  PENDING: "Older: waiting",
+  VERIFIED: "Saved",
+  REJECTED: "Older: needs fixing",
+};
 
 const STATUS_STYLES: Record<KycStatus, string> = {
   NOT_SUBMITTED: "bg-muted text-muted-foreground",
@@ -39,7 +45,7 @@ const STATUS_STYLES: Record<KycStatus, string> = {
 };
 
 export function KycReview() {
-  const [status, setStatus] = useState<KycStatus | undefined>("VERIFIED");
+  const [status, setStatus] = useState<KycStatus | undefined>(undefined);
   const { data: submissions = [], isLoading, isError } = useAdminKycList(status);
   const [detailTarget, setDetailTarget] = useState<KycResponse | null>(null);
 
@@ -48,7 +54,7 @@ export function KycReview() {
       { key: "memberName", header: "Member", sortable: true, cellClass: "font-medium" },
       {
         key: "payoutMethod",
-        header: "Payout Method",
+        header: "Paid by",
         render: (s) => (
           <span className="text-muted-foreground">
             {s.payoutMethod === "BANK"
@@ -71,7 +77,7 @@ export function KycReview() {
         sortable: true,
         render: (s) => (
           <Badge className={`border-transparent font-medium ${STATUS_STYLES[s.kycStatus]}`}>
-            {s.kycStatus.replace(/_/g, " ")}
+            {STATUS_LABELS[s.kycStatus]}
           </Badge>
         ),
       },
@@ -100,8 +106,8 @@ export function KycReview() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold">KYC & Payout Details</h1>
-          <p className="text-sm text-muted-foreground">View and update member details. Submissions are verified automatically.</p>
+          <h1 className="font-heading text-2xl font-bold">Member bank details</h1>
+          <p className="text-sm text-muted-foreground">Bank or UPI details members added so they can take out their points as money. You can view or correct them here.</p>
         </div>
         <ExportCsvButton filename="kyc-review.csv" rows={exportRows} />
       </div>
@@ -186,7 +192,7 @@ function KycDetailSheet({
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{target?.memberName}</SheetTitle>
-          <SheetDescription>KYC and payout details</SheetDescription>
+          <SheetDescription>ID numbers and bank details</SheetDescription>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-4 px-4">
           {editing && target ? (
@@ -260,7 +266,7 @@ function KycDetailSheet({
               {error && <p className="text-sm text-destructive">{error}</p>}
 
               {target?.kycStatus === "PENDING" && (
-                <p className="text-sm text-muted-foreground">Legacy submission. New KYC submissions are verified automatically.</p>
+                <p className="text-sm text-muted-foreground">This is an older entry from before details were saved automatically.</p>
               )}
 
               {target?.kycStatus === "REJECTED" && target.kycReviewNote && (

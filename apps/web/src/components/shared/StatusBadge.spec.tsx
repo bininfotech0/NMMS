@@ -3,15 +3,20 @@ import { render, screen } from "@testing-library/react";
 import { StatusBadge } from "./StatusBadge";
 
 describe("StatusBadge", () => {
-  it("renders each member lifecycle status in title case", () => {
-    render(<StatusBadge status="PAYMENT_COLLECTED" />);
-    expect(screen.getByText("Payment Collected")).toBeInTheDocument();
+  it("renders member statuses in plain words", () => {
+    render(<StatusBadge status="AWAITING_PAYMENT" />);
+    expect(screen.getByText("Not paid yet")).toBeInTheDocument();
   });
 
-  it("renders every status this session introduced (PAYMENT_COLLECTED, SUSPENDED, DECEASED)", () => {
-    for (const status of ["PAYMENT_COLLECTED", "SUSPENDED", "DECEASED"]) {
+  it("never shows a raw status code for known member statuses", () => {
+    for (const [status, label] of [
+      ["PAYMENT_COLLECTED", "Paid, form not finished"],
+      ["SUSPENDED", "On hold"],
+      ["DECEASED", "Deceased"],
+    ]) {
       const { unmount } = render(<StatusBadge status={status} />);
-      expect(screen.getByText(new RegExp(status[0], "i"))).toBeInTheDocument();
+      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.queryByText(status)).not.toBeInTheDocument();
       unmount();
     }
   });

@@ -37,12 +37,13 @@ export function MemberLogin() {
 
         <h1 className="mt-6 text-center font-heading text-lg font-semibold">Member sign in</h1>
         <p className="mt-1 text-center text-sm text-muted-foreground">
-          View your referral link, wallet, and rewards
+          See your membership, card and payments
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
             <Label htmlFor="mobile">Mobile number</Label>
+            <p className="text-xs text-muted-foreground">The 10-digit number you joined with.</p>
             <Input
               id="mobile"
               type="tel"
@@ -65,7 +66,7 @@ export function MemberLogin() {
               required
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button
             type="submit"
             disabled={isSubmitting}
@@ -75,10 +76,16 @@ export function MemberLogin() {
           </Button>
         </form>
 
+        <p className="mt-4 text-center text-sm">
+          <a href="/forgot-password" className="font-medium text-brand-green hover:underline">
+            Forgot your password?
+          </a>
+        </p>
+
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Not a member yet?{" "}
           <a href="/join" className="font-medium text-brand-green hover:underline">
-            Join now
+            Become a member
           </a>
         </p>
       </div>

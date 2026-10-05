@@ -57,7 +57,7 @@ export function MembershipPlans() {
       { key: "name", header: "Plan", sortable: true, cellClass: "font-medium" },
       {
         key: "tier",
-        header: "Tier",
+        header: "Level",
         sortable: true,
         render: (plan) =>
           plan.tier ? (
@@ -66,7 +66,7 @@ export function MembershipPlans() {
             <span className="text-muted-foreground">—</span>
           ),
       },
-      { key: "volunteerBatch", header: "Volunteer Batch", render: (plan) => <VolunteerBatchBadge batch={plan.tier} /> },
+      { key: "volunteerBatch", header: "Volunteer badge", render: (plan) => <VolunteerBatchBadge batch={plan.tier} /> },
       {
         key: "fee",
         header: "Fee",
@@ -75,7 +75,7 @@ export function MembershipPlans() {
       },
       {
         key: "validityType",
-        header: "Validity",
+        header: "Lasts",
         render: (plan) => <span className="text-muted-foreground">{formatValidity(plan)}</span>,
       },
       {
@@ -256,7 +256,10 @@ function PlanSheet({
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="tier">Tier</Label>
+            <Label htmlFor="tier">Level</Label>
+            <p className="text-xs text-muted-foreground">
+              Higher levels give members a higher volunteer badge and can earn more points. Choose "None" if you don't use levels.
+            </p>
             <select
               id="tier"
               value={tier}
@@ -288,20 +291,20 @@ function PlanSheet({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="validityType">Validity</Label>
+            <Label htmlFor="validityType">How long does it last?</Label>
             <select
               id="validityType"
               value={validityType}
               onChange={(e) => setValidityType(e.target.value as PlanValidityType)}
               className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              <option value="MONTHS">Fixed duration</option>
-              <option value="LIFETIME">Lifetime</option>
+              <option value="MONTHS">A number of months</option>
+              <option value="LIFETIME">For life (pay once)</option>
             </select>
           </div>
           {validityType === "MONTHS" && (
             <div className="space-y-1.5">
-              <Label htmlFor="validityMonths">Duration (months)</Label>
+              <Label htmlFor="validityMonths">Number of months (12 = one year)</Label>
               <Input
                 id="validityMonths"
                 type="number"

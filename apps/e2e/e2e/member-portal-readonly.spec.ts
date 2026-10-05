@@ -4,9 +4,10 @@ import { AUTH_STATE } from "./support/constants";
 test.describe("member portal — read-only views (shared ACTIVE member)", () => {
   test.use({ storageState: AUTH_STATE.member });
 
-  test("Dashboard: referral link renders and Copy button works", async ({ page }) => {
+  test("Home: membership card and referral link render, Copy button works", async ({ page }) => {
     await page.goto("/member");
-    await expect(page.getByText("Your referral link")).toBeVisible();
+    await expect(page.getByText("My membership", { exact: true })).toBeVisible();
+    await expect(page.getByText("Invite friends and earn points")).toBeVisible();
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.getByRole("button", { name: "Copy" }).click();
     const copied = await page.evaluate(() => navigator.clipboard.readText());
@@ -20,7 +21,7 @@ test.describe("member portal — read-only views (shared ACTIVE member)", () => 
 
   test("Wallet: points balance and ledger render", async ({ page }) => {
     await page.goto("/member/wallet");
-    await expect(page.getByText("Available Balance (pts)", { exact: true })).toBeVisible();
+    await expect(page.getByText("Points you can use", { exact: true })).toBeVisible();
     await expect(page.getByText("Points history", { exact: true })).toBeVisible();
   });
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { AuthUser, DonationResponse, DonationStatus, RecordDonationInput, SubmitDonationInput } from "@nmms/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { NumberingService } from "../common/numbering.service";
@@ -14,32 +14,31 @@ export class DonationsService {
     private readonly referrals: ReferralsService,
   ) {}
 
-  // Member submissions are accepted immediately without a staff review step.
+  // A member's own report of money sent outside the app (cash/UPI/bank/
+  // cheque) is only a claim, so it starts PENDING: no receipt number and no
+  // spendable points until staff confirm the money arrived (approve below).
+  // Points are locked in now at the current rate so a later rate change
+  // can't alter an already-submitted amount. Online (Razorpay) donations
+  // skip this — the gateway's signature check is the verification.
   async submitMine(memberId: string, dto: SubmitDonationInput): Promise<DonationResponse> {
     const member = await this.prisma.member.findUniqueOrThrow({ where: { id: memberId } });
     const settings = await this.getSettings(member.organizationId);
     const pointsAwarded = this.computePoints(dto.amount, settings.donationPointsPercent);
-    const receiptNumber = await this.numbering.nextDonationReceiptNumber(member.organizationId);
 
-    const donation = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.donation.create({
-        data: {
-          organizationId: member.organizationId,
-          memberId,
-          amount: dto.amount,
-          mode: dto.mode,
-          note: dto.note ?? null,
-          reference: dto.reference ?? null,
-          donorAddress: dto.donorAddress ?? null,
-          donorPan: dto.donorPan ?? null,
-          status: "APPROVED",
-          receiptNumber,
-          pointsAwarded,
-        },
-      });
-      await this.referrals.creditDonationPoints(tx, member.organizationId, memberId, pointsAwarded, created.id);
-      return created;
+    const donation = await this.prisma.donation.create({
+      data: {
+        organizationId: member.organizationId,
+        memberId,
+        amount: dto.amount,
+        mode: dto.mode,
+        note: dto.note ?? null,
+        reference: dto.reference ?? null,
+        donorAddress: dto.donorAddress ?? null,
+        donorPan: dto.donorPan ?? null,
+        pointsAwarded,
+      },
     });
+    await this.referrals.recordPendingDonationPoints(member.organizationId, memberId, donation.id, pointsAwarded);
     return toDonationResponse(donation);
   }
 
@@ -111,6 +110,48 @@ export class DonationsService {
 
   async adminGet(id: string, organizationId: string, user: AuthUser): Promise<DonationResponse> {
     return toDonationResponse(await this.findScoped(id, organizationId, user));
+  }
+
+  // Staff confirm the money arrived. CAS on PENDING so two reviewers can't
+  // both approve; the receipt number is only allocated after the CAS wins so
+  // a lost race never burns one.
+  async approve(id: string, organizationId: string, reviewerId: string, user: AuthUser): Promise<DonationResponse> {
+    await this.findScoped(id, organizationId, user);
+
+    const donation = await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.donation.updateMany({
+        where: { id, organizationId, status: "PENDING" },
+        data: { status: "APPROVED", reviewedById: reviewerId, reviewedAt: new Date() },
+      });
+      if (cas.count === 0) {
+        throw new ConflictException("This donation has already been checked — please refresh the page");
+      }
+      const receiptNumber = await this.numbering.nextDonationReceiptNumber(organizationId);
+      return tx.donation.update({ where: { id }, data: { receiptNumber } });
+    });
+    await this.referrals.resolveDonation(organizationId, donation.memberId, donation.id, true);
+    return toDonationResponse(donation);
+  }
+
+  // Only a PENDING donation can be rejected — once approved, the receipt is
+  // issued and points are credited; reversing that is a manual adjustment.
+  async reject(
+    id: string,
+    organizationId: string,
+    reviewerId: string,
+    note: string,
+    user: AuthUser,
+  ): Promise<DonationResponse> {
+    const existing = await this.findScoped(id, organizationId, user);
+    const cas = await this.prisma.donation.updateMany({
+      where: { id, organizationId, status: "PENDING" },
+      data: { status: "REJECTED", reviewedById: reviewerId, reviewedAt: new Date(), reviewNote: note },
+    });
+    if (cas.count === 0) {
+      throw new ConflictException("Only a donation that is still waiting can be marked as not received");
+    }
+    await this.referrals.resolveDonation(organizationId, existing.memberId, id, false);
+    return this.adminGet(id, organizationId, user);
   }
 
   private computePoints(amount: number, percent: number): number {

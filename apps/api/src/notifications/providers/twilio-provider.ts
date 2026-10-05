@@ -9,6 +9,16 @@ export interface TwilioCredentials {
 // Thin wrapper around Twilio's Messages REST API — no SDK, same "one POST,
 // Basic auth" shape as RazorpayProvider. Used for both SMS (fromNumber as-is)
 // and WhatsApp (fromNumber/to prefixed "whatsapp:", per Twilio's WhatsApp API).
+// Members' mobiles are stored as 10-digit Indian numbers, but Twilio only
+// accepts E.164 ("+91XXXXXXXXXX") — without this every SMS/WhatsApp to a
+// member was rejected.
+export function toE164(mobile: string): string {
+  const digits = mobile.replace(/[\s-]/g, "");
+  if (/^[6-9]\d{9}$/.test(digits)) return `+91${digits}`;
+  if (/^91[6-9]\d{9}$/.test(digits)) return `+${digits}`;
+  return digits;
+}
+
 @Injectable()
 export class TwilioProvider {
   private readonly logger = new Logger(TwilioProvider.name);
@@ -34,10 +44,10 @@ export class TwilioProvider {
   }
 
   async sendSms(to: string, body: string, credentials: TwilioCredentials): Promise<void> {
-    await this.send(to, credentials.fromNumber, body, credentials);
+    await this.send(toE164(to), credentials.fromNumber, body, credentials);
   }
 
   async sendWhatsApp(to: string, body: string, credentials: TwilioCredentials): Promise<void> {
-    await this.send(`whatsapp:${to}`, `whatsapp:${credentials.fromNumber}`, body, credentials);
+    await this.send(`whatsapp:${toE164(to)}`, `whatsapp:${credentials.fromNumber}`, body, credentials);
   }
 }

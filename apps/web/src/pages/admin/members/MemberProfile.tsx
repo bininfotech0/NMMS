@@ -1,13 +1,21 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft, IdCard, Pencil, Printer, Phone, Mail,
   MapPin, Calendar, User, Users, Award, Shield, Activity,
   FileText, CreditCard, Clock, MapPinned, Share2, Copy,
-  Ban, RotateCcw, HeartCrack, UserCog, Trash2, TrendingUp, KeyRound, HeartHandshake,
+  Ban, RotateCcw, HeartCrack, UserCog, Trash2, TrendingUp, KeyRound, HeartHandshake, MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -41,28 +49,36 @@ import { useMemberDonations } from "@/hooks/useDonations";
 import { useReactivateMember, useSuspendMember, useMarkMemberDeceased } from "@/hooks/useApplications";
 import { useGenerateReferralCode, useReferralNetwork } from "@/hooks/useReferrals";
 import { usePlans } from "@/hooks/usePlans";
+import { useLookups } from "@/hooks/useLookups";
 import { useAuthStore } from "@/stores/auth";
 import { PLAN_TIER_ORDER, Role, type MemberResponse, type PaymentMode, type PlanTier } from "@nmms/shared";
 
 const CAN_MANAGE_LIFECYCLE = [Role.ADMIN, Role.SUPER_ADMIN];
 
+const KYC_LABELS: Record<string, string> = {
+  NOT_SUBMITTED: "Not added yet",
+  PENDING: "Older: waiting",
+  VERIFIED: "Saved",
+  REJECTED: "Older: needs fixing",
+};
+
 type LifecycleAction = "suspend" | "reactivate" | "mark-deceased";
 
 const LIFECYCLE_COPY: Record<LifecycleAction, { title: string; description: string; confirmLabel: string }> = {
   suspend: {
-    title: "Suspend member",
-    description: "The member will no longer be counted as active until reactivated.",
-    confirmLabel: "Suspend",
+    title: "Put this membership on hold?",
+    description: "The member stays in the records but won't count as active, and can't sign in to the member portal, until you make them active again.",
+    confirmLabel: "Put on hold",
   },
   reactivate: {
-    title: "Reactivate member",
-    description: "Restores the member to Active status.",
-    confirmLabel: "Reactivate",
+    title: "Make this membership active again?",
+    description: "The member becomes active again and can sign in to the member portal.",
+    confirmLabel: "Make active",
   },
   "mark-deceased": {
-    title: "Mark member as deceased",
-    description: "This is a terminal status and cannot be reversed.",
-    confirmLabel: "Mark Deceased",
+    title: "Record this member's death?",
+    description: "The membership will be closed permanently. This cannot be undone.",
+    confirmLabel: "Record death",
   },
 };
 
@@ -447,7 +463,7 @@ function initials(name: string) {
   return name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function Detail({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string | null | undefined }) {
+function Detail({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: React.ReactNode }) {
   if (!value) return null;
   return (
     <div className="flex items-center gap-2 text-sm">
@@ -638,12 +654,26 @@ export function MemberProfile() {
   const { data: statusHistory = [] } = useMemberStatusHistory(id ?? null);
   const user = useAuthStore((state) => state.user);
   const deleteMember = useDeleteMember();
+  const { data: educationLevels = [] } = useLookups("EDUCATION");
+  const { data: occupations = [] } = useLookups("OCCUPATION");
 
   if (!id) return null;
 
   if (isLoading || !member) {
     return <p className="py-10 text-center text-sm text-muted-foreground">Loading member...</p>;
   }
+
+  const canManageLifecycle = !!user && CAN_MANAGE_LIFECYCLE.includes(user.role);
+  const lookupName = (list: { id: string; value: string }[], lookupId: string | null) =>
+    (lookupId && list.find((l) => l.id === lookupId)?.value) || "";
+  // Admins, or the staff member who registered this person.
+  const canManageOwn = !!user && (canManageLifecycle || member.createdById === user.id);
+  const editPath =
+    member.status === "DRAFT" || member.status === "AWAITING_PAYMENT" || member.status === "PAYMENT_COLLECTED"
+      ? `/admin/members/${id}/wizard`
+      : (["ACTIVE", "SUSPENDED", "EXPIRED", "RENEWED", "SUBMITTED", "APPROVED"].includes(member.status) && canManageOwn)
+        ? `/admin/members/${id}/edit`
+        : null;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -674,101 +704,87 @@ export function MemberProfile() {
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          {(member.status === "DRAFT" ||
-            member.status === "AWAITING_PAYMENT" ||
-            member.status === "PAYMENT_COLLECTED") && (
+        <div className="flex flex-wrap gap-2">
+          {editPath && (
             <Button variant="outline" asChild>
-              <Link to={`/admin/members/${id}/wizard`}>
+              <Link to={editPath}>
                 <Pencil className="size-4" />
-                Edit
+                Edit details
               </Link>
-            </Button>
-          )}
-          {(member.status === "ACTIVE" ||
-            member.status === "SUSPENDED" ||
-            member.status === "EXPIRED" ||
-            member.status === "RENEWED" ||
-            member.status === "SUBMITTED" ||
-            member.status === "APPROVED") &&
-            user &&
-            (CAN_MANAGE_LIFECYCLE.includes(user.role) || member.createdById === user.id) && (
-              <Button variant="outline" asChild>
-                <Link to={`/admin/members/${id}/edit`}>
-                  <Pencil className="size-4" />
-                  Edit
-                </Link>
-              </Button>
-            )}
-          {user && (CAN_MANAGE_LIFECYCLE.includes(user.role) || member.createdById === user.id) && (
-            <Button variant="outline" onClick={() => setResetPasswordOpen(true)}>
-              <KeyRound className="size-4" />
-              Reset Password
             </Button>
           )}
           {member.membershipNumber && (
-            <Button variant="outline" asChild>
+            <Button className="bg-brand-green hover:bg-brand-green/90" asChild>
               <Link to={`/admin/members/${id}/card`}>
                 <IdCard className="size-4" />
-                View Card
+                View card
               </Link>
             </Button>
           )}
-          {member.status === "DRAFT" &&
-            user &&
-            (CAN_MANAGE_LIFECYCLE.includes(user.role) || member.createdById === user.id) && (
-              <Button
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="size-4" />
-                Delete
+          {/* Less common and risky actions live in one menu so the page isn't a wall of equal buttons. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <MoreHorizontal className="size-4" />
+                More actions
               </Button>
-            )}
-          {user &&
-            CAN_MANAGE_LIFECYCLE.includes(user.role) &&
-            member.status === "ACTIVE" &&
-            !member.promotedToUserId && (
-              <Button variant="outline" onClick={() => setPromoteOpen(true)}>
-                <UserCog className="size-4" />
-                Promote to Field Executive
-              </Button>
-            )}
-          {user && CAN_MANAGE_LIFECYCLE.includes(user.role) && member.status === "ACTIVE" && (
-            <Button variant="outline" onClick={() => setUpgradePlanOpen(true)}>
-              <TrendingUp className="size-4" />
-              Upgrade Plan
-            </Button>
-          )}
-          {user && CAN_MANAGE_LIFECYCLE.includes(user.role) && member.status === "ACTIVE" && (
-            <Button variant="outline" onClick={() => setLifecycleAction("suspend")}>
-              <Ban className="size-4" />
-              Suspend
-            </Button>
-          )}
-          {user && CAN_MANAGE_LIFECYCLE.includes(user.role) && member.status === "SUSPENDED" && (
-            <Button variant="outline" onClick={() => setLifecycleAction("reactivate")}>
-              <RotateCcw className="size-4" />
-              Reactivate
-            </Button>
-          )}
-          {user &&
-            CAN_MANAGE_LIFECYCLE.includes(user.role) &&
-            (member.status === "ACTIVE" || member.status === "SUSPENDED") && (
-              <Button
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setLifecycleAction("mark-deceased")}
-              >
-                <HeartCrack className="size-4" />
-                Mark Deceased
-              </Button>
-            )}
-          <Button className="bg-brand-green hover:bg-brand-green/90" onClick={() => window.print()}>
-            <Printer className="size-4" />
-            Print
-          </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              {canManageOwn && (
+                <DropdownMenuItem onClick={() => setResetPasswordOpen(true)}>
+                  <KeyRound className="size-4" />
+                  Reset password
+                </DropdownMenuItem>
+              )}
+              {canManageLifecycle && member.status === "ACTIVE" && (
+                <DropdownMenuItem onClick={() => setUpgradePlanOpen(true)}>
+                  <TrendingUp className="size-4" />
+                  Upgrade plan
+                </DropdownMenuItem>
+              )}
+              {canManageLifecycle && member.status === "ACTIVE" && !member.promotedToUserId && (
+                <DropdownMenuItem onClick={() => setPromoteOpen(true)}>
+                  <UserCog className="size-4" />
+                  Make a Field Executive
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => window.print()}>
+                <Printer className="size-4" />
+                Print this page
+              </DropdownMenuItem>
+              {canManageLifecycle && member.status === "SUSPENDED" && (
+                <DropdownMenuItem onClick={() => setLifecycleAction("reactivate")}>
+                  <RotateCcw className="size-4" />
+                  Make active again
+                </DropdownMenuItem>
+              )}
+              {(canManageLifecycle && (member.status === "ACTIVE" || member.status === "SUSPENDED")) ||
+              (member.status === "DRAFT" && canManageOwn) ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Careful — serious actions</DropdownMenuLabel>
+                </>
+              ) : null}
+              {canManageLifecycle && member.status === "ACTIVE" && (
+                <DropdownMenuItem onClick={() => setLifecycleAction("suspend")}>
+                  <Ban className="size-4" />
+                  Put membership on hold
+                </DropdownMenuItem>
+              )}
+              {canManageLifecycle && (member.status === "ACTIVE" || member.status === "SUSPENDED") && (
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setLifecycleAction("mark-deceased")}>
+                  <HeartCrack className="size-4" />
+                  Record death
+                </DropdownMenuItem>
+              )}
+              {member.status === "DRAFT" && canManageOwn && (
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="size-4" />
+                  Delete unfinished registration
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -830,7 +846,7 @@ export function MemberProfile() {
             />
             {member.joiningDate && <Detail icon={Calendar} label="Joined" value={formatDate(member.joiningDate, "dd/MM/yyyy")} />}
             {member.validUntil && <Detail icon={Clock} label="Valid Until" value={formatDate(member.validUntil, "dd/MM/yyyy")} />}
-            <Detail icon={Shield} label="Status" value={member.status} />
+            <Detail icon={Shield} label="Status" value={<StatusBadge status={member.status} />} />
           </SectionCard>
 
           <SectionCard title="Identity Documents">
@@ -842,10 +858,10 @@ export function MemberProfile() {
             )}
           </SectionCard>
 
-          <SectionCard title="KYC & Payout">
+          <SectionCard title="Bank details & points">
             <div className="flex items-center gap-2 text-sm">
               <Shield className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-[80px] text-muted-foreground">KYC Status:</span>
+              <span className="min-w-[80px] text-muted-foreground">Bank details:</span>
               <Badge
                 className={cn(
                   "border-transparent font-medium",
@@ -855,26 +871,28 @@ export function MemberProfile() {
                   member.kycStatus === "NOT_SUBMITTED" && "bg-muted text-muted-foreground",
                 )}
               >
-                {member.kycStatus.replace(/_/g, " ")}
+                {KYC_LABELS[member.kycStatus] ?? member.kycStatus}
               </Badge>
             </div>
             <Detail
               icon={Award}
-              label="Converted"
+              label="Points cashed out"
               value={`${member.pointsConverted} pts`}
             />
-            <Detail icon={CreditCard} label="Withdrawn" value={`₹${member.totalWithdrawnAmount}`} />
+            <Detail icon={CreditCard} label="Money sent to member" value={`₹${member.totalWithdrawnAmount}`} />
             {member.kycStatus !== "NOT_SUBMITTED" && (
               <Button size="sm" variant="outline" asChild>
-                <Link to={`/admin/kyc?member=${member.id}`}>Review in KYC queue</Link>
+                <Link to={`/admin/kyc?member=${member.id}`}>Open bank details</Link>
               </Button>
             )}
           </SectionCard>
 
           {member.educationId && (
             <SectionCard title="Education & Occupation">
-              <Detail icon={Award} label="Education" value={member.educationId ?? ""} />
-              {member.occupationId && <Detail icon={Award} label="Occupation" value={member.occupationId ?? ""} />}
+              <Detail icon={Award} label="Education" value={lookupName(educationLevels, member.educationId)} />
+              {member.occupationId && (
+                <Detail icon={Award} label="Occupation" value={lookupName(occupations, member.occupationId)} />
+              )}
               {member.qualificationDetail && <Detail icon={Award} label="Qualification" value={member.qualificationDetail} />}
             </SectionCard>
           )}

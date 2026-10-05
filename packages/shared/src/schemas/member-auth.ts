@@ -22,6 +22,19 @@ export const memberLoginSchema = z.object({
 });
 export type MemberLoginInput = z.infer<typeof memberLoginSchema>;
 
+// Forgot password: step 1 sends a 6-digit SMS code, step 2 sets the new password.
+export const memberPasswordResetRequestSchema = z.object({
+  mobile: indianMobileSchema,
+});
+export type MemberPasswordResetRequestInput = z.infer<typeof memberPasswordResetRequestSchema>;
+
+export const memberPasswordResetConfirmSchema = z.object({
+  mobile: indianMobileSchema,
+  code: z.string().regex(/^\d{6}$/, "The code has 6 digits"),
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
+export type MemberPasswordResetConfirmInput = z.infer<typeof memberPasswordResetConfirmSchema>;
+
 export const authMemberSchema = z.object({
   id: z.string(),
   fullName: z.string(),

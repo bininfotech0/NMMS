@@ -50,7 +50,7 @@ export function StepDeclaration({ form, setForm }: StepProps) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        The applicant's signature, uploaded in Step 7 (Identity &amp; Documents), serves as the signature
+        The applicant's signature, uploaded on the Address &amp; documents screen, serves as the signature
         for this declaration. The registering field executive is recorded automatically against this
         application for the audit trail.
       </p>

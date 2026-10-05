@@ -47,10 +47,10 @@ export function MemberDocuments() {
       <h1 className="font-heading text-2xl font-bold">Documents</h1>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading documents...</p>
+        <p className="text-sm text-muted-foreground">Loading your documents…</p>
       ) : documents.length === 0 ? (
         <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-          No documents have been uploaded for your membership yet.
+          No documents yet. The photo and ID proof you upload while joining will appear here.
         </p>
       ) : (
         <div className="space-y-3">

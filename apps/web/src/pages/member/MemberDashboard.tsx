@@ -1,10 +1,14 @@
-import { Copy, CreditCard, Share2, Users, Wallet } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, CheckCircle2, Copy, CreditCard, Loader2, Share2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { VolunteerBatchBadge, VolunteerBatchIcon } from "@/components/shared/VolunteerBatchBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { MemberCompleteRegistration } from "@/pages/member/MemberCompleteRegistration";
+import { MemberCompleteRegistration, PayMembershipFee } from "@/pages/member/MemberCompleteRegistration";
+import { ContactUs } from "@/components/member/ContactUs";
+import { LatestNoticeBanner } from "@/pages/member/MemberNotices";
+import { isMemberActive, memberStatusInfo } from "@/lib/member-status";
 import { useMyReferralSummary } from "@/hooks/useReferrals";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useMemberAuthStore } from "@/stores/member-auth";
@@ -12,6 +16,22 @@ import { titleCase } from "@/lib/utils";
 import { computeNextVolunteerBatch, computeVolunteerBatch } from "@/lib/volunteer-batch";
 
 const SHARE_MESSAGE = "Join our membership program using my referral link:";
+
+function formatDate(d: string | Date): string {
+  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function daysUntil(d: string | Date): number {
+  return Math.ceil((new Date(d).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+}
+
+function PageLoading() {
+  return (
+    <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin" /> Loading your page…
+    </p>
+  );
+}
 
 export function MemberDashboard() {
   // The store only holds the login-time snapshot, refreshed at most every 15
@@ -57,70 +77,76 @@ export function MemberDashboard() {
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
-  if (member?.status !== "ACTIVE") {
+  if (!isMemberActive(member?.status)) {
     // A self-registered member starts DRAFT with no plan at all (unlike the
-    // staff wizard) — guide them through finishing it themselves instead of
-    // the generic "pending" message, which only applies once there's
-    // actually nothing left for the member to do but wait. AWAITING_PAYMENT
-    // means the form is done and only payment (which auto-activates) remains.
+    // staff wizard) — guide them through finishing it themselves.
+    // AWAITING_PAYMENT means the form is done and only payment (which
+    // auto-activates) remains.
     if (member?.status === "DRAFT" || member?.status === "AWAITING_PAYMENT") {
       // Needs the full MemberResponse (addressLine, planId, etc.), not the
       // narrower login-time AuthMember snapshot storeMember falls back to.
       if (!profile) {
-        return <p className="text-sm text-muted-foreground">Loading…</p>;
+        return <PageLoading />;
       }
-      return <MemberCompleteRegistration member={profile} />;
+      return (
+        <div className="space-y-4">
+          <LatestNoticeBanner />
+          <MemberCompleteRegistration member={profile} />
+        </div>
+      );
     }
 
-    const lapsed = member?.status === "EXPIRED" || member?.status === "RENEWED";
+    const info = memberStatusInfo(member?.status);
+    if (member?.status === "EXPIRED") {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-destructive" />
+              Your membership has ended
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {profile?.validUntil ? `It ended on ${formatDate(profile.validUntil)}. ` : ""}
+              Renew now to become an active member again. It only takes a minute.
+            </p>
+            {profile ? <PayMembershipFee member={profile} buttonLabel="Renew now (UPI / Card)" /> : <PageLoading />}
+          </CardContent>
+        </Card>
+      );
+    }
+
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{lapsed ? "Membership needs renewal" : "Registration in progress"}</CardTitle>
+          <CardTitle>{info.label}</CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Your membership status is currently <span className="font-medium">{member?.status}</span>.{" "}
-            {lapsed
-              ? "Contact your field executive to renew your plan and regain full access."
-              : "Contact your field executive to finish your registration — once it's active, you'll get your own referral link and can start earning points."}
-          </p>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">{info.guidance}</p>
+          <ContactUs />
         </CardContent>
       </Card>
     );
   }
 
   if (isLoading || !summary) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <PageLoading />;
   }
 
   return (
     <div className="space-y-4">
-      {member?.planName && (
-        <Card className="gap-3 py-4">
-          <CardContent className="flex items-center justify-between px-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Your plan</p>
-              <p className="mt-1 text-lg font-semibold">
-                {member.planName}
-                {member.planTier && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({member.planTier.charAt(0)}
-                    {member.planTier.slice(1).toLowerCase()})
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="flex size-10 items-center justify-center rounded-lg bg-brand-green/10 text-brand-green">
-              <CreditCard className="size-5" />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <LatestNoticeBanner />
+      <MyMembershipCard
+        statusLabel={memberStatusInfo(member?.status).label}
+        planName={member?.planName ?? null}
+        validUntil={profile?.validUntil ?? null}
+        membershipNumber={profile?.membershipNumber ?? null}
+      />
 
       <Card>
         <CardHeader>
-          <CardTitle>Your referral link</CardTitle>
+          <CardTitle>Invite friends and earn points</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
@@ -135,7 +161,7 @@ export function MemberDashboard() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Share this link — anyone who joins through it is automatically credited to you.
+            Send this link to friends on WhatsApp. When they join using it, you get points.
           </p>
         </CardContent>
       </Card>
@@ -144,7 +170,7 @@ export function MemberDashboard() {
         <Card className="gap-3 py-4">
           <CardContent className="flex items-center justify-between px-4">
             <div>
-              <p className="text-sm text-muted-foreground">Points balance</p>
+              <p className="text-sm text-muted-foreground">Your points</p>
               <p className="mt-1 text-3xl font-bold text-brand-green">{summary.pointsBalance}</p>
             </div>
             <div className="flex size-10 items-center justify-center rounded-lg bg-brand-green/10 text-brand-green">
@@ -193,5 +219,56 @@ export function MemberDashboard() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function MyMembershipCard({
+  statusLabel,
+  planName,
+  validUntil,
+  membershipNumber,
+}: {
+  statusLabel: string;
+  planName: string | null;
+  validUntil: string | Date | null;
+  membershipNumber: string | null;
+}) {
+  const daysLeft = validUntil ? daysUntil(validUntil) : null;
+  const endingSoon = daysLeft !== null && daysLeft <= 30;
+
+  return (
+    <Card className="gap-3 py-4">
+      <CardContent className="space-y-3 px-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm text-muted-foreground">My membership</p>
+            <p className="mt-1 flex items-center gap-1.5 text-lg font-semibold text-brand-green-dark">
+              <CheckCircle2 className="size-5 text-brand-green" />
+              {statusLabel}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {planName && <span className="font-medium text-foreground">{planName}</span>}
+              {planName && " · "}
+              {validUntil ? `Valid until ${formatDate(validUntil)}` : "Lifetime membership"}
+            </p>
+            {membershipNumber && <p className="text-xs text-muted-foreground">Member number: {membershipNumber}</p>}
+          </div>
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-green/10 text-brand-green">
+            <CreditCard className="size-5" />
+          </div>
+        </div>
+        {endingSoon && (
+          <p className="rounded-lg bg-brand-gold/15 px-3 py-2 text-sm text-brand-brown">
+            Your membership ends in {daysLeft} day{daysLeft === 1 ? "" : "s"}. You can renew it here once it ends.
+          </p>
+        )}
+        <Button asChild className="w-full bg-brand-green hover:bg-brand-green/90 sm:w-auto">
+          <Link to="/member/card">
+            <CreditCard className="size-4" />
+            View my membership card
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

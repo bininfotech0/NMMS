@@ -119,7 +119,7 @@ test.describe("self-registration", () => {
 
     const mobile = uniqueMobile();
     await page.goto(`/join?ref=${summary.referralCode}`);
-    await expect(page.getByText(/joining via/i)).toBeVisible();
+    await expect(page.getByText(/referred by/i)).toBeVisible();
     await page.getByLabel("Full name").fill("Referred Join Member");
     await page.getByLabel("Mobile number").fill(mobile);
     await page.getByLabel("Aadhaar number").fill(uniqueAadhaar(mobile));
@@ -155,9 +155,9 @@ test.describe("route guards", () => {
 });
 
 test.describe("fallback pages", () => {
-  test("/403 renders Access Denied with a working Go to Dashboard link", async ({ page }) => {
+  test("/403 renders a plain access message with a working Go to Dashboard link", async ({ page }) => {
     await page.goto("/403");
-    await expect(page.getByText("Access Denied")).toBeVisible();
+    await expect(page.getByText("You can't open this page")).toBeVisible();
     await page.getByRole("link", { name: "Go to Dashboard" }).click();
     await page.waitForURL("**/login"); // unauthenticated, so /admin bounces to /login
   });
@@ -165,6 +165,6 @@ test.describe("fallback pages", () => {
   test("/404 renders for an unmatched route", async ({ page }) => {
     await page.goto("/this-route-does-not-exist");
     await expect(page.getByText("Page not found")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Go to Dashboard" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Go to the home page" })).toBeVisible();
   });
 });

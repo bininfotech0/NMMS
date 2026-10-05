@@ -23,6 +23,23 @@ const STATUS_STYLES: Record<string, string> = {
   DECEASED: "bg-muted text-muted-foreground border-transparent",
 };
 
+// Plain words for member statuses — the raw codes (AWAITING_PAYMENT, ...)
+// mean nothing to staff or members. Unknown statuses fall back to title case.
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Form not finished",
+  AWAITING_PAYMENT: "Not paid yet",
+  PAYMENT_COLLECTED: "Paid, form not finished",
+  SUBMITTED: "Waiting for staff",
+  VERIFIED: "Waiting for staff",
+  APPROVED: "Approved",
+  ACTIVE: "Active",
+  REJECTED: "Not accepted",
+  SUSPENDED: "On hold",
+  EXPIRED: "Ended",
+  RENEWED: "Active (renewed)",
+  DECEASED: "Deceased",
+};
+
 function toTitleCase(status: string): string {
   return status
     .toLowerCase()
@@ -34,7 +51,7 @@ function toTitleCase(status: string): string {
 export function StatusBadge({ status }: { status: string }) {
   return (
     <Badge variant="outline" className={cn("font-medium", STATUS_STYLES[status] ?? "")}>
-      {toTitleCase(status)}
+      {STATUS_LABELS[status] ?? toTitleCase(status)}
     </Badge>
   );
 }
